@@ -817,5 +817,3 @@ final_state = 5
 op = "commit"
 line = 14
 ```
-
-
