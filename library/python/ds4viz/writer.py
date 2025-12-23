@@ -199,16 +199,21 @@ class TomlWriter:
             lines.append(f"ret = {self._serialize_value(step.ret)}")
         if step.note:
             lines.append(f'note = "{self._escape_string(step.note)}"')
+
         lines.append("")
         lines.append("[steps.args]")
-        for key, value in step.args.items():
-            lines.append(f"{key} = {self._serialize_value(value)}")
+
+        if step.args:
+            for key, value in step.args.items():
+                lines.append(f"{key} = {self._serialize_value(value)}")
+
         if step.code is not None:
             lines.append("")
             lines.append("[steps.code]")
             lines.append(f"line = {step.code.line}")
             if step.code.col is not None:
                 lines.append(f"col = {step.code.col}")
+
         return lines
 
     def _serialize_result(self) -> list[str]:
