@@ -12,6 +12,8 @@
 
 ## `.toml`IR生成: 对应语言支持, 安装及文档  
 
+库设计遵循原则: 代码即文档, 统一且简易上手.  
+
 |语言|安装|文档|
 |---|---|---|
 |`Python`|`pip install ds4viz`|[ds4viz-Python](./library/python/README.md)|  
