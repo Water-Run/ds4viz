@@ -1,6 +1,6 @@
 # `ds4viz`
 
-`WaterRun` `2025-12-23`
+`WaterRun` `2025-12-24`
 
 毕业论文项目. 一个可扩展的数据结构可视化教学平台.
 
@@ -34,13 +34,13 @@
 | 语言 | 安装 | 文档                                          | 状态   |
 |---|---|---------------------------------------------|------|
 | `Python` | `pip install ds4viz` | [python-ds4viz](./library/python/README.md) | 已编写  |
-| `C` | - | -                                           | 规划中 |
+| `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`c-ds4viz`,解压获取`ds4viz.h` | [c-ds4viz](./library/c/README.md)                                           | 仅包含基本测试 |
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
 | `JavaScript/TypeScript` | - | -                                           | 规划中 |
-| `Lua` | - | -                                           | 规划中 |
+| `Lua` | `luarocks install ds4viz` | [lua-ds4viz](./library/lua/README.md)                                           | 已编写 |
+| `PHP` | `composer require ds4viz/ds4viz` | [php-ds4viz](./library/php/README.md)                                          | 已编写 |
 | `Nim` | - | -                                           | 规划中 |
-| `PHP` | - | -                                           | 规划中 |
 | `Rust` | - | -                                           | 规划中 |
 | `Zig` | - | -                                           | 规划中 |
 
@@ -75,7 +75,7 @@
   渲染器              TOML验证器
 ```
 
-> Demo版本先简化服务端的实现: 使用`lua`
+> Demo版本先采用简化服务端的实现: 使用`lua`+`pegasus`+`sqlite`
 
 ## 文档参考
 
