@@ -2,7 +2,9 @@
 
 `WaterRun` `2025-12-24`
 
-毕业论文项目. 一个可扩展的数据结构可视化教学平台.
+毕业论文项目. 一个可扩展的数据结构可视化教学平台.  
+
+`ds4viz` -> `datastructure for visualizaion` -> `数据结构可视化`.  
 
 ## 核心架构
 
@@ -34,7 +36,7 @@
 | 语言 | 安装 | 文档                                          | 状态   |
 |---|---|---------------------------------------------|------|
 | `Python` | `pip install ds4viz` | [python-ds4viz](./library/python/README.md) | 已编写  |
-| `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`c-ds4viz`,解压获取`ds4viz.h` | [c-ds4viz](./library/c/README.md)                                           | 仅包含基本测试 |
+| `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`c-ds4viz`,解压获取`ds4viz.h` | [c-ds4viz](./library/c/README.md)                                           | 已编写 |
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
 | `JavaScript/TypeScript` | - | -                                           | 规划中 |
@@ -75,7 +77,14 @@
   渲染器              TOML验证器
 ```
 
-> Demo版本先采用简化服务端的实现: 使用`lua`+`pegasus`+`sqlite`
+通过`systemd-run`瞬态单元做到每次请求对应一次性临时沙箱安全运行.  
+完整版本提供:  
+
+- 可注册, 登陆, 历史  
+- 基础缓存机制, 相同的代码直接返回, 减少资源消耗  
+- 用户每日CPU时间资源限制  
+
+> Demo版本先采用简化服务端的实现, 仅包含运行代码的功能: 使用`lua`+`pegasus`+`sqlite`
 
 ## 文档参考
 
