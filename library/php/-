@@ -1,0 +1,106 @@
+General (Ds4viz\Test\General)
+ [x] Error type enum values
+ [x] Error type enum count
+ [x] Structure exception basic
+ [x] Structure exception with all params
+ [x] Meta creation
+ [x] Meta default values
+ [x] Package creation
+ [x] Package custom values
+ [x] Remarks is empty
+ [x] Object info creation
+ [x] State creation
+ [x] Step creation
+ [x] Commit creation
+ [x] Result creation
+ [x] Error creation
+ [x] Trace creation
+ [x] Default global config
+ [x] Global config setting
+ [x] Session init
+ [x] Session add state
+ [x] Session add step
+ [x] Session set error
+ [x] Session build trace success
+ [x] Session build trace error
+ [x] Toml writer escape string
+ [x] Toml writer serialize bool
+ [x] Toml writer serialize float
+ [x] Toml writer write to file
+ [x] Toml writer with remarks
+ [x] Toml writer with error
+ [x] Factory functions exist
+ [x] Config only title
+ [x] Factory functions return types
+
+Graph (Ds4viz\Test\Graph)
+ [x] Graph undirected basic
+ [x] Graph undirected edge normalization
+ [x] Graph undirected self loop error
+ [x] Graph undirected duplicate edge error
+ [x] Graph undirected remove node
+ [x] Graph undirected remove edge
+ [x] Graph undirected duplicate node error
+ [x] Graph undirected remove nonexistent node error
+ [x] Graph undirected update node label
+ [x] Graph undirected label too long error
+ [x] Graph undirected empty label error
+ [x] Graph directed basic
+ [x] Graph directed no edge normalization
+ [x] Graph directed self loop error
+ [x] Graph weighted undirected
+ [x] Graph weighted directed
+ [x] Graph weighted update weight
+ [x] Graph weighted update nonexistent edge error
+ [x] Graph weighted negative weight
+ [x] Graph weighted zero weight
+ [x] Graph weighted remove edge
+ [x] Graph weighted remove nonexistent edge error
+
+Linear (Ds4viz\Test\Linear)
+ [x] Stack basic operations
+ [x] Stack empty pop error
+ [x] Stack clear
+ [x] Stack various value types
+ [x] Stack negative numbers
+ [x] Queue basic operations
+ [x] Queue empty dequeue error
+ [x] Queue clear
+ [x] Queue alternating operations
+ [x] Single linked list basic operations
+ [x] Single linked list reverse
+ [x] Single linked list delete nonexistent node error
+ [x] Single linked list empty delete head error
+ [x] Single linked list insert after nonexistent error
+ [x] Single linked list reverse empty
+ [x] Double linked list basic operations
+ [x] Double linked list reverse
+ [x] Double linked list empty delete head error
+ [x] Double linked list empty delete tail error
+ [x] Double linked list insert before nonexistent error
+ [x] Double linked list delete nonexistent error
+ [x] Error file generation
+
+Tree (Ds4viz\Test\Tree)
+ [x] Binary tree basic operations
+ [x] Binary tree delete subtree
+ [x] Binary tree update value
+ [x] Binary tree duplicate root error
+ [x] Binary tree duplicate child error
+ [x] Binary tree nonexistent parent error
+ [x] Binary tree delete nonexistent error
+ [x] Binary tree update nonexistent error
+ [x] Bst basic operations
+ [x] Bst delete leaf
+ [x] Bst delete with one child
+ [x] Bst delete with two children
+ [x] Bst delete nonexistent error
+ [x] Bst delete root
+ [x] Min heap basic
+ [x] Max heap basic
+ [x] Heap extract empty error
+ [x] Heap clear
+ [x] Heap invalid type error
+ [x] Heap multiple extract
+ [x] Heap insert after extract
+

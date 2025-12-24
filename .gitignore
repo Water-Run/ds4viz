@@ -90,6 +90,19 @@ uvicorn.log
 gunicorn.log
 
 ####################################
+# PHP / Composer
+####################################
+/library/php/vendor/
+/library/php/composer.lock
+/library/php/.phpunit.result.cache
+/library/php/phpunit.xml
+!/library/php/phpunit.xml.dist
+/library/php/.phpcs.xml
+/library/php/.php-cs-fixer.cache
+/library/php/.phpstan.neon
+/library/php/.phpstan.result-cache/
+
+####################################
 # C# / .NET / WinUI 3
 ####################################
 bin/
@@ -153,6 +166,7 @@ luac.out
 !poetry.lock
 !pnpm-lock.yaml
 !yarn.lock
+!composer.lock  # 添加此行以保留 composer.lock
 
 ####################################
 # Editors / IDEs
@@ -205,3 +219,9 @@ docker-compose.override.yml
 *.rej
 *.patch
 *.diff
+
+####################################
+# Binary
+####################################
+test_ds4viz
+!test_ds4viz.c

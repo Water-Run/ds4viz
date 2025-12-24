@@ -1,0 +1,58 @@
+{
+    "name": "ds4viz/ds4viz",
+    "description": "ds4viz的PHP支持: 可扩展的数据结构可视化教学平台 PHP 库",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "data-structure",
+        "visualization",
+        "algorithm",
+        "education",
+        "teaching",
+        "toml",
+        "trace"
+    ],
+    "authors": [
+        {
+            "name": "WaterRun",
+            "email": "linzhuangrun49@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/Water-Run/ds4viz",
+    "support": {
+        "issues": "https://github.com/Water-Run/ds4viz/issues",
+        "source": "https://github.com/Water-Run/ds4viz"
+    },
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0 || ^11.0",
+        "phpstan/phpstan": "^1.10",
+        "squizlabs/php_codesniffer": "^3.7"
+    },
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ds4viz\\Test\\": "test/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "phpstan": "vendor/bin/phpstan analyse src --level=9",
+        "phpcs": "vendor/bin/phpcs src --standard=PSR12",
+        "check": [
+            "@phpcs",
+            "@phpstan",
+            "@test"
+        ]
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
