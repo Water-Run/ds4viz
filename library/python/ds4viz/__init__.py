@@ -135,7 +135,7 @@ def graph_weighted(
     return GraphWeighted(label=label, directed=directed, output=output)
 
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 __author__ = "WaterRun <linzhuangrun49@gmail.com>"
 
 __all__ = [

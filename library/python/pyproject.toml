@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ds4viz"
-version = "1.0.0"
+version = "0.1.0"
 description = "ds4viz的Python支持: 可扩展的数据结构可视化教学平台 Python 库"
 readme = "README.md"
 license = {text = "MIT"}
