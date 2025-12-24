@@ -1,0 +1,32 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "library", "library", "{50A17DA1-3556-4046-CEDC-33EB466D9C32}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "csharp", "csharp", "{459D8913-4227-EC7B-13ED-8A6DA49063EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ds4viz", "library\csharp\ds4viz\ds4viz.csproj", "{5B293747-9805-4254-0D5D-9FF86889B5AB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5B293747-9805-4254-0D5D-9FF86889B5AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B293747-9805-4254-0D5D-9FF86889B5AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B293747-9805-4254-0D5D-9FF86889B5AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B293747-9805-4254-0D5D-9FF86889B5AB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{459D8913-4227-EC7B-13ED-8A6DA49063EB} = {50A17DA1-3556-4046-CEDC-33EB466D9C32}
+		{5B293747-9805-4254-0D5D-9FF86889B5AB} = {459D8913-4227-EC7B-13ED-8A6DA49063EB}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {AA3EF1AB-124D-4CD0-A6FD-3CF3B39C10FF}
+	EndGlobalSection
+EndGlobal
