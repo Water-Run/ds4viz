@@ -39,11 +39,12 @@
 | `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`c-ds4viz`,解压获取`ds4viz.h` | [c-ds4viz](./library/c/README.md)                                           | 已编写 |
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
-| `JavaScript/TypeScript` | - | -                                           | 规划中 |
+| `JavaScript` | - | -                                           | 规划中 |
+| `TypeScript` | - | -                                           | 规划中 |
 | `Lua` | `luarocks install ds4viz` | [lua-ds4viz](./library/lua/README.md)                                           | 已编写 |
 | `PHP` | `composer require ds4viz/ds4viz` | [php-ds4viz](./library/php/README.md)                                          | 已编写 |
 | `Nim` | - | -                                           | 规划中 |
-| `Rust` | - | -                                           | 规划中 |
+| `Rust` | `cargo add ds4viz` | [rust-ds4viz](./library/rust/README.md)                                           | 已编写 |
 | `Zig` | - | -                                           | 规划中 |
 
 ## 渲染器
