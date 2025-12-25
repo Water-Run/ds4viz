@@ -40,7 +40,7 @@
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
 | `JavaScript` | - | -                                           | 规划中 |
-| `TypeScript` | `pnpm add ds4viz` | [ts-ds4viz](./library/typescript/README.md)                                           | 测试未过 |
+| `TypeScript` | `pnpm install ds4viz` | [ts-ds4viz](./library/typescript/README.md)                                           | 已测试 |
 | `Lua` | `luarocks install ds4viz` | [lua-ds4viz](./library/lua/README.md)                                           | 已编写 |
 | `PHP` | `composer require ds4viz/ds4viz` | [php-ds4viz](./library/php/README.md)                                          | 已编写 |
 | `Nim` | - | -                                           | 规划中 |

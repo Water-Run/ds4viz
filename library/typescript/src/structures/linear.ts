@@ -12,7 +12,7 @@ import {
     type Disposable,
     getCallerLine,
 } from '../session.js';
-import type { StateData, StepArgs } from '../trace.js';
+import type { StateData } from '../trace.js';
 
 /**
  * 值类型定义

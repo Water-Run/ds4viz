@@ -75,7 +75,7 @@ export class DS4VizError extends Error {
     /** 错误类型 */
     readonly errorType: ErrorType;
     /** 发生错误的代码行号 */
-    readonly line?: number;
+    readonly line: number | undefined;
 
     /**
      * 构造函数
@@ -200,7 +200,6 @@ export class Session {
     #stateCounter: number;
     #stepCounter: number;
     #error: TraceError | undefined;
-    #entryLine: number;
     #exitLine: number;
     #failedStepId: number | undefined;
 
@@ -220,7 +219,6 @@ export class Session {
         this.#stateCounter = 0;
         this.#stepCounter = 0;
         this.#error = undefined;
-        this.#entryLine = 1;
         this.#exitLine = 1;
         this.#failedStepId = undefined;
     }
@@ -230,6 +228,13 @@ export class Session {
      */
     get failedStepId(): number | undefined {
         return this.#failedStepId;
+    }
+
+    /**
+     * 设置失败步骤 ID
+     */
+    set failedStepId(value: number | undefined) {
+        this.#failedStepId = value;
     }
 
     /**
@@ -304,15 +309,6 @@ export class Session {
             lastState
         );
         this.#failedStepId = stepId;
-    }
-
-    /**
-     * 设置上下文入口行号
-     *
-     * @param line - 入口行号
-     */
-    public setEntryLine(line: number): void {
-        this.#entryLine = line;
     }
 
     /**
@@ -405,7 +401,6 @@ export interface Disposable {
  */
 export abstract class ContextManager implements Disposable {
     protected readonly session: Session;
-    #entered: boolean;
     #caughtError: Error | undefined;
 
     /**
@@ -417,7 +412,6 @@ export abstract class ContextManager implements Disposable {
      */
     constructor(kind: string, label: string, output?: string) {
         this.session = new Session(kind, label, output);
-        this.#entered = false;
         this.#caughtError = undefined;
     }
 
@@ -425,8 +419,6 @@ export abstract class ContextManager implements Disposable {
      * 进入上下文
      */
     public enter(): void {
-        this.#entered = true;
-        this.session.setEntryLine(getCallerLine(3));
         this.initialize();
     }
 
@@ -455,7 +447,7 @@ export abstract class ContextManager implements Disposable {
         if (this.#caughtError !== undefined) {
             let errorLine: number | undefined;
             let errorType: ErrorType = ErrorType.Unknown;
-            let message: string = this.#caughtError.message;
+            const message: string = this.#caughtError.message;
 
             if (this.#caughtError instanceof DS4VizError) {
                 errorType = this.#caughtError.errorType;
@@ -494,7 +486,7 @@ export abstract class ContextManager implements Disposable {
     protected raiseError(message: string): never {
         const line: number = getCallerLine(3);
         const stepId: number = this.session.stepCounter;
-        (this.session as { failedStepId?: number }).failedStepId = stepId;
+        this.session.failedStepId = stepId;
         const error = new StructureError(message, line);
         this.#caughtError = error;
         throw error;

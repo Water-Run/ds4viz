@@ -9,14 +9,14 @@
 `ds4viz` 发布在 [npm](https://www.npmjs.com/package/ds4viz) 上：
 
 ```bash
-npm install ds4viz
+pnpm install ds4viz
 ```
 
 或使用其他包管理器：
 
 ```bash
-# pnpm
-pnpm add ds4viz
+# npm
+npm install ds4viz
 
 # yarn
 yarn add ds4viz
@@ -30,7 +30,7 @@ bun add ds4viz
 在目录下运行：
 
 ```bash
-npm test
+pnpm test
 ```
 
 ## 快速上手

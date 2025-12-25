@@ -73,7 +73,7 @@ export interface State {
  */
 export interface CodeLocation {
     readonly line: number;
-    readonly col?: number;
+    readonly col?: number | undefined;
 }
 
 /**
@@ -92,11 +92,11 @@ export interface Step {
     readonly id: number;
     readonly op: string;
     readonly before: number;
-    readonly after?: number;
+    readonly after?: number | undefined;
     readonly args: StepArgs;
-    readonly code?: CodeLocation;
+    readonly code?: CodeLocation | undefined;
     readonly ret?: unknown;
-    readonly note?: string;
+    readonly note?: string | undefined;
 }
 
 /**
@@ -116,7 +116,7 @@ export interface Commit {
  */
 export interface Result {
     readonly finalState: number;
-    readonly commit?: Commit;
+    readonly commit?: Commit | undefined;
 }
 
 /**
@@ -127,9 +127,9 @@ export interface Result {
 export interface TraceError {
     readonly type: string;
     readonly message: string;
-    readonly line?: number;
-    readonly step?: number;
-    readonly lastState?: number;
+    readonly line?: number | undefined;
+    readonly step?: number | undefined;
+    readonly lastState?: number | undefined;
 }
 
 /**
@@ -144,8 +144,8 @@ export interface Trace {
     readonly object: TraceObject;
     readonly states: readonly State[];
     readonly steps: readonly Step[];
-    readonly result?: Result;
-    readonly error?: TraceError;
+    readonly result?: Result | undefined;
+    readonly error?: TraceError | undefined;
 }
 
 /**
@@ -243,16 +243,18 @@ export function createStep(
     ret?: unknown,
     note?: string
 ): Step {
-    const step: Step = {
-        id,
-        op,
-        before,
-        after,
-        args,
-        code,
-        ret,
-        note,
-    };
+    const step: Step = Object.assign(
+        {
+            id,
+            op,
+            before,
+            args,
+        },
+        after !== undefined ? { after } : {},
+        code !== undefined ? { code } : {},
+        ret !== undefined ? { ret } : {},
+        note !== undefined ? { note } : {}
+    );
     return step;
 }
 
@@ -264,7 +266,10 @@ export function createStep(
  * @returns Result 对象
  */
 export function createResult(finalState: number, commit?: Commit): Result {
-    return { finalState, commit };
+    if (commit !== undefined) {
+        return { finalState, commit };
+    }
+    return { finalState };
 }
 
 /**
@@ -284,7 +289,13 @@ export function createTraceError(
     step?: number,
     lastState?: number
 ): TraceError {
-    return { type, message, line, step, lastState };
+    const error: TraceError = Object.assign(
+        { type, message },
+        line !== undefined ? { line } : {},
+        step !== undefined ? { step } : {},
+        lastState !== undefined ? { lastState } : {}
+    );
+    return error;
 }
 
 /**
@@ -310,14 +321,17 @@ export function createTrace(
     result?: Result,
     error?: TraceError
 ): Trace {
-    return {
-        meta,
-        package: pkg,
-        remarks,
-        object,
-        states,
-        steps,
-        result,
-        error,
-    };
+    const trace: Trace = Object.assign(
+        {
+            meta,
+            package: pkg,
+            remarks,
+            object,
+            states,
+            steps,
+        },
+        result !== undefined ? { result } : {},
+        error !== undefined ? { error } : {}
+    );
+    return trace;
 }
