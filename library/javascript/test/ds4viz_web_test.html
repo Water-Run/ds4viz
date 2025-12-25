@@ -1,0 +1,3019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ds4viz.js 测试套件</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #fafafa;
+            min-height: 100vh;
+            color: #404040;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 48px 48px 32px;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                padding: 32px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .container {
+                padding: 20px;
+            }
+        }
+
+        header {
+            margin-bottom: 32px;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 600;
+            color: #0f0f0f;
+            letter-spacing: -0.02em;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            color: #737373;
+            font-size: 14px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        button {
+            height: 38px;
+            padding: 0 18px;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+        }
+
+        #runBtn {
+            background: #0f0f0f;
+            color: #ffffff;
+            border: none;
+        }
+
+        #runBtn:hover {
+            background: #262626;
+        }
+
+        #runBtn:disabled {
+            background: #a3a3a3;
+            cursor: not-allowed;
+        }
+
+        #clearBtn {
+            background: #ffffff;
+            color: #404040;
+            border: 1px solid #e5e5e5;
+        }
+
+        #clearBtn:hover {
+            background: #f5f5f5;
+            border-color: #d4d4d4;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 640px) {
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-card {
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid #e5e5e5;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #0f0f0f;
+        }
+
+        .stat-label {
+            color: #737373;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .stat-card.total .stat-value {
+            color: #0f0f0f;
+        }
+
+        .stat-card.passed .stat-value {
+            color: #22c55e;
+        }
+
+        .stat-card.failed .stat-value {
+            color: #ef4444;
+        }
+
+        .stat-card.time .stat-value {
+            color: #f59e0b;
+        }
+
+        .progress-container {
+            background: #e5e5e5;
+            border-radius: 6px;
+            height: 6px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #22c55e;
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 6px;
+        }
+
+        .progress-bar.has-failures {
+            background: linear-gradient(90deg, #22c55e var(--pass-percent), #ef4444 var(--pass-percent));
+        }
+
+        .output-container {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #e5e5e5;
+            overflow: hidden;
+        }
+
+        .output-header {
+            background: #f5f5f5;
+            padding: 16px 24px;
+            border-bottom: 1px solid #e5e5e5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .output-title {
+            font-weight: 500;
+            color: #0f0f0f;
+            font-size: 13px;
+        }
+
+        .output-hint {
+            color: #a3a3a3;
+            font-size: 12px;
+        }
+
+        #output {
+            padding: 24px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .test-suite {
+            margin-bottom: 24px;
+        }
+
+        .test-suite:last-child {
+            margin-bottom: 0;
+        }
+
+        .suite-header {
+            color: #0f0f0f;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e5e5e5;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .test-case {
+            padding: 6px 0;
+            padding-left: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .test-case.pass .status {
+            color: #22c55e;
+        }
+
+        .test-case.fail .status {
+            color: #ef4444;
+        }
+
+        .status {
+            font-weight: 500;
+            min-width: 16px;
+        }
+
+        .test-name {
+            color: #404040;
+        }
+
+        .test-case.fail .test-name {
+            color: #ef4444;
+        }
+
+        .error-details {
+            margin-top: 6px;
+            margin-left: 26px;
+            padding: 12px 16px;
+            background: #fef2f2;
+            border-radius: 6px;
+            border-left: 3px solid #ef4444;
+            color: #b91c1c;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .summary {
+            margin-top: 24px;
+            padding: 20px 24px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            font-size: 14px;
+            color: #404040;
+        }
+
+        .summary.all-passed {
+            background: #f0fdf4;
+            color: #166534;
+        }
+
+        .summary.has-failures {
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
+        .loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 48px;
+            color: #737373;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e5e5e5;
+            border-top-color: #0f0f0f;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e5e5;
+            color: #a3a3a3;
+            font-size: 13px;
+        }
+
+        footer a {
+            color: #737373;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            color: #0f0f0f;
+        }
+
+        @media print {
+
+            .stat-card,
+            .output-container {
+                box-shadow: none;
+                border: 1px solid #d4d4d4;
+            }
+
+            .controls {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>ds4viz.js 测试套件</h1>
+            <p class="subtitle">数据结构可视化追踪库 - JavaScript 版本</p>
+        </header>
+
+        <div class="controls">
+            <button id="runBtn" onclick="runTests()">运行测试</button>
+            <button id="clearBtn" onclick="clearOutput()">清空输出</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card total">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">总测试数</div>
+            </div>
+            <div class="stat-card passed">
+                <div class="stat-value" id="passedCount">0</div>
+                <div class="stat-label">通过</div>
+            </div>
+            <div class="stat-card failed">
+                <div class="stat-value" id="failedCount">0</div>
+                <div class="stat-label">失败</div>
+            </div>
+            <div class="stat-card time">
+                <div class="stat-value" id="timeElapsed">0</div>
+                <div class="stat-label">耗时 (ms)</div>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="output-container">
+            <div class="output-header">
+                <span class="output-title">测试输出</span>
+                <span class="output-hint">打开控制台 (F12) 查看详细日志</span>
+            </div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <span>正在运行测试...</span>
+            </div>
+            <div id="output"></div>
+        </div>
+
+        <footer>
+            <p>ds4viz v0.1.0 · 作者: <a href="mailto:linzhuangrun49@gmail.com">WaterRun</a></p>
+        </footer>
+    </div>
+
+    <script src="../ds4viz.js"></script>
+
+    <script>
+        'use strict';
+
+        // ============================================================================
+        // 简易测试框架
+        // ============================================================================
+
+        class TestRunner {
+            constructor() {
+                this.suites = [];
+                this.currentSuite = null;
+                this.results = {
+                    total: 0,
+                    passed: 0,
+                    failed: 0,
+                    errors: []
+                };
+            }
+
+            describe(name, fn) {
+                this.currentSuite = { name, tests: [] };
+                fn();
+                this.suites.push(this.currentSuite);
+                this.currentSuite = null;
+            }
+
+            it(name, fn) {
+                if (this.currentSuite) {
+                    this.currentSuite.tests.push({ name, fn });
+                }
+            }
+
+            async run() {
+                const startTime = performance.now();
+                this.results = { total: 0, passed: 0, failed: 0, errors: [] };
+
+                for (const suite of this.suites) {
+                    console.group(`%c${suite.name}`, 'color: #0f0f0f; font-weight: bold;');
+
+                    for (const test of suite.tests) {
+                        this.results.total++;
+                        try {
+                            ds4viz.config({});
+
+                            const result = test.fn();
+                            if (result instanceof Promise) {
+                                await result;
+                            }
+                            this.results.passed++;
+                            console.log(`  %c✓%c ${test.name}`, 'color: #22c55e;', 'color: inherit;');
+                        } catch (error) {
+                            this.results.failed++;
+                            this.results.errors.push({
+                                suite: suite.name,
+                                test: test.name,
+                                error: error.message || String(error),
+                                stack: error.stack
+                            });
+                            console.log(`  %c✗%c ${test.name}`, 'color: #ef4444;', 'color: #ef4444;');
+                            console.error(`    Error: ${error.message}`);
+                        }
+                    }
+
+                    console.groupEnd();
+                }
+
+                const endTime = performance.now();
+                return {
+                    ...this.results,
+                    time: Math.round(endTime - startTime)
+                };
+            }
+        }
+
+        function expect(actual) {
+            return {
+                toBe(expected) {
+                    if (actual !== expected) {
+                        throw new Error(`Expected ${JSON.stringify(expected)}, but got ${JSON.stringify(actual)}`);
+                    }
+                },
+                toEqual(expected) {
+                    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+                        throw new Error(`Expected ${JSON.stringify(expected)}, but got ${JSON.stringify(actual)}`);
+                    }
+                },
+                toBeTruthy() {
+                    if (!actual) {
+                        throw new Error(`Expected truthy value, but got ${JSON.stringify(actual)}`);
+                    }
+                },
+                toBeFalsy() {
+                    if (actual) {
+                        throw new Error(`Expected falsy value, but got ${JSON.stringify(actual)}`);
+                    }
+                },
+                toBeGreaterThan(expected) {
+                    if (!(actual > expected)) {
+                        throw new Error(`Expected ${actual} to be greater than ${expected}`);
+                    }
+                },
+                toBeGreaterThanOrEqual(expected) {
+                    if (!(actual >= expected)) {
+                        throw new Error(`Expected ${actual} to be greater than or equal to ${expected}`);
+                    }
+                },
+                toBeLessThan(expected) {
+                    if (!(actual < expected)) {
+                        throw new Error(`Expected ${actual} to be less than ${expected}`);
+                    }
+                },
+                toBeLessThanOrEqual(expected) {
+                    if (!(actual <= expected)) {
+                        throw new Error(`Expected ${actual} to be less than or equal to ${expected}`);
+                    }
+                },
+                toContain(expected) {
+                    if (typeof actual === 'string') {
+                        if (!actual.includes(expected)) {
+                            throw new Error(`Expected string to contain "${expected}"`);
+                        }
+                    } else if (Array.isArray(actual)) {
+                        if (!actual.includes(expected)) {
+                            throw new Error(`Expected array to contain ${JSON.stringify(expected)}`);
+                        }
+                    } else {
+                        throw new Error('toContain only works with strings and arrays');
+                    }
+                },
+                not: {
+                    toBe(expected) {
+                        if (actual === expected) {
+                            throw new Error(`Expected ${JSON.stringify(actual)} not to be ${JSON.stringify(expected)}`);
+                        }
+                    },
+                    toContain(expected) {
+                        if (typeof actual === 'string' && actual.includes(expected)) {
+                            throw new Error(`Expected string not to contain "${expected}"`);
+                        }
+                    }
+                },
+                toThrow(ErrorClass) {
+                    if (typeof actual !== 'function') {
+                        throw new Error('toThrow expects a function');
+                    }
+                    let threw = false;
+                    let thrownError = null;
+                    try {
+                        actual();
+                    } catch (e) {
+                        threw = true;
+                        thrownError = e;
+                    }
+                    if (!threw) {
+                        throw new Error('Expected function to throw an error');
+                    }
+                    if (ErrorClass && !(thrownError instanceof ErrorClass)) {
+                        throw new Error(`Expected error to be instance of ${ErrorClass.name}`);
+                    }
+                },
+                toBeInstanceOf(expected) {
+                    if (!(actual instanceof expected)) {
+                        throw new Error(`Expected value to be instance of ${expected.name}`);
+                    }
+                },
+                toBeDefined() {
+                    if (actual === undefined) {
+                        throw new Error('Expected value to be defined');
+                    }
+                },
+                toBeUndefined() {
+                    if (actual !== undefined) {
+                        throw new Error(`Expected undefined, but got ${JSON.stringify(actual)}`);
+                    }
+                },
+                toMatch(pattern) {
+                    if (!pattern.test(actual)) {
+                        throw new Error(`Expected "${actual}" to match ${pattern}`);
+                    }
+                },
+                toHaveLength(expected) {
+                    if (actual.length !== expected) {
+                        throw new Error(`Expected length ${expected}, but got ${actual.length}`);
+                    }
+                }
+            };
+        }
+
+        // ============================================================================
+        // 测试用例定义
+        // ============================================================================
+
+        const runner = new TestRunner();
+
+        // ----------------------------------------------------------------------------
+        // 环境检测测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('环境检测', () => {
+            runner.it('isBrowserEnvironment 应返回 true', () => {
+                expect(ds4viz.isBrowserEnvironment()).toBe(true);
+            });
+
+            runner.it('isNodeEnvironment 应返回 false', () => {
+                expect(ds4viz.isNodeEnvironment()).toBe(false);
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 错误类型测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('错误类型', () => {
+            runner.it('ErrorType 枚举应包含所有类型', () => {
+                expect(ds4viz.ErrorType.Runtime).toBe('runtime');
+                expect(ds4viz.ErrorType.Timeout).toBe('timeout');
+                expect(ds4viz.ErrorType.Validation).toBe('validation');
+                expect(ds4viz.ErrorType.Sandbox).toBe('sandbox');
+                expect(ds4viz.ErrorType.Unknown).toBe('unknown');
+            });
+
+            runner.it('DS4VizError 应正确设置属性', () => {
+                const error = new ds4viz.DS4VizError('test message', ds4viz.ErrorType.Runtime, 10);
+                expect(error.message).toBe('test message');
+                expect(error.errorType).toBe('runtime');
+                expect(error.line).toBe(10);
+                expect(error.name).toBe('DS4VizError');
+            });
+
+            runner.it('DS4VizError 应使用默认值', () => {
+                const error = new ds4viz.DS4VizError('test');
+                expect(error.errorType).toBe('runtime');
+                expect(error.line).toBeUndefined();
+            });
+
+            runner.it('StructureError 应继承 DS4VizError', () => {
+                const error = new ds4viz.StructureError('structure error', 15);
+                expect(error).toBeInstanceOf(ds4viz.DS4VizError);
+                expect(error).toBeInstanceOf(Error);
+                expect(error.name).toBe('StructureError');
+                expect(error.errorType).toBe('runtime');
+            });
+
+            runner.it('ValidationError 应继承 DS4VizError', () => {
+                const error = new ds4viz.ValidationError('validation error', 20);
+                expect(error).toBeInstanceOf(ds4viz.DS4VizError);
+                expect(error.name).toBe('ValidationError');
+                expect(error.errorType).toBe('validation');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 全局配置测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('全局配置', () => {
+            runner.it('config 应设置所有配置项', () => {
+                ds4viz.config({
+                    outputPath: '/custom/path.toml',
+                    title: 'Test Title',
+                    author: 'Test Author',
+                    comment: 'Test Comment'
+                });
+                const cfg = ds4viz.getConfig();
+                expect(cfg.outputPath).toBe('/custom/path.toml');
+                expect(cfg.title).toBe('Test Title');
+                expect(cfg.author).toBe('Test Author');
+                expect(cfg.comment).toBe('Test Comment');
+            });
+
+            runner.it('config 应使用默认值', () => {
+                ds4viz.config({});
+                const cfg = ds4viz.getConfig();
+                expect(cfg.outputPath).toBe('trace.toml');
+                expect(cfg.title).toBe('');
+                expect(cfg.author).toBe('');
+                expect(cfg.comment).toBe('');
+            });
+
+            runner.it('config 应支持部分配置', () => {
+                ds4viz.config({ title: 'Only Title' });
+                const cfg = ds4viz.getConfig();
+                expect(cfg.title).toBe('Only Title');
+                expect(cfg.author).toBe('');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // Trace 创建函数测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('Trace 创建函数', () => {
+            runner.it('createMeta 应创建正确的 Meta 对象', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                expect(meta.createdAt).toBe('2025-01-01T00:00:00Z');
+                expect(meta.lang).toBe('javascript');
+                expect(meta.langVersion).toBe('ES2022');
+            });
+
+            runner.it('createPackage 应创建默认的 Package 对象', () => {
+                const pkg = ds4viz.createPackage();
+                expect(pkg.name).toBe('ds4viz');
+                expect(pkg.lang).toBe('javascript');
+                expect(pkg.version).toBe('0.1.0');
+            });
+
+            runner.it('createRemarks 应创建 Remarks 对象', () => {
+                const remarks = ds4viz.createRemarks('Title', 'Author', 'Comment');
+                expect(remarks.title).toBe('Title');
+                expect(remarks.author).toBe('Author');
+                expect(remarks.comment).toBe('Comment');
+            });
+
+            runner.it('isRemarksEmpty 应正确判断空备注', () => {
+                expect(ds4viz.isRemarksEmpty({ title: '', author: '', comment: '' })).toBe(true);
+                expect(ds4viz.isRemarksEmpty({ title: 'T', author: '', comment: '' })).toBe(false);
+                expect(ds4viz.isRemarksEmpty({ title: '', author: 'A', comment: '' })).toBe(false);
+                expect(ds4viz.isRemarksEmpty({ title: '', author: '', comment: 'C' })).toBe(false);
+            });
+
+            runner.it('createTraceObject 应创建正确的对象', () => {
+                const obj = ds4viz.createTraceObject('stack', 'my_stack');
+                expect(obj.kind).toBe('stack');
+                expect(obj.label).toBe('my_stack');
+            });
+
+            runner.it('createState 应创建正确的状态', () => {
+                const state = ds4viz.createState(5, { items: [1, 2, 3] });
+                expect(state.id).toBe(5);
+                expect(state.data.items).toEqual([1, 2, 3]);
+            });
+
+            runner.it('createStep 应创建完整的步骤', () => {
+                const step = ds4viz.createStep(0, 'push', 0, 1, { value: 42 }, { line: 10 }, 42, 'note');
+                expect(step.id).toBe(0);
+                expect(step.op).toBe('push');
+                expect(step.before).toBe(0);
+                expect(step.after).toBe(1);
+                expect(step.args.value).toBe(42);
+                expect(step.code.line).toBe(10);
+                expect(step.ret).toBe(42);
+                expect(step.note).toBe('note');
+            });
+
+            runner.it('createStep 应处理可选字段', () => {
+                const step = ds4viz.createStep(0, 'push', 0, undefined, {});
+                expect(step.after).toBeUndefined();
+                expect(step.code).toBeUndefined();
+                expect(step.ret).toBeUndefined();
+                expect(step.note).toBeUndefined();
+            });
+
+            runner.it('createResult 应创建正确的结果', () => {
+                const result1 = ds4viz.createResult(5);
+                expect(result1.finalState).toBe(5);
+                expect(result1.commit).toBeUndefined();
+
+                const result2 = ds4viz.createResult(5, { op: 'commit', line: 20 });
+                expect(result2.commit.op).toBe('commit');
+                expect(result2.commit.line).toBe(20);
+            });
+
+            runner.it('createTraceError 应创建错误对象', () => {
+                const error = ds4viz.createTraceError('runtime', 'Error message', 10, 2, 1);
+                expect(error.type).toBe('runtime');
+                expect(error.message).toBe('Error message');
+                expect(error.line).toBe(10);
+                expect(error.step).toBe(2);
+                expect(error.lastState).toBe(1);
+            });
+
+            runner.it('createTrace 应创建完整的 Trace', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [] })];
+                const steps = [];
+                const result = ds4viz.createResult(0);
+
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, steps, result);
+                expect(trace.meta).toBe(meta);
+                expect(trace.package).toBe(pkg);
+                expect(trace.object).toBe(obj);
+                expect(trace.result).toBe(result);
+                expect(trace.error).toBeUndefined();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // TomlWriter 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('TomlWriter', () => {
+            runner.it('应正确序列化基本 Trace', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [], top: -1 })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('[meta]');
+                expect(content).toContain('created_at = "2025-01-01T00:00:00Z"');
+                expect(content).toContain('lang = "javascript"');
+                expect(content).toContain('[package]');
+                expect(content).toContain('name = "ds4viz"');
+                expect(content).toContain('[object]');
+                expect(content).toContain('kind = "stack"');
+            });
+
+            runner.it('应正确序列化备注', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('My Title', 'My Author', 'My Comment');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [] })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('[remarks]');
+                expect(content).toContain('title = "My Title"');
+                expect(content).toContain('author = "My Author"');
+                expect(content).toContain('comment = "My Comment"');
+            });
+
+            runner.it('应不序列化空备注', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [] })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).not.toContain('[remarks]');
+            });
+
+            runner.it('应正确序列化步骤', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [
+                    ds4viz.createState(0, { items: [], top: -1 }),
+                    ds4viz.createState(1, { items: [42], top: 0 })
+                ];
+                const steps = [ds4viz.createStep(0, 'push', 0, 1, { value: 42 }, { line: 10 }, undefined, 'Push 42')];
+                const result = ds4viz.createResult(1);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, steps, result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('[[steps]]');
+                expect(content).toContain('id = 0');
+                expect(content).toContain('op = "push"');
+                expect(content).toContain('before = 0');
+                expect(content).toContain('after = 1');
+                expect(content).toContain('[steps.args]');
+                expect(content).toContain('value = 42');
+                expect(content).toContain('[steps.code]');
+                expect(content).toContain('line = 10');
+                expect(content).toContain('note = "Push 42"');
+            });
+
+            runner.it('应正确序列化错误', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [] })];
+                const error = ds4viz.createTraceError('runtime', 'Stack underflow', 15, 2, 0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], undefined, error);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('[error]');
+                expect(content).toContain('type = "runtime"');
+                expect(content).toContain('message = "Stack underflow"');
+                expect(content).toContain('line = 15');
+                expect(content).toContain('step = 2');
+                expect(content).toContain('last_state = 0');
+            });
+
+            runner.it('应正确转义特殊字符', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('Title with "quotes"', 'Author', 'Comment\nwith\nnewlines');
+                const obj = ds4viz.createTraceObject('stack', 'test\\path');
+                const states = [ds4viz.createState(0, { items: [] })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('title = "Title with \\"quotes\\""');
+                expect(content).toContain('comment = "Comment\\nwith\\nnewlines"');
+                expect(content).toContain('label = "test\\\\path"');
+            });
+
+            runner.it('应正确序列化布尔值', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { flag: true, active: false })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('flag = true');
+                expect(content).toContain('active = false');
+            });
+
+            runner.it('应正确序列化数组', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [1, 2, 3] })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('items = [1, 2, 3]');
+            });
+
+            runner.it('应正确序列化空数组', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('stack', 'test');
+                const states = [ds4viz.createState(0, { items: [], nodes: [] })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('items = []');
+                expect(content).toContain('nodes = []');
+            });
+
+            runner.it('应正确序列化 inline table 数组', () => {
+                const meta = ds4viz.createMeta('2025-01-01T00:00:00Z', 'ES2022');
+                const pkg = ds4viz.createPackage();
+                const remarks = ds4viz.createRemarks('', '', '');
+                const obj = ds4viz.createTraceObject('slist', 'test');
+                const states = [ds4viz.createState(0, {
+                    head: 0,
+                    nodes: [{ id: 0, value: 1, next: 1 }, { id: 1, value: 2, next: -1 }]
+                })];
+                const result = ds4viz.createResult(0);
+                const trace = ds4viz.createTrace(meta, pkg, remarks, obj, states, [], result);
+
+                const writer = new ds4viz.TomlWriter(trace);
+                const content = writer.serialize();
+
+                expect(content).toContain('nodes = [');
+                expect(content).toContain('{ id = 0, value = 1, next = 1 }');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // Session 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('Session', () => {
+            runner.it('应创建正确的 Session', () => {
+                const session = new ds4viz.Session('stack', 'test_stack');
+                expect(session.stepCounter).toBe(0);
+            });
+
+            runner.it('addState 应返回递增的 ID', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                const id1 = session.addState({ items: [] });
+                const id2 = session.addState({ items: [1] });
+                const id3 = session.addState({ items: [1, 2] });
+
+                expect(id1).toBe(0);
+                expect(id2).toBe(1);
+                expect(id3).toBe(2);
+            });
+
+            runner.it('addStep 应返回递增的 ID', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                session.addState({ items: [] });
+
+                const stepId1 = session.addStep('push', 0, 1, { value: 1 });
+                const stepId2 = session.addStep('push', 1, 2, { value: 2 });
+
+                expect(stepId1).toBe(0);
+                expect(stepId2).toBe(1);
+            });
+
+            runner.it('getLastStateId 应返回正确的 ID', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                expect(session.getLastStateId()).toBe(-1);
+
+                session.addState({ items: [] });
+                expect(session.getLastStateId()).toBe(0);
+
+                session.addState({ items: [1] });
+                expect(session.getLastStateId()).toBe(1);
+            });
+
+            runner.it('setError 应正确设置错误', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                session.addState({ items: [] });
+                session.setError('runtime', 'Test error', 10, 0);
+
+                const trace = session.buildTrace();
+                expect(trace.error).toBeDefined();
+                expect(trace.error.type).toBe('runtime');
+                expect(trace.error.message).toBe('Test error');
+            });
+
+            runner.it('setError 应截断长消息', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                session.addState({ items: [] });
+                const longMessage = 'a'.repeat(1000);
+                session.setError('runtime', longMessage, 10, 0);
+
+                const trace = session.buildTrace();
+                expect(trace.error.message.length).toBeLessThanOrEqual(512);
+            });
+
+            runner.it('buildTrace 应创建正确的 Trace', () => {
+                const session = new ds4viz.Session('stack', 'test');
+                session.addState({ items: [] });
+                session.setExitLine(20);
+
+                const trace = session.buildTrace();
+                expect(trace.result).toBeDefined();
+                expect(trace.result.finalState).toBe(0);
+                expect(trace.error).toBeUndefined();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // getJavaScriptVersion 和 getCallerLine 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('工具函数', () => {
+            runner.it('getJavaScriptVersion 应返回有效版本字符串', () => {
+                const version = ds4viz.getJavaScriptVersion();
+                expect(typeof version).toBe('string');
+                expect(version.length).toBeGreaterThan(0);
+            });
+
+            runner.it('getCallerLine 应返回正数', () => {
+                const line = ds4viz.getCallerLine();
+                expect(typeof line).toBe('number');
+                expect(line).toBeGreaterThan(0);
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // Stack 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('Stack', () => {
+            runner.it('应创建空栈', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('kind = "stack"');
+                expect(content).toContain('items = []');
+                expect(content).toContain('top = -1');
+            });
+
+            runner.it('push 应正确添加元素', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(42);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('op = "push"');
+                expect(content).toContain('value = 42');
+                expect(content).toContain('items = [42]');
+                expect(content).toContain('top = 0');
+            });
+
+            runner.it('push 应支持多个元素', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(1);
+                s.push(2);
+                s.push(3);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('items = [1, 2, 3]');
+                expect(content).toContain('top = 2');
+            });
+
+            runner.it('pop 应正确弹出元素', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(1);
+                s.push(2);
+                s.pop();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('op = "pop"');
+                expect(content).toContain('ret = 2');
+            });
+
+            runner.it('pop 空栈应抛出 StructureError', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                expect(() => s.pop()).toThrow(ds4viz.StructureError);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('[error]');
+                expect(content).toContain('Cannot pop from empty stack');
+            });
+
+            runner.it('clear 应清空栈', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(1);
+                s.push(2);
+                s.clear();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('op = "clear"');
+            });
+
+            runner.it('应支持字符串值', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push('hello');
+                s.push('world');
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('items = ["hello", "world"]');
+            });
+
+            runner.it('应支持布尔值', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(true);
+                s.push(false);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('items = [true, false]');
+            });
+
+            runner.it('应支持自定义标签', () => {
+                const s = new ds4viz.Stack({ label: 'my_custom_stack' });
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('label = "my_custom_stack"');
+            });
+
+            runner.it('应支持混合类型值', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(42);
+                s.push('hello');
+                s.push(true);
+                s.push(3.14);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('42');
+                expect(content).toContain('"hello"');
+                expect(content).toContain('true');
+                expect(content).toContain('3.14');
+            });
+
+            runner.it('应支持负数和零', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(-42);
+                s.push(0);
+                s.push(-3.14);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('-42');
+                expect(content).toContain('0');
+                expect(content).toContain('-3.14');
+            });
+
+            runner.it('应支持空字符串', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push('');
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('""');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // Queue 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('Queue', () => {
+            runner.it('应创建空队列', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+                q.dispose();
+
+                const content = q.getTomlString();
+                expect(content).toContain('kind = "queue"');
+                expect(content).toContain('front = -1');
+                expect(content).toContain('rear = -1');
+            });
+
+            runner.it('enqueue 应正确添加元素', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+                q.enqueue(1);
+                q.enqueue(2);
+                q.dispose();
+
+                const content = q.getTomlString();
+                expect(content).toContain('op = "enqueue"');
+                expect(content).toContain('items = [1, 2]');
+                expect(content).toContain('front = 0');
+                expect(content).toContain('rear = 1');
+            });
+
+            runner.it('dequeue 应正确移除元素', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+                q.enqueue(1);
+                q.enqueue(2);
+                q.dequeue();
+                q.dispose();
+
+                const content = q.getTomlString();
+                expect(content).toContain('op = "dequeue"');
+                expect(content).toContain('ret = 1');
+            });
+
+            runner.it('dequeue 空队列应抛出 StructureError', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+
+                expect(() => q.dequeue()).toThrow(ds4viz.StructureError);
+                q.dispose();
+
+                const content = q.getTomlString();
+                expect(content).toContain('Cannot dequeue from empty queue');
+            });
+
+            runner.it('clear 应清空队列', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+                q.enqueue(1);
+                q.clear();
+                q.dispose();
+
+                const content = q.getTomlString();
+                expect(content).toContain('op = "clear"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // SingleLinkedList 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('SingleLinkedList', () => {
+            runner.it('应创建空链表', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('kind = "slist"');
+                expect(content).toContain('head = -1');
+                expect(content).toContain('nodes = []');
+            });
+
+            runner.it('insertHead 应在头部插入节点', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                const id = list.insertHead(42);
+                list.dispose();
+
+                expect(id).toBe(0);
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_head"');
+                expect(content).toContain('head = 0');
+            });
+
+            runner.it('insertTail 应在尾部插入节点', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                list.insertHead(1);
+                const tailId = list.insertTail(2);
+                list.dispose();
+
+                expect(tailId).toBe(1);
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_tail"');
+            });
+
+            runner.it('insertAfter 应在指定节点后插入', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                const headId = list.insertHead(1);
+                list.insertAfter(headId, 2);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_after"');
+            });
+
+            runner.it('insertAfter 不存在的节点应抛出错误', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+
+                expect(() => list.insertAfter(999, 1)).toThrow(ds4viz.StructureError);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('Node not found: 999');
+            });
+
+            runner.it('delete 应删除指定节点', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                const id = list.insertHead(1);
+                list.insertHead(2);
+                list.delete(id);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('deleteHead 应删除头节点', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                list.insertHead(1);
+                list.insertHead(2);
+                list.deleteHead();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "delete_head"');
+            });
+
+            runner.it('deleteHead 空链表应抛出错误', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+
+                expect(() => list.deleteHead()).toThrow(ds4viz.StructureError);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('Cannot delete from empty list');
+            });
+
+            runner.it('reverse 应反转链表', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+                list.insertTail(1);
+                list.insertTail(2);
+                list.insertTail(3);
+                list.reverse();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "reverse"');
+            });
+
+            runner.it('delete 不存在的节点应抛出错误', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+
+                expect(() => list.delete(999)).toThrow(ds4viz.StructureError);
+                list.dispose();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // DoubleLinkedList 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('DoubleLinkedList', () => {
+            runner.it('应创建空双向链表', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('kind = "dlist"');
+                expect(content).toContain('head = -1');
+                expect(content).toContain('tail = -1');
+            });
+
+            runner.it('insertHead 应正确插入', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.insertHead(1);
+                list.insertHead(2);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_head"');
+            });
+
+            runner.it('insertTail 应正确插入', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.insertTail(1);
+                list.insertTail(2);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_tail"');
+            });
+
+            runner.it('insertBefore 应正确插入', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                const id = list.insertHead(1);
+                list.insertBefore(id, 2);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_before"');
+            });
+
+            runner.it('insertAfter 应正确插入', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                const id = list.insertHead(1);
+                list.insertAfter(id, 2);
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_after"');
+            });
+
+            runner.it('deleteHead 应正确删除', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.insertHead(1);
+                list.insertHead(2);
+                list.deleteHead();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('deleteTail 应正确删除', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.insertTail(1);
+                list.insertTail(2);
+                list.deleteTail();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('deleteTail 空链表应抛出错误', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+
+                expect(() => list.deleteTail()).toThrow(ds4viz.StructureError);
+                list.dispose();
+            });
+
+            runner.it('reverse 应反转链表', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+                list.insertTail(1);
+                list.insertTail(2);
+                list.insertTail(3);
+                list.reverse();
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "reverse"');
+            });
+
+            runner.it('insertBefore 不存在的节点应抛出错误', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+
+                expect(() => list.insertBefore(999, 1)).toThrow(ds4viz.StructureError);
+                list.dispose();
+            });
+
+            runner.it('insertAfter 不存在的节点应抛出错误', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+
+                expect(() => list.insertAfter(999, 1)).toThrow(ds4viz.StructureError);
+                list.dispose();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // BinaryTree 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('BinaryTree', () => {
+            runner.it('应创建空二叉树', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('kind = "binary_tree"');
+                expect(content).toContain('root = -1');
+                expect(content).toContain('nodes = []');
+            });
+
+            runner.it('insertRoot 应插入根节点', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const id = tree.insertRoot(10);
+                tree.dispose();
+
+                expect(id).toBe(0);
+                const content = tree.getTomlString();
+                expect(content).toContain('op = "insert_root"');
+                expect(content).toContain('root = 0');
+            });
+
+            runner.it('insertRoot 已存在根节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                tree.insertRoot(10);
+
+                expect(() => tree.insertRoot(20)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('Root node already exists');
+            });
+
+            runner.it('insertLeft 应插入左子节点', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                tree.insertLeft(rootId, 5);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('op = "insert_left"');
+            });
+
+            runner.it('insertRight 应插入右子节点', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                tree.insertRight(rootId, 15);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('op = "insert_right"');
+            });
+
+            runner.it('insertLeft 已存在左子节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                tree.insertLeft(rootId, 5);
+
+                expect(() => tree.insertLeft(rootId, 3)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('Left child already exists');
+            });
+
+            runner.it('insertRight 已存在右子节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                tree.insertRight(rootId, 15);
+
+                expect(() => tree.insertRight(rootId, 20)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+            });
+
+            runner.it('insertLeft 不存在的父节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+
+                expect(() => tree.insertLeft(999, 5)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('Parent node not found: 999');
+            });
+
+            runner.it('delete 应删除子树', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                const leftId = tree.insertLeft(rootId, 5);
+                tree.insertLeft(leftId, 3);
+                tree.delete(leftId);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('delete 不存在的节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+
+                expect(() => tree.delete(999)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+            });
+
+            runner.it('updateValue 应更新节点值', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+                const rootId = tree.insertRoot(10);
+                tree.updateValue(rootId, 20);
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect(content).toContain('op = "update_value"');
+            });
+
+            runner.it('updateValue 不存在的节点应抛出错误', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+
+                expect(() => tree.updateValue(999, 10)).toThrow(ds4viz.StructureError);
+                tree.dispose();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // BinarySearchTree 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('BinarySearchTree', () => {
+            runner.it('应创建空 BST', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('kind = "bst"');
+                expect(content).toContain('root = -1');
+            });
+
+            runner.it('insert 应维护 BST 性质', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.insert(10);
+                bst.insert(5);
+                bst.insert(15);
+                bst.insert(3);
+                bst.insert(7);
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('op = "insert"');
+            });
+
+            runner.it('delete 叶子节点应正确删除', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.insert(10);
+                bst.insert(5);
+                bst.insert(15);
+                bst.delete(5);
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('delete 有一个子节点的节点应正确删除', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.insert(10);
+                bst.insert(5);
+                bst.insert(3);
+                bst.delete(5);
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('delete 有两个子节点的节点应正确删除', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.insert(10);
+                bst.insert(5);
+                bst.insert(15);
+                bst.insert(12);
+                bst.insert(18);
+                bst.delete(15);
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('op = "delete"');
+            });
+
+            runner.it('delete 不存在的值应抛出错误', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+                bst.insert(10);
+
+                expect(() => bst.delete(999)).toThrow(ds4viz.StructureError);
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                expect(content).toContain('Node with value 999 not found');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // Heap 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('Heap', () => {
+            runner.it('应创建空最小堆', () => {
+                const h = new ds4viz.Heap();
+                h.enter();
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('kind = "binary_tree"');
+                expect(content).toContain('root = -1');
+            });
+
+            runner.it('insert 应维护最小堆性质', () => {
+                const h = new ds4viz.Heap({ heapType: 'min' });
+                h.enter();
+                h.insert(10);
+                h.insert(5);
+                h.insert(15);
+                h.insert(3);
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('op = "insert"');
+            });
+
+            runner.it('insert 应维护最大堆性质', () => {
+                const h = new ds4viz.Heap({ heapType: 'max' });
+                h.enter();
+                h.insert(5);
+                h.insert(10);
+                h.insert(3);
+                h.insert(15);
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('op = "insert"');
+            });
+
+            runner.it('extract 最小堆应返回最小值', () => {
+                const h = new ds4viz.Heap({ heapType: 'min' });
+                h.enter();
+                h.insert(10);
+                h.insert(5);
+                h.insert(15);
+                h.extract();
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('op = "extract"');
+                expect(content).toContain('ret = 5');
+            });
+
+            runner.it('extract 最大堆应返回最大值', () => {
+                const h = new ds4viz.Heap({ heapType: 'max' });
+                h.enter();
+                h.insert(5);
+                h.insert(10);
+                h.insert(15);
+                h.extract();
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('ret = 15');
+            });
+
+            runner.it('extract 空堆应抛出错误', () => {
+                const h = new ds4viz.Heap();
+                h.enter();
+
+                expect(() => h.extract()).toThrow(ds4viz.StructureError);
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('Cannot extract from empty heap');
+            });
+
+            runner.it('clear 应清空堆', () => {
+                const h = new ds4viz.Heap();
+                h.enter();
+                h.insert(1);
+                h.insert(2);
+                h.clear();
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('op = "clear"');
+            });
+
+            runner.it('无效的 heapType 应抛出错误', () => {
+                expect(() => new ds4viz.Heap({ heapType: 'invalid' })).toThrow(Error);
+            });
+
+            runner.it('应支持自定义标签', () => {
+                const h = new ds4viz.Heap({ label: 'my_heap' });
+                h.enter();
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect(content).toContain('label = "my_heap"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // GraphUndirected 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('GraphUndirected', () => {
+            runner.it('应创建空无向图', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('kind = "graph_undirected"');
+                expect(content).toContain('nodes = []');
+                expect(content).toContain('edges = []');
+            });
+
+            runner.it('addNode 应添加节点', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "add_node"');
+            });
+
+            runner.it('addNode 重复节点应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+
+                expect(() => g.addNode(0, 'B')).toThrow(ds4viz.StructureError);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('Node already exists: 0');
+            });
+
+            runner.it('addEdge 应添加边', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "add_edge"');
+            });
+
+            runner.it('addEdge 应规范化无向边', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(1, 0);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('from = 0');
+                expect(content).toContain('to = 1');
+            });
+
+            runner.it('addEdge 自环应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+
+                expect(() => g.addEdge(0, 0)).toThrow(ds4viz.StructureError);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('Self-loop not allowed');
+            });
+
+            runner.it('addEdge 重复边应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+
+                expect(() => g.addEdge(1, 0)).toThrow(ds4viz.StructureError);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('Edge already exists');
+            });
+
+            runner.it('addEdge 不存在的节点应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+
+                expect(() => g.addEdge(0, 1)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('removeNode 应删除节点和相关边', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addNode(2, 'C');
+                g.addEdge(0, 1);
+                g.addEdge(1, 2);
+                g.removeNode(1);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "remove_node"');
+            });
+
+            runner.it('removeNode 不存在的节点应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+
+                expect(() => g.removeNode(999)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('removeEdge 应删除边', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+                g.removeEdge(0, 1);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "remove_edge"');
+            });
+
+            runner.it('removeEdge 不存在的边应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+
+                expect(() => g.removeEdge(0, 1)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('updateNodeLabel 应更新标签', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.updateNodeLabel(0, 'Updated');
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "update_node_label"');
+            });
+
+            runner.it('updateNodeLabel 不存在的节点应抛出错误', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+
+                expect(() => g.updateNodeLabel(999, 'X')).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('addNode 标签长度验证', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+
+                expect(() => g.addNode(0, '')).toThrow(ds4viz.StructureError);
+                expect(() => g.addNode(0, 'a'.repeat(33))).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('updateNodeLabel 标签长度验证', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+                g.addNode(0, 'A');
+
+                expect(() => g.updateNodeLabel(0, '')).toThrow(ds4viz.StructureError);
+                expect(() => g.updateNodeLabel(0, 'a'.repeat(33))).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // GraphDirected 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('GraphDirected', () => {
+            runner.it('应创建空有向图', () => {
+                const g = new ds4viz.GraphDirected();
+                g.enter();
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('kind = "graph_directed"');
+            });
+
+            runner.it('addEdge 有向边应正确区分方向', () => {
+                const g = new ds4viz.GraphDirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+                g.addEdge(1, 0);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "add_edge"');
+            });
+
+            runner.it('addEdge 重复有向边应抛出错误', () => {
+                const g = new ds4viz.GraphDirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+
+                expect(() => g.addEdge(0, 1)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('removeEdge 应正确删除有向边', () => {
+                const g = new ds4viz.GraphDirected();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1);
+                g.removeEdge(0, 1);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "remove_edge"');
+            });
+
+            runner.it('addEdge 自环应抛出错误', () => {
+                const g = new ds4viz.GraphDirected();
+                g.enter();
+                g.addNode(0, 'A');
+
+                expect(() => g.addEdge(0, 0)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // GraphWeighted 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('GraphWeighted', () => {
+            runner.it('应创建空带权图', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('kind = "graph_weighted"');
+            });
+
+            runner.it('addEdge 应添加带权边', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, 5);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('weight = 5');
+            });
+
+            runner.it('updateWeight 应更新权重', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, 5);
+                g.updateWeight(0, 1, 10);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "update_weight"');
+            });
+
+            runner.it('updateWeight 不存在的边应抛出错误', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+
+                expect(() => g.updateWeight(0, 1, 5)).toThrow(ds4viz.StructureError);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('Edge not found');
+            });
+
+            runner.it('应作为有向带权图工作', () => {
+                const g = new ds4viz.GraphWeighted({ directed: true });
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, 5);
+                g.addEdge(1, 0, 3);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('weight = 5');
+                expect(content).toContain('weight = 3');
+            });
+
+            runner.it('应作为无向带权图工作', () => {
+                const g = new ds4viz.GraphWeighted({ directed: false });
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(1, 0, 5);
+
+                expect(() => g.addEdge(0, 1, 3)).toThrow(ds4viz.StructureError);
+                g.dispose();
+            });
+
+            runner.it('应支持负权重', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, -5);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('weight = -5');
+            });
+
+            runner.it('应支持零权重', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, 0);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('weight = 0');
+            });
+
+            runner.it('应支持浮点权重', () => {
+                const g = new ds4viz.GraphWeighted();
+                g.enter();
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addEdge(0, 1, 3.14);
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('weight = 3.14');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 工厂函数测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('工厂函数', () => {
+            runner.it('stack 应创建 Stack 实例', () => {
+                const s = ds4viz.stack();
+                expect(s).toBeInstanceOf(ds4viz.Stack);
+            });
+
+            runner.it('queue 应创建 Queue 实例', () => {
+                const q = ds4viz.queue();
+                expect(q).toBeInstanceOf(ds4viz.Queue);
+            });
+
+            runner.it('singleLinkedList 应创建 SingleLinkedList 实例', () => {
+                const list = ds4viz.singleLinkedList();
+                expect(list).toBeInstanceOf(ds4viz.SingleLinkedList);
+            });
+
+            runner.it('doubleLinkedList 应创建 DoubleLinkedList 实例', () => {
+                const list = ds4viz.doubleLinkedList();
+                expect(list).toBeInstanceOf(ds4viz.DoubleLinkedList);
+            });
+
+            runner.it('binaryTree 应创建 BinaryTree 实例', () => {
+                const tree = ds4viz.binaryTree();
+                expect(tree).toBeInstanceOf(ds4viz.BinaryTree);
+            });
+
+            runner.it('binarySearchTree 应创建 BinarySearchTree 实例', () => {
+                const bst = ds4viz.binarySearchTree();
+                expect(bst).toBeInstanceOf(ds4viz.BinarySearchTree);
+            });
+
+            runner.it('heap 应创建 Heap 实例', () => {
+                const h = ds4viz.heap();
+                expect(h).toBeInstanceOf(ds4viz.Heap);
+            });
+
+            runner.it('graphUndirected 应创建 GraphUndirected 实例', () => {
+                const g = ds4viz.graphUndirected();
+                expect(g).toBeInstanceOf(ds4viz.GraphUndirected);
+            });
+
+            runner.it('graphDirected 应创建 GraphDirected 实例', () => {
+                const g = ds4viz.graphDirected();
+                expect(g).toBeInstanceOf(ds4viz.GraphDirected);
+            });
+
+            runner.it('graphWeighted 应创建 GraphWeighted 实例', () => {
+                const g = ds4viz.graphWeighted();
+                expect(g).toBeInstanceOf(ds4viz.GraphWeighted);
+            });
+
+            runner.it('工厂函数应支持选项', () => {
+                const s = ds4viz.stack({ label: 'my_stack' });
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('label = "my_stack"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // withContext 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('withContext', () => {
+            runner.it('应执行同步回调', async () => {
+                const s = new ds4viz.Stack();
+                await ds4viz.withContext(s, (stack) => {
+                    stack.push(1);
+                    stack.push(2);
+                    stack.pop();
+                });
+
+                const content = s.getTomlString();
+                expect(content).toContain('op = "push"');
+                expect(content).toContain('op = "pop"');
+                expect(content).toContain('[result]');
+            });
+
+            runner.it('应执行异步回调', async () => {
+                const s = new ds4viz.Stack();
+                await ds4viz.withContext(s, async (stack) => {
+                    stack.push(1);
+                    await new Promise((resolve) => setTimeout(resolve, 10));
+                    stack.push(2);
+                });
+
+                const content = s.getTomlString();
+                expect(content).toContain('[result]');
+            });
+
+            runner.it('应捕获并记录错误', async () => {
+                const s = new ds4viz.Stack();
+                let threw = false;
+                try {
+                    await ds4viz.withContext(s, (stack) => {
+                        stack.pop();
+                    });
+                } catch (e) {
+                    threw = true;
+                }
+
+                expect(threw).toBe(true);
+                const content = s.getTomlString();
+                expect(content).toContain('[error]');
+                expect(content).toContain('Cannot pop from empty stack');
+            });
+
+            runner.it('应重新抛出错误', async () => {
+                const s = new ds4viz.Stack();
+                let threw = false;
+                let errorMessage = '';
+                try {
+                    await ds4viz.withContext(s, () => {
+                        throw new Error('Custom error');
+                    });
+                } catch (e) {
+                    threw = true;
+                    errorMessage = e.message;
+                }
+
+                expect(threw).toBe(true);
+                expect(errorMessage).toBe('Custom error');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 全局配置应用测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('全局配置应用', () => {
+            runner.it('应应用全局标题', () => {
+                ds4viz.config({ title: 'Global Title' });
+
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('title = "Global Title"');
+            });
+
+            runner.it('应应用全局作者', () => {
+                ds4viz.config({ author: 'Global Author' });
+
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('author = "Global Author"');
+            });
+
+            runner.it('应应用全局注释', () => {
+                ds4viz.config({ comment: 'Global Comment' });
+
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('comment = "Global Comment"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 复杂操作序列测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('复杂操作序列', () => {
+            runner.it('栈 push-pop 序列', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                for (let i = 0; i < 10; i++) {
+                    s.push(i);
+                }
+                for (let i = 0; i < 5; i++) {
+                    s.pop();
+                }
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                const pushCount = (content.match(/op = "push"/g) || []).length;
+                const popCount = (content.match(/op = "pop"/g) || []).length;
+                expect(pushCount).toBe(10);
+                expect(popCount).toBe(5);
+            });
+
+            runner.it('队列 enqueue-dequeue 序列', () => {
+                const q = new ds4viz.Queue();
+                q.enter();
+
+                for (let i = 0; i < 5; i++) {
+                    q.enqueue(i);
+                }
+                for (let i = 0; i < 3; i++) {
+                    q.dequeue();
+                }
+                for (let i = 5; i < 8; i++) {
+                    q.enqueue(i);
+                }
+
+                q.dispose();
+
+                const content = q.getTomlString();
+                const enqueueCount = (content.match(/op = "enqueue"/g) || []).length;
+                const dequeueCount = (content.match(/op = "dequeue"/g) || []).length;
+                expect(enqueueCount).toBe(8);
+                expect(dequeueCount).toBe(3);
+            });
+
+            runner.it('链表复杂操作', () => {
+                const list = new ds4viz.SingleLinkedList();
+                list.enter();
+
+                const id1 = list.insertHead(1);
+                const id2 = list.insertTail(3);
+                list.insertAfter(id1, 2);
+                list.delete(id2);
+                list.reverse();
+
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_head"');
+                expect(content).toContain('op = "insert_tail"');
+                expect(content).toContain('op = "insert_after"');
+                expect(content).toContain('op = "delete"');
+                expect(content).toContain('op = "reverse"');
+            });
+
+            runner.it('BST 复杂操作', () => {
+                const bst = new ds4viz.BinarySearchTree();
+                bst.enter();
+
+                bst.insert(50);
+                bst.insert(30);
+                bst.insert(70);
+                bst.insert(20);
+                bst.insert(40);
+                bst.insert(60);
+                bst.insert(80);
+                bst.delete(30);
+                bst.delete(70);
+
+                bst.dispose();
+
+                const content = bst.getTomlString();
+                const insertCount = (content.match(/op = "insert"/g) || []).length;
+                const deleteCount = (content.match(/op = "delete"/g) || []).length;
+                expect(insertCount).toBe(7);
+                expect(deleteCount).toBe(2);
+            });
+
+            runner.it('堆复杂操作', () => {
+                const h = new ds4viz.Heap({ heapType: 'min' });
+                h.enter();
+
+                const values = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5];
+                for (const v of values) {
+                    h.insert(v);
+                }
+                for (let i = 0; i < 5; i++) {
+                    h.extract();
+                }
+
+                h.dispose();
+
+                const content = h.getTomlString();
+                const insertCount = (content.match(/op = "insert"/g) || []).length;
+                const extractCount = (content.match(/op = "extract"/g) || []).length;
+                expect(insertCount).toBe(11);
+                expect(extractCount).toBe(5);
+            });
+
+            runner.it('图复杂操作', () => {
+                const g = new ds4viz.GraphWeighted({ directed: true });
+                g.enter();
+
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addNode(2, 'C');
+                g.addNode(3, 'D');
+                g.addEdge(0, 1, 10);
+                g.addEdge(0, 2, 5);
+                g.addEdge(1, 2, 2);
+                g.addEdge(1, 3, 1);
+                g.addEdge(2, 3, 9);
+                g.updateWeight(0, 1, 8);
+                g.removeEdge(1, 2);
+                g.removeNode(3);
+
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('op = "add_node"');
+                expect(content).toContain('op = "add_edge"');
+                expect(content).toContain('op = "update_weight"');
+                expect(content).toContain('op = "remove_edge"');
+                expect(content).toContain('op = "remove_node"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 边缘情况测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('边缘情况', () => {
+            runner.it('空结构的销毁', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('[result]');
+                expect(content).toContain('final_state = 0');
+            });
+
+            runner.it('单元素操作', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(42);
+                s.pop();
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('items = []');
+            });
+
+            runner.it('大量状态', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                for (let i = 0; i < 100; i++) {
+                    s.push(i);
+                }
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                const stateCount = (content.match(/\[\[states\]\]/g) || []).length;
+                expect(stateCount).toBe(101);
+            });
+
+            runner.it('MAX_SAFE_INTEGER', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(Number.MAX_SAFE_INTEGER);
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain(String(Number.MAX_SAFE_INTEGER));
+            });
+
+            runner.it('二叉树只有左子节点', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+
+                const root = tree.insertRoot(1);
+                const left1 = tree.insertLeft(root, 2);
+                const left2 = tree.insertLeft(left1, 3);
+                tree.insertLeft(left2, 4);
+
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect((content.match(/op = "insert_left"/g) || []).length).toBe(3);
+            });
+
+            runner.it('二叉树只有右子节点', () => {
+                const tree = new ds4viz.BinaryTree();
+                tree.enter();
+
+                const root = tree.insertRoot(1);
+                const right1 = tree.insertRight(root, 2);
+                const right2 = tree.insertRight(right1, 3);
+                tree.insertRight(right2, 4);
+
+                tree.dispose();
+
+                const content = tree.getTomlString();
+                expect((content.match(/op = "insert_right"/g) || []).length).toBe(3);
+            });
+
+            runner.it('图的孤立节点', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addNode(2, 'C');
+
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect(content).toContain('edges = []');
+            });
+
+            runner.it('完全图', () => {
+                const g = new ds4viz.GraphUndirected();
+                g.enter();
+
+                g.addNode(0, 'A');
+                g.addNode(1, 'B');
+                g.addNode(2, 'C');
+                g.addNode(3, 'D');
+                g.addEdge(0, 1);
+                g.addEdge(0, 2);
+                g.addEdge(0, 3);
+                g.addEdge(1, 2);
+                g.addEdge(1, 3);
+                g.addEdge(2, 3);
+
+                g.dispose();
+
+                const content = g.getTomlString();
+                expect((content.match(/op = "add_edge"/g) || []).length).toBe(6);
+            });
+
+            runner.it('双向链表单元素操作', () => {
+                const list = new ds4viz.DoubleLinkedList();
+                list.enter();
+
+                list.insertHead(1);
+                list.deleteHead();
+                list.insertTail(2);
+                list.deleteTail();
+
+                list.dispose();
+
+                const content = list.getTomlString();
+                expect(content).toContain('op = "insert_head"');
+                expect(content).toContain('op = "insert_tail"');
+            });
+
+            runner.it('堆的重复值', () => {
+                const h = new ds4viz.Heap({ heapType: 'min' });
+                h.enter();
+
+                h.insert(5);
+                h.insert(5);
+                h.insert(5);
+                h.extract();
+                h.extract();
+
+                h.dispose();
+
+                const content = h.getTomlString();
+                expect((content.match(/op = "insert"/g) || []).length).toBe(3);
+                expect((content.match(/op = "extract"/g) || []).length).toBe(2);
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 错误处理测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('错误处理', () => {
+            runner.it('应正确记录错误类型', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                try {
+                    s.pop();
+                } catch (e) {
+                    // expected
+                }
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('type = "runtime"');
+            });
+
+            runner.it('成功操作后的错误', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                s.push(1);
+                s.push(2);
+                s.pop();
+                s.pop();
+
+                try {
+                    s.pop();
+                } catch (e) {
+                    // expected
+                }
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('[error]');
+                expect(content).toContain('last_state');
+            });
+
+            runner.it('错误时不应有 result', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                try {
+                    s.pop();
+                } catch (e) {
+                    // expected
+                }
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('[error]');
+                expect(content).not.toContain('[result]');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 状态一致性测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('状态一致性', () => {
+            runner.it('状态 ID 应连续', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                s.push(1);
+                s.push(2);
+                s.push(3);
+                s.pop();
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('id = 0');
+                expect(content).toContain('id = 1');
+                expect(content).toContain('id = 2');
+                expect(content).toContain('id = 3');
+                expect(content).toContain('id = 4');
+            });
+
+            runner.it('final_state 应匹配最后状态 ID', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+
+                s.push(1);
+                s.push(2);
+                s.push(3);
+
+                s.dispose();
+
+                const content = s.getTomlString();
+                expect(content).toContain('final_state = 3');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // TOML 格式验证测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('TOML 格式验证', () => {
+            runner.it('应生成有效的 TOML 结构', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(1);
+                s.dispose();
+
+                const content = s.getTomlString();
+
+                expect(content).toContain('[meta]');
+                expect(content).toContain('[package]');
+                expect(content).toContain('[object]');
+                expect(content).toContain('[[states]]');
+                expect(content).toContain('[[steps]]');
+            });
+
+            runner.it('meta 字段应正确', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+
+                expect(content).toMatch(/created_at = "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"/);
+                expect(content).toContain('lang = "javascript"');
+            });
+
+            runner.it('package 字段应正确', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.dispose();
+
+                const content = s.getTomlString();
+
+                expect(content).toContain('name = "ds4viz"');
+                expect(content).toContain('lang = "javascript"');
+                expect(content).toContain('version = "0.1.0"');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // 版本和作者测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('模块导出', () => {
+            runner.it('VERSION 应为 0.1.0', () => {
+                expect(ds4viz.VERSION).toBe('0.1.0');
+            });
+
+            runner.it('AUTHOR 应正确', () => {
+                expect(ds4viz.AUTHOR).toBe('WaterRun <linzhuangrun49@gmail.com>');
+            });
+
+            runner.it('应导出所有结构类', () => {
+                expect(ds4viz.Stack).toBeDefined();
+                expect(ds4viz.Queue).toBeDefined();
+                expect(ds4viz.SingleLinkedList).toBeDefined();
+                expect(ds4viz.DoubleLinkedList).toBeDefined();
+                expect(ds4viz.BinaryTree).toBeDefined();
+                expect(ds4viz.BinarySearchTree).toBeDefined();
+                expect(ds4viz.Heap).toBeDefined();
+                expect(ds4viz.GraphUndirected).toBeDefined();
+                expect(ds4viz.GraphDirected).toBeDefined();
+                expect(ds4viz.GraphWeighted).toBeDefined();
+            });
+
+            runner.it('应导出所有工厂函数', () => {
+                expect(typeof ds4viz.stack).toBe('function');
+                expect(typeof ds4viz.queue).toBe('function');
+                expect(typeof ds4viz.singleLinkedList).toBe('function');
+                expect(typeof ds4viz.doubleLinkedList).toBe('function');
+                expect(typeof ds4viz.binaryTree).toBe('function');
+                expect(typeof ds4viz.binarySearchTree).toBe('function');
+                expect(typeof ds4viz.heap).toBe('function');
+                expect(typeof ds4viz.graphUndirected).toBe('function');
+                expect(typeof ds4viz.graphDirected).toBe('function');
+                expect(typeof ds4viz.graphWeighted).toBe('function');
+            });
+
+            runner.it('应导出 config 和 withContext', () => {
+                expect(typeof ds4viz.config).toBe('function');
+                expect(typeof ds4viz.withContext).toBe('function');
+            });
+
+            runner.it('应导出错误类', () => {
+                expect(ds4viz.StructureError).toBeDefined();
+                expect(ds4viz.ValidationError).toBeDefined();
+                expect(ds4viz.DS4VizError).toBeDefined();
+            });
+
+            runner.it('应导出 getTomlString', () => {
+                expect(typeof ds4viz.getTomlString).toBe('function');
+            });
+        });
+
+        // ----------------------------------------------------------------------------
+        // getTomlString 测试
+        // ----------------------------------------------------------------------------
+
+        runner.describe('getTomlString', () => {
+            runner.it('应返回生成的 TOML 字符串', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(42);
+                s.dispose();
+
+                const toml = ds4viz.getTomlString(s);
+                expect(toml).toContain('kind = "stack"');
+                expect(toml).toContain('items = [42]');
+            });
+
+            runner.it('dispose 前应返回 undefined', () => {
+                const s = new ds4viz.Stack();
+                s.enter();
+                s.push(42);
+
+                const toml = ds4viz.getTomlString(s);
+                expect(toml).toBeUndefined();
+
+                s.dispose();
+            });
+        });
+
+        // ============================================================================
+        // 运行测试
+        // ============================================================================
+
+        async function runTests() {
+            const runBtn = document.getElementById('runBtn');
+            const output = document.getElementById('output');
+            const loading = document.getElementById('loading');
+            const progressBar = document.getElementById('progressBar');
+
+            runBtn.disabled = true;
+            output.innerHTML = '';
+            loading.classList.add('active');
+            progressBar.style.width = '0%';
+
+            console.clear();
+            console.log('%cds4viz.js 测试套件', 'font-size: 16px; font-weight: bold; color: #0f0f0f;');
+            console.log('────────────────────────────────────────');
+
+            try {
+                const results = await runner.run();
+
+                document.getElementById('totalCount').textContent = results.total;
+                document.getElementById('passedCount').textContent = results.passed;
+                document.getElementById('failedCount').textContent = results.failed;
+                document.getElementById('timeElapsed').textContent = results.time;
+
+                const passPercent = (results.passed / results.total) * 100;
+                progressBar.style.width = '100%';
+                if (results.failed > 0) {
+                    progressBar.classList.add('has-failures');
+                    progressBar.style.setProperty('--pass-percent', passPercent + '%');
+                } else {
+                    progressBar.classList.remove('has-failures');
+                }
+
+                let html = '';
+                for (const suite of runner.suites) {
+                    html += `<div class="test-suite">`;
+                    html += `<div class="suite-header">${escapeHtml(suite.name)}</div>`;
+
+                    for (const test of suite.tests) {
+                        const error = results.errors.find(e => e.suite === suite.name && e.test === test.name);
+                        const passed = !error;
+
+                        html += `<div class="test-case ${passed ? 'pass' : 'fail'}">`;
+                        html += `<span class="status">${passed ? '✓' : '✗'}</span>`;
+                        html += `<span class="test-name">${escapeHtml(test.name)}</span>`;
+                        html += `</div>`;
+
+                        if (error) {
+                            html += `<div class="error-details">${escapeHtml(error.error)}</div>`;
+                        }
+                    }
+
+                    html += `</div>`;
+                }
+
+                const summaryClass = results.failed === 0 ? 'all-passed' : 'has-failures';
+                const summaryText = results.failed === 0
+                    ? `所有 ${results.total} 个测试通过`
+                    : `${results.passed}/${results.total} 个测试通过，${results.failed} 个失败`;
+
+                html += `<div class="summary ${summaryClass}">${summaryText}</div>`;
+
+                output.innerHTML = html;
+
+                console.log('────────────────────────────────────────');
+                if (results.failed === 0) {
+                    console.log(`%c✓ 所有 ${results.total} 个测试通过`, 'color: #22c55e; font-weight: bold;');
+                } else {
+                    console.log(`%c✗ ${results.failed} 个测试失败`, 'color: #ef4444; font-weight: bold;');
+                }
+                console.log(`耗时: ${results.time}ms`);
+
+            } catch (error) {
+                output.innerHTML = `<div class="error-details">${escapeHtml(error.message)}</div>`;
+                console.error('测试运行失败:', error);
+            } finally {
+                loading.classList.remove('active');
+                runBtn.disabled = false;
+            }
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+            document.getElementById('totalCount').textContent = '0';
+            document.getElementById('passedCount').textContent = '0';
+            document.getElementById('failedCount').textContent = '0';
+            document.getElementById('timeElapsed').textContent = '0';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').classList.remove('has-failures');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>

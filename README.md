@@ -36,10 +36,10 @@
 | 语言 | 安装 | 文档                                          | 状态   |
 |---|---|---------------------------------------------|------|
 | `Python` | `pip install ds4viz` | [py-ds4viz](./library/python/README.md) | 已编写  |
-| `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`c-ds4viz`,解压获取`ds4viz.h` | [c-ds4viz](./library/c/README.md)                                           | 已编写 |
+| `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`| [c-ds4viz](./library/c/README.md)                                           | 已编写 |
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
-| `JavaScript` | - | -                                           | 规划中 |
+| `JavaScript` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js`| [js-ds4viz](./library/javascript/README.md)                                           | 测试未过 |
 | `TypeScript` | `pnpm install ds4viz` | [ts-ds4viz](./library/typescript/README.md)                                           | 已测试 |
 | `Lua` | `luarocks install ds4viz` | [lua-ds4viz](./library/lua/README.md)                                           | 已编写 |
 | `PHP` | `composer require ds4viz/ds4viz` | [php-ds4viz](./library/php/README.md)                                          | 已编写 |
@@ -53,7 +53,7 @@
 
 | 渲染器 | 平台 | 下载 | 文档 | 状态 |
 |---|---|---|---|---|
-| `simp-web` | Web (本地单HTML, 对应Demo服务器) | - | - | 开发中 |
+| `simp-web` | Web (本地HTML, 对应Demo服务器) | - | - | 开发中 |
 | `vue` | Web (SPA) | - | - | 开发中 |
 | `cli` | 命令行 | - | - | 规划中 |
 | `winui3` | Windows桌面 | - | - | 规划中 |
@@ -86,10 +86,12 @@
 - 基础缓存机制, 相同的代码直接返回, 减少资源消耗  
 - 用户每日CPU时间资源限制  
 
-> Demo版本先采用简化服务端的实现, 仅包含运行代码的功能: 使用`lua`+`pegasus`+`sqlite`
+> Demo版本采用简化服务端的实现, 仅包含运行代码的功能: 使用`lua`+`pegasus`+`sqlite`, 对应`simp-web`前端  
 
 ## 文档参考
 
 | 文档                       |
 |--------------------------|
 | [IR定义](./prompt/IR定义.md) |
+| [需求文档](./prompt/需求文档.md) |
+| [不同级别用户权限](./prompt/不同级别用户权限.md) |
