@@ -1,0 +1,66 @@
+{
+    "name": "ds4viz",
+    "version": "0.1.0",
+    "description": "ds4viz的TypeScript支持: 可扩展的数据结构可视化教学平台库",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "clean": "rm -rf dist",
+        "prepublishOnly": "npm run clean && npm run build",
+        "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+        "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js test/unit.test.ts",
+        "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js test/integration.test.ts",
+        "test:types": "tsd",
+        "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+        "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+        "lint": "eslint src test --ext .ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "keywords": [
+        "data-structure",
+        "visualization",
+        "algorithm",
+        "education",
+        "teaching",
+        "toml",
+        "trace"
+    ],
+    "author": "WaterRun <linzhuangrun49@gmail.com>",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Water-Run/ds4viz.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Water-Run/ds4viz/issues"
+    },
+    "homepage": "https://github.com/Water-Run/ds4viz#readme",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@typescript-eslint/eslint-plugin": "^6.13.0",
+        "@typescript-eslint/parser": "^6.13.0",
+        "eslint": "^8.55.0",
+        "jest": "^29.7.0",
+        "@types/jest": "^29.5.11",
+        "ts-jest": "^29.1.1",
+        "tsd": "^0.30.0",
+        "typescript": "^5.3.0"
+    },
+    "tsd": {
+        "directory": "test"
+    }
+}
