@@ -39,7 +39,7 @@
 | `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`| [c-ds4viz](./library/c/README.md)                                           | 已编写 |
 | `C#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
-| `JavaScript` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js`| [js-ds4viz](./library/javascript/README.md)                                           | 测试未过 |
+| `JavaScript` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js`| [js-ds4viz](./library/javascript/README.md)                                           | 已测试 |
 | `TypeScript` | `pnpm install ds4viz` | [ts-ds4viz](./library/typescript/README.md)                                           | 已测试 |
 | `Lua` | `luarocks install ds4viz` | [lua-ds4viz](./library/lua/README.md)                                           | 已编写 |
 | `PHP` | `composer require ds4viz/ds4viz` | [php-ds4viz](./library/php/README.md)                                          | 已编写 |
