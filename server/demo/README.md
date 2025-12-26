@@ -4,7 +4,7 @@ Demo服务器简单实现: 采用`lua`+`pegasus`+`sqlite`技术栈.
 
 > Demo服务器仅验证功能, 不检查安全性  
 
-依赖安装:  
+## 依赖安装
 
 ```bash
 luarocks install pegasus
@@ -14,7 +14,7 @@ luarocks install lua-cjson
 
 测试服务部署在`Fedora 43`, 采用`lua 5.4.8`.  
 
-建表:  
+## 数据库初始化
 
 ```sql
 -- ds4viz demo: execution log
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS exec_runs (
   request_id    TEXT NOT NULL,              -- UUID string
 
   -- execution context
-  lang          TEXT NOT NULL,              -- e.g. lua/python/...
+  lang          TEXT NOT NULL,              -- e.g. lua/python/javascript/...
   lang_version  TEXT NOT NULL,
 
   -- user code (store full source as requested)
@@ -56,13 +56,13 @@ CREATE INDEX IF NOT EXISTS idx_exec_runs_status     ON exec_runs(status);
 CREATE INDEX IF NOT EXISTS idx_exec_runs_request_id ON exec_runs(request_id);
 ```
 
-启动服务:  
+## 启动服务
 
 ```bash
-lua server.lua
+lua demo_server.lua
 ```
 
-环境变量配置:  
+## 环境变量配置
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
@@ -70,7 +70,19 @@ lua server.lua
 | `DS4VIZ_PORT` | 服务器监听端口 | `9090` |
 | `DS4VIZ_TIMEOUT_MS` | 代码执行超时时间(毫秒) | `5000` |
 
-## API
+## 支持的编程语言
+
+服务器当前支持以下编程语言:
+
+- `lua`
+- `python`
+- `javascript`
+- `typescript`
+- `c`
+- `rust`
+- `php`
+
+## API 接口
 
 | 路径 | 方法 | 说明 |
 |---|---|---|
@@ -92,8 +104,8 @@ curl http://localhost:9090/ping
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-12-24T10:30:00.000Z",
-  "supported_languages": ["lua", "python"],
+  "timestamp": "2025-12-26T10:30:00.000Z",
+  "supported_languages": ["lua", "python", "javascript", "typescript", "c", "rust", "php"],
   "default_timeout_ms": 5000
 }
 ```
@@ -114,7 +126,7 @@ Content-Type: application/json
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `lang` | `string` | 是 | 编程语言, 取值: `lua`, `python` |
+| `lang` | `string` | 是 | 编程语言, 取值见上方"支持的编程语言"列表 |
 | `code` | `string` | 是 | 待执行的源代码 |
 | `timeout_ms` | `integer` | 否 | 超时时间(毫秒), 默认 5000, 范围 100-30000 |
 
@@ -138,7 +150,7 @@ curl -X POST http://localhost:9090/execute \
 {
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "duration_ms": 150,
-  "toml": "[meta]\ncreated_at = \"2025-12-24T10:30:00.000Z\"\nlang = \"python\"\nlang_version = \"3.12.0\"\n\n[package]\nname = \"ds4viz\"\nlang = \"python\"\nversion = \"1.0.0\"\n\n..."
+  "toml": "[meta]\ncreated_at = \"2025-12-26T10:30:00.000Z\"\nlang = \"python\"\nlang_version = \"3.12.0\"\n\n[package]\nname = \"ds4viz\"\nlang = \"python\"\nversion = \"1.0.0\"\n\n..."
 }
 ```
 
@@ -149,21 +161,21 @@ curl -X POST http://localhost:9090/execute \
 ```json
 {
   "error": "validation",
-  "message": "Missing required field: code"
+  "message": "缺少必填字段: code"
 }
 ```
 
 ```json
 {
   "error": "validation",
-  "message": "Unsupported language: javascript"
+  "message": "不支持的语言: golang"
 }
 ```
 
 ```json
 {
   "error": "validation", 
-  "message": "timeout_ms must be between 100 and 30000"
+  "message": "timeout_ms 必须在 100 到 30000 之间"
 }
 ```
 
@@ -174,7 +186,7 @@ curl -X POST http://localhost:9090/execute \
 ```json
 {
   "error": "internal",
-  "message": "Failed to spawn executor process"
+  "message": "执行器进程启动失败"
 }
 ```
 
