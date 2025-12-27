@@ -1,0 +1,168 @@
+[meta]
+created_at = "2025-12-27T10:18:00Z"
+lang = "python"
+lang_version = "3.12.0"
+
+[package]
+name = "ds4viz"
+lang = "python"
+version = "1.0.0"
+
+[remarks]
+title = "Undirected Graph - Triangle"
+author = "Demo"
+comment = "Three nodes forming a triangle"
+
+[object]
+kind = "graph_undirected"
+label = "triangle"
+
+[[states]]
+id = 0
+
+[states.data]
+nodes = []
+edges = []
+
+[[states]]
+id = 1
+
+[states.data]
+nodes = [{ id = 0, label = "A" }]
+edges = []
+
+[[states]]
+id = 2
+
+[states.data]
+nodes = [{ id = 0, label = "A" }, { id = 1, label = "B" }]
+edges = []
+
+[[states]]
+id = 3
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = []
+
+[[states]]
+id = 4
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [{ from = 0, to = 1 }]
+
+[[states]]
+id = 5
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [{ from = 0, to = 1 }, { from = 1, to = 2 }]
+
+[[states]]
+id = 6
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [{ from = 0, to = 1 }, { from = 0, to = 2 }, { from = 1, to = 2 }]
+
+[[steps]]
+id = 0
+op = "add_node"
+before = 0
+after = 1
+
+[steps.args]
+id = 0
+label = "A"
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "add_node"
+before = 1
+after = 2
+
+[steps.args]
+id = 1
+label = "B"
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "add_node"
+before = 2
+after = 3
+
+[steps.args]
+id = 2
+label = "C"
+
+[steps.code]
+line = 7
+
+[[steps]]
+id = 3
+op = "add_edge"
+before = 3
+after = 4
+
+[steps.args]
+from = 0
+to = 1
+
+[steps.code]
+line = 8
+
+[[steps]]
+id = 4
+op = "add_edge"
+before = 4
+after = 5
+
+[steps.args]
+from = 1
+to = 2
+
+[steps.code]
+line = 9
+
+[[steps]]
+id = 5
+op = "add_edge"
+before = 5
+after = 6
+
+[steps.args]
+from = 0
+to = 2
+
+[steps.code]
+line = 10
+
+[result]
+final_state = 6
+
+[result.commit]
+op = "commit"
+line = 11

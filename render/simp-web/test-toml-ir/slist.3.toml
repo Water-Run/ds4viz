@@ -1,0 +1,121 @@
+[meta]
+created_at = "2025-12-27T10:08:00Z"
+lang = "typescript"
+lang_version = "5.3.0"
+
+[package]
+name = "ds4viz"
+lang = "typescript"
+version = "1.0.0"
+
+[remarks]
+title = "Singly Linked List - Remove"
+author = "Demo"
+comment = "Remove node from list"
+
+[object]
+kind = "slist"
+label = "slist"
+
+[[states]]
+id = 0
+
+[states.data]
+head = -1
+nodes = []
+
+[[states]]
+id = 1
+
+[states.data]
+head = 0
+nodes = [
+  { id = 0, value = 1, next = -1 }
+]
+
+[[states]]
+id = 2
+
+[states.data]
+head = 0
+nodes = [
+  { id = 0, value = 1, next = 1 },
+  { id = 1, value = 2, next = -1 }
+]
+
+[[states]]
+id = 3
+
+[states.data]
+head = 0
+nodes = [
+  { id = 0, value = 1, next = 1 },
+  { id = 1, value = 2, next = 2 },
+  { id = 2, value = 3, next = -1 }
+]
+
+[[states]]
+id = 4
+
+[states.data]
+head = 0
+nodes = [
+  { id = 0, value = 1, next = 2 },
+  { id = 2, value = 3, next = -1 }
+]
+
+[[steps]]
+id = 0
+op = "append"
+before = 0
+after = 1
+
+[steps.args]
+value = 1
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "append"
+before = 1
+after = 2
+
+[steps.args]
+value = 2
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "append"
+before = 2
+after = 3
+
+[steps.args]
+value = 3
+
+[steps.code]
+line = 7
+
+[[steps]]
+id = 3
+op = "remove"
+before = 3
+after = 4
+ret = 2
+
+[steps.args]
+value = 2
+
+[steps.code]
+line = 8
+
+[result]
+final_state = 4
+
+[result.commit]
+op = "commit"
+line = 9

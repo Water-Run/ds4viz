@@ -1,0 +1,121 @@
+[meta]
+created_at = "2025-12-27T10:14:00Z"
+lang = "typescript"
+lang_version = "5.3.0"
+
+[package]
+name = "ds4viz"
+lang = "typescript"
+version = "1.0.0"
+
+[remarks]
+title = "Binary Tree - Delete Node"
+author = "Demo"
+comment = "Delete a leaf node"
+
+[object]
+kind = "binary_tree"
+label = "btree"
+
+[[states]]
+id = 0
+
+[states.data]
+root = -1
+nodes = []
+
+[[states]]
+id = 1
+
+[states.data]
+root = 0
+nodes = [{ id = 0, value = 10, left = -1, right = -1 }]
+
+[[states]]
+id = 2
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = 10, left = 1, right = -1 },
+    { id = 1, value = 5, left = -1, right = -1 },
+]
+
+[[states]]
+id = 3
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = 10, left = 1, right = 2 },
+    { id = 1, value = 5, left = -1, right = -1 },
+    { id = 2, value = 15, left = -1, right = -1 },
+]
+
+[[states]]
+id = 4
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = 10, left = -1, right = 2 },
+    { id = 2, value = 15, left = -1, right = -1 },
+]
+
+[[steps]]
+id = 0
+op = "insert_root"
+before = 0
+after = 1
+
+[steps.args]
+value = 10
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "insert_left"
+before = 1
+after = 2
+
+[steps.args]
+parent = 0
+value = 5
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "insert_right"
+before = 2
+after = 3
+
+[steps.args]
+parent = 0
+value = 15
+
+[steps.code]
+line = 7
+
+[[steps]]
+id = 3
+op = "delete"
+before = 3
+after = 4
+ret = 5
+
+[steps.args]
+node = 1
+
+[steps.code]
+line = 8
+
+[result]
+final_state = 4
+
+[result.commit]
+op = "commit"
+line = 9

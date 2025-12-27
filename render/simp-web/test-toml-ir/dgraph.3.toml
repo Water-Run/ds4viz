@@ -1,0 +1,93 @@
+[meta]
+created_at = "2025-12-27T10:23:00Z"
+lang = "lua"
+lang_version = "5.4.0"
+
+[package]
+name = "ds4viz"
+lang = "lua"
+version = "1.0.0"
+
+[remarks]
+title = "Directed Graph - Bidirectional"
+author = "Demo"
+comment = "Two nodes with edges in both directions"
+
+[object]
+kind = "graph_directed"
+label = "bidir"
+
+[[states]]
+id = 0
+
+[states.data]
+nodes = []
+edges = []
+
+[[states]]
+id = 1
+
+[states.data]
+nodes = [{ id = 0, label = "Server" }, { id = 1, label = "Client" }]
+edges = []
+
+[[states]]
+id = 2
+
+[states.data]
+nodes = [{ id = 0, label = "Server" }, { id = 1, label = "Client" }]
+edges = [{ from = 0, to = 1 }]
+
+[[states]]
+id = 3
+
+[states.data]
+nodes = [{ id = 0, label = "Server" }, { id = 1, label = "Client" }]
+edges = [{ from = 0, to = 1 }, { from = 1, to = 0 }]
+
+[[steps]]
+id = 0
+op = "add_nodes"
+before = 0
+after = 1
+
+[steps.args]
+labels = ["Server", "Client"]
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "add_edge"
+before = 1
+after = 2
+note = "Server sends to Client"
+
+[steps.args]
+from = 0
+to = 1
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "add_edge"
+before = 2
+after = 3
+note = "Client responds to Server"
+
+[steps.args]
+from = 1
+to = 0
+
+[steps.code]
+line = 7
+
+[result]
+final_state = 3
+
+[result.commit]
+op = "commit"
+line = 8

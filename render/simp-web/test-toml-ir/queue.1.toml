@@ -1,0 +1,113 @@
+[meta]
+created_at = "2025-12-27T10:03:00Z"
+lang = "python"
+lang_version = "3.12.0"
+
+[package]
+name = "ds4viz"
+lang = "python"
+version = "1.0.0"
+
+[remarks]
+title = "Queue Basic Operations"
+author = "Demo"
+comment = "Demonstrate enqueue and dequeue"
+
+[object]
+kind = "queue"
+label = "task_queue"
+
+[[states]]
+id = 0
+
+[states.data]
+items = []
+front = -1
+rear = -1
+
+[[states]]
+id = 1
+
+[states.data]
+items = [100]
+front = 0
+rear = 0
+
+[[states]]
+id = 2
+
+[states.data]
+items = [100, 200]
+front = 0
+rear = 1
+
+[[states]]
+id = 3
+
+[states.data]
+items = [100, 200, 300]
+front = 0
+rear = 2
+
+[[states]]
+id = 4
+
+[states.data]
+items = [200, 300]
+front = 0
+rear = 1
+
+[[steps]]
+id = 0
+op = "enqueue"
+before = 0
+after = 1
+
+[steps.args]
+value = 100
+
+[steps.code]
+line = 3
+
+[[steps]]
+id = 1
+op = "enqueue"
+before = 1
+after = 2
+
+[steps.args]
+value = 200
+
+[steps.code]
+line = 4
+
+[[steps]]
+id = 2
+op = "enqueue"
+before = 2
+after = 3
+
+[steps.args]
+value = 300
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 3
+op = "dequeue"
+before = 3
+after = 4
+ret = 100
+
+[steps.args]
+
+[steps.code]
+line = 6
+
+[result]
+final_state = 4
+
+[result.commit]
+op = "commit"
+line = 7

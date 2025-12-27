@@ -1,0 +1,107 @@
+[meta]
+created_at = "2025-12-27T10:19:00Z"
+lang = "c"
+lang_version = "c17"
+
+[package]
+name = "ds4viz"
+lang = "c"
+version = "1.0.0"
+
+[remarks]
+title = "Undirected Graph - Star Topology"
+author = "Demo"
+comment = "Central node connected to all others"
+
+[object]
+kind = "graph_undirected"
+label = "star"
+
+[[states]]
+id = 0
+
+[states.data]
+nodes = []
+edges = []
+
+[[states]]
+id = 1
+
+[states.data]
+nodes = [{ id = 0, label = "Center" }]
+edges = []
+
+[[states]]
+id = 2
+
+[states.data]
+nodes = [
+    { id = 0, label = "Center" },
+    { id = 1, label = "N1" },
+    { id = 2, label = "N2" },
+    { id = 3, label = "N3" },
+    { id = 4, label = "N4" },
+]
+edges = []
+
+[[states]]
+id = 3
+
+[states.data]
+nodes = [
+    { id = 0, label = "Center" },
+    { id = 1, label = "N1" },
+    { id = 2, label = "N2" },
+    { id = 3, label = "N3" },
+    { id = 4, label = "N4" },
+]
+edges = [
+    { from = 0, to = 1 },
+    { from = 0, to = 2 },
+    { from = 0, to = 3 },
+    { from = 0, to = 4 },
+]
+
+[[steps]]
+id = 0
+op = "add_node"
+before = 0
+after = 1
+
+[steps.args]
+id = 0
+label = "Center"
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "add_nodes"
+before = 1
+after = 2
+
+[steps.args]
+count = 4
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "connect_all_to_center"
+before = 2
+after = 3
+
+[steps.args]
+center = 0
+
+[steps.code]
+line = 7
+
+[result]
+final_state = 3
+
+[result.commit]
+op = "commit"
+line = 8

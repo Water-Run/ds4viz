@@ -1,0 +1,42 @@
+[meta]
+created_at = "2025-12-27T10:02:00Z"
+lang = "c"
+lang_version = "c17"
+
+[package]
+name = "ds4viz"
+lang = "c"
+version = "1.0.0"
+
+[remarks]
+title = "Stack Underflow Error"
+author = "Demo"
+comment = "Pop from empty stack causes error"
+
+[object]
+kind = "stack"
+label = "error_stack"
+
+[[states]]
+id = 0
+
+[states.data]
+items = []
+top = -1
+
+[[steps]]
+id = 0
+op = "pop"
+before = 0
+
+[steps.args]
+
+[steps.code]
+line = 10
+
+[error]
+type = "runtime"
+message = "Stack underflow: cannot pop from empty stack"
+line = 10
+step = 0
+last_state = 0

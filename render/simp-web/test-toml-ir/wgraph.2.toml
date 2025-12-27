@@ -1,0 +1,135 @@
+[meta]
+created_at = "2025-12-27T10:25:00Z"
+lang = "c"
+lang_version = "c17"
+
+[package]
+name = "ds4viz"
+lang = "c"
+version = "1.0.0"
+
+[remarks]
+title = "Weighted Graph - Negative Weights"
+author = "Demo"
+comment = "Graph with negative edge weights"
+
+[object]
+kind = "graph_weighted"
+label = "neg_weight"
+
+[[states]]
+id = 0
+
+[states.data]
+nodes = []
+edges = []
+
+[[states]]
+id = 1
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = []
+
+[[states]]
+id = 2
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [{ from = 0, to = 1, weight = 5 }]
+
+[[states]]
+id = 3
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [{ from = 0, to = 1, weight = 5 }, { from = 1, to = 2, weight = -3 }]
+
+[[states]]
+id = 4
+
+[states.data]
+nodes = [
+    { id = 0, label = "A" },
+    { id = 1, label = "B" },
+    { id = 2, label = "C" },
+]
+edges = [
+    { from = 0, to = 1, weight = 5 },
+    { from = 0, to = 2, weight = 8 },
+    { from = 1, to = 2, weight = -3 },
+]
+
+[[steps]]
+id = 0
+op = "add_nodes"
+before = 0
+after = 1
+
+[steps.args]
+labels = ["A", "B", "C"]
+
+[steps.code]
+line = 10
+
+[[steps]]
+id = 1
+op = "add_edge"
+before = 1
+after = 2
+
+[steps.args]
+from = 0
+to = 1
+weight = 5
+
+[steps.code]
+line = 11
+
+[[steps]]
+id = 2
+op = "add_edge"
+before = 2
+after = 3
+note = "Negative weight edge"
+
+[steps.args]
+from = 1
+to = 2
+weight = -3
+
+[steps.code]
+line = 12
+
+[[steps]]
+id = 3
+op = "add_edge"
+before = 3
+after = 4
+
+[steps.args]
+from = 0
+to = 2
+weight = 8
+
+[steps.code]
+line = 13
+
+[result]
+final_state = 4
+
+[result.commit]
+op = "commit"
+line = 14

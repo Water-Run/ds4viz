@@ -1,0 +1,149 @@
+[meta]
+created_at = "2025-12-27T10:13:00Z"
+lang = "c"
+lang_version = "c17"
+
+[package]
+name = "ds4viz"
+lang = "c"
+version = "1.0.0"
+
+[remarks]
+title = "Expression Tree"
+author = "Demo"
+comment = "Tree representing (3 + 4) * 2"
+
+[object]
+kind = "binary_tree"
+label = "expr_tree"
+
+[[states]]
+id = 0
+
+[states.data]
+root = -1
+nodes = []
+
+[[states]]
+id = 1
+
+[states.data]
+root = 0
+nodes = [{ id = 0, value = "*", left = -1, right = -1 }]
+
+[[states]]
+id = 2
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = "*", left = 1, right = -1 },
+    { id = 1, value = "+", left = -1, right = -1 },
+]
+
+[[states]]
+id = 3
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = "*", left = 1, right = 2 },
+    { id = 1, value = "+", left = -1, right = -1 },
+    { id = 2, value = 2, left = -1, right = -1 },
+]
+
+[[states]]
+id = 4
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = "*", left = 1, right = 2 },
+    { id = 1, value = "+", left = 3, right = -1 },
+    { id = 2, value = 2, left = -1, right = -1 },
+    { id = 3, value = 3, left = -1, right = -1 },
+]
+
+[[states]]
+id = 5
+
+[states.data]
+root = 0
+nodes = [
+    { id = 0, value = "*", left = 1, right = 2 },
+    { id = 1, value = "+", left = 3, right = 4 },
+    { id = 2, value = 2, left = -1, right = -1 },
+    { id = 3, value = 3, left = -1, right = -1 },
+    { id = 4, value = 4, left = -1, right = -1 },
+]
+
+[[steps]]
+id = 0
+op = "insert_root"
+before = 0
+after = 1
+
+[steps.args]
+value = "*"
+
+[steps.code]
+line = 10
+
+[[steps]]
+id = 1
+op = "insert_left"
+before = 1
+after = 2
+
+[steps.args]
+parent = 0
+value = "+"
+
+[steps.code]
+line = 11
+
+[[steps]]
+id = 2
+op = "insert_right"
+before = 2
+after = 3
+
+[steps.args]
+parent = 0
+value = 2
+
+[steps.code]
+line = 12
+
+[[steps]]
+id = 3
+op = "insert_left"
+before = 3
+after = 4
+
+[steps.args]
+parent = 1
+value = 3
+
+[steps.code]
+line = 13
+
+[[steps]]
+id = 4
+op = "insert_right"
+before = 4
+after = 5
+
+[steps.args]
+parent = 1
+value = 4
+
+[steps.code]
+line = 14
+
+[result]
+final_state = 5
+
+[result.commit]
+op = "commit"
+line = 15

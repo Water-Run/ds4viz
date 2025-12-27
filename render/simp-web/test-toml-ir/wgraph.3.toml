@@ -1,0 +1,177 @@
+[meta]
+created_at = "2025-12-27T10:26:00Z"
+lang = "typescript"
+lang_version = "5.3.0"
+
+[package]
+name = "ds4viz"
+lang = "typescript"
+version = "1.0.0"
+
+[remarks]
+title = "Weighted Graph - Float Weights"
+author = "Demo"
+comment = "Graph with floating point edge weights"
+
+[object]
+kind = "graph_weighted"
+label = "float_graph"
+
+[[states]]
+id = 0
+
+[states.data]
+nodes = []
+edges = []
+
+[[states]]
+id = 1
+
+[states.data]
+nodes = [{ id = 0, label = "Origin" }]
+edges = []
+
+[[states]]
+id = 2
+
+[states.data]
+nodes = [{ id = 0, label = "Origin" }, { id = 1, label = "Point1" }]
+edges = []
+
+[[states]]
+id = 3
+
+[states.data]
+nodes = [{ id = 0, label = "Origin" }, { id = 1, label = "Point1" }]
+edges = [{ from = 0, to = 1, weight = 1.414 }]
+
+[[states]]
+id = 4
+
+[states.data]
+nodes = [
+    { id = 0, label = "Origin" },
+    { id = 1, label = "Point1" },
+    { id = 2, label = "Point2" },
+]
+edges = [{ from = 0, to = 1, weight = 1.414 }]
+
+[[states]]
+id = 5
+
+[states.data]
+nodes = [
+    { id = 0, label = "Origin" },
+    { id = 1, label = "Point1" },
+    { id = 2, label = "Point2" },
+]
+edges = [
+    { from = 0, to = 1, weight = 1.414 },
+    { from = 0, to = 2, weight = 2.236 },
+]
+
+[[states]]
+id = 6
+
+[states.data]
+nodes = [
+    { id = 0, label = "Origin" },
+    { id = 1, label = "Point1" },
+    { id = 2, label = "Point2" },
+]
+edges = [
+    { from = 0, to = 1, weight = 1.414 },
+    { from = 0, to = 2, weight = 2.236 },
+    { from = 1, to = 2, weight = 1.732 },
+]
+
+[[steps]]
+id = 0
+op = "add_node"
+before = 0
+after = 1
+
+[steps.args]
+id = 0
+label = "Origin"
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "add_node"
+before = 1
+after = 2
+
+[steps.args]
+id = 1
+label = "Point1"
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "add_edge"
+before = 2
+after = 3
+note = "Distance: sqrt(2)"
+
+[steps.args]
+from = 0
+to = 1
+weight = 1.414
+
+[steps.code]
+line = 7
+
+[[steps]]
+id = 3
+op = "add_node"
+before = 3
+after = 4
+
+[steps.args]
+id = 2
+label = "Point2"
+
+[steps.code]
+line = 8
+
+[[steps]]
+id = 4
+op = "add_edge"
+before = 4
+after = 5
+note = "Distance: sqrt(5)"
+
+[steps.args]
+from = 0
+to = 2
+weight = 2.236
+
+[steps.code]
+line = 9
+
+[[steps]]
+id = 5
+op = "add_edge"
+before = 5
+after = 6
+note = "Distance: sqrt(3)"
+
+[steps.args]
+from = 1
+to = 2
+weight = 1.732
+
+[steps.code]
+line = 10
+
+[result]
+final_state = 6
+
+[result.commit]
+op = "commit"
+line = 11

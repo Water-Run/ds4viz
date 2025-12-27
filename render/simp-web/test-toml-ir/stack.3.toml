@@ -1,0 +1,89 @@
+[meta]
+created_at = "2025-12-27T10:01:00Z"
+lang = "typescript"
+lang_version = "5.3.0"
+
+[package]
+name = "ds4viz"
+lang = "typescript"
+version = "1.0.0"
+
+[remarks]
+title = "String Stack"
+author = "Demo"
+comment = "Stack with string elements"
+
+[object]
+kind = "stack"
+label = "string_stack"
+
+[[states]]
+id = 0
+
+[states.data]
+items = []
+top = -1
+
+[[states]]
+id = 1
+
+[states.data]
+items = ["hello"]
+top = 0
+
+[[states]]
+id = 2
+
+[states.data]
+items = ["hello", "world"]
+top = 1
+
+[[states]]
+id = 3
+
+[states.data]
+items = ["hello", "world", "!"]
+top = 2
+
+[[steps]]
+id = 0
+op = "push"
+before = 0
+after = 1
+
+[steps.args]
+value = "hello"
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "push"
+before = 1
+after = 2
+
+[steps.args]
+value = "world"
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "push"
+before = 2
+after = 3
+
+[steps.args]
+value = "!"
+
+[steps.code]
+line = 7
+
+[result]
+final_state = 3
+
+[result.commit]
+op = "commit"
+line = 8
