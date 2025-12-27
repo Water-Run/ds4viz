@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ds4viz Demo</title>
+    <link rel="stylesheet" href="simp-web.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <!-- 顶栏 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">
+                <img src="images/logo_v1.png" alt="ds4viz"
+                    class="logo-icon">
+                <span class="logo-text">ds4viz</span>
+                <span class="logo-badge">demo</span>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <!-- 连接模式切换 -->
+            <div class="connection-toggle">
+                <button class="toggle-btn active" data-mode="remote" title="远程服务器">
+                    <img src="images/desktop_cloud_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="远程"
+                        class="btn-icon">
+                    <span>远程</span>
+                </button>
+                <button class="toggle-btn" data-mode="local" title="本地模式">
+                    <img src="images/desktop_windows_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="本地"
+                        class="btn-icon">
+                    <span>本地</span>
+                </button>
+            </div>
+
+            <!-- 远程服务器地址输入 -->
+            <div class="input-wrapper" id="remoteInputWrapper">
+                <img src="images/host_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="服务器" class="input-icon">
+                <input type="text" id="serverUrl" class="text-input" value="http://localhost:9090" placeholder="服务器地址">
+                <button class="input-action-btn" id="pingBtn" title="测试连接">
+                    <img src="images/commit_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="测试"
+                        class="btn-icon">
+                </button>
+                <span class="connection-status" id="connectionStatus"></span>
+            </div>
+
+            <!-- 本地库地址输入 -->
+            <div class="input-wrapper hidden" id="localInputWrapper">
+                <img src="images/code_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="库路径" class="input-icon">
+                <input type="text" id="libraryPath" class="text-input local-path-input" value="../../library/javascript/ds4viz.js"
+                    placeholder="ds4viz.js 库路径">
+            </div>
+        </div>
+
+        <div class="header-right">
+            <!-- TOML 操作 -->
+            <div class="toml-actions">
+                <button class="action-btn" id="uploadTomlBtn" title="上传 TOML">
+                    <img src="images/present_to_all_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="上传"
+                        class="btn-icon">
+                </button>
+                <button class="action-btn" id="downloadTomlBtn" title="下载 TOML">
+                    <img src="images/download_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="下载" class="btn-icon">
+                </button>
+            </div>
+
+            <!-- 关于按钮 -->
+            <button class="action-btn" id="aboutBtn" title="关于">
+                <img src="images/blur_on_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="关于" class="btn-icon">
+            </button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+        <!-- 左侧：可视化结果 -->
+        <section class="panel visualization-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <img src="images/graph_3_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="可视化"
+                        class="panel-icon">
+                    <span>可视化</span>
+                </div>
+                <div class="viz-controls">
+                    <button class="viz-btn" id="stepBackBtn" title="上一步" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <span class="step-indicator" id="stepIndicator">0 / 0</span>
+                    <button class="viz-btn" id="stepForwardBtn" title="下一步" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                    <div class="viz-divider"></div>
+                    <button class="viz-btn" id="resetBtn" title="重置" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"></polyline>
+                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                        </svg>
+                    </button>
+                    <button class="viz-btn" id="autoPlayBtn" title="自动播放" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-content">
+                <div class="visualization-container" id="vizContainer">
+                    <div class="viz-placeholder">
+                        <img src="images/flowsheet_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="可视化"
+                            class="placeholder-icon">
+                        <p class="placeholder-text">运行代码或上传 TOML 查看可视化</p>
+                    </div>
+                </div>
+
+                <!-- 步骤信息 -->
+                <div class="step-info" id="stepInfo" style="display: none;">
+                    <div class="step-info-header">
+                        <span class="step-op" id="stepOp"></span>
+                        <span class="step-line" id="stepLine"></span>
+                    </div>
+                    <div class="step-args" id="stepArgs"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右侧：代码编辑器 -->
+        <section class="panel editor-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <img src="images/terminal_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="代码" class="panel-icon">
+                    <span>代码</span>
+                </div>
+                <div class="editor-controls">
+                    <!-- 语言选择 -->
+                    <div class="language-select-wrapper">
+                        <span class="lang-color-dot" id="langColorDot"></span>
+                        <select id="languageSelect" class="language-select">
+                            <option value="python">Python</option>
+                            <option value="javascript">JavaScript</option>
+                            <option value="typescript">TypeScript</option>
+                            <option value="lua">Lua</option>
+                            <option value="c">C</option>
+                            <option value="rust">Rust</option>
+                            <option value="php">PHP</option>
+                        </select>
+                    </div>
+
+                    <!-- 矫正包导入开关 -->
+                    <label class="switch-wrapper" title="自动矫正包导入路径">
+                        <input type="checkbox" id="autoImportSwitch" checked>
+                        <span class="switch-slider"></span>
+                        <span class="switch-label">矫正导入</span>
+                    </label>
+
+                    <!-- 运行按钮 -->
+                    <button class="run-btn" id="runBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                        <span>运行</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-content">
+                <div class="editor-wrapper" id="editorWrapper">
+                    <div class="line-numbers" id="lineNumbers"></div>
+                    <textarea id="codeEditor" class="code-editor" spellcheck="false" autocomplete="off"
+                        autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+                </div>
+
+                <!-- 执行状态 -->
+                <div class="execution-status" id="executionStatus" style="display: none;">
+                    <div class="status-icon"></div>
+                    <span class="status-text"></span>
+                    <span class="status-duration"></span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 关于弹窗 -->
+    <div class="modal-overlay" id="aboutModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">关于 ds4viz Demo</h2>
+                <button class="modal-close" id="closeAboutBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="about-logo">
+                    <img src="images/logo_v1.png" alt="ds4viz">
+                </div>
+                <div class="about-info">
+                    <div class="about-item">
+                        <span class="about-label">项目</span>
+                        <span class="about-value">ds4viz</span>
+                    </div>
+                    <div class="about-item">
+                        <span class="about-label">版本</span>
+                        <span class="about-value">Demo</span>
+                    </div>
+                    <div class="about-item">
+                        <span class="about-label">作者</span>
+                        <span class="about-value">WaterRun</span>
+                    </div>
+                    <div class="about-item">
+                        <span class="about-label">协议</span>
+                        <span class="about-value">GPL-3.0</span>
+                    </div>
+                </div>
+                <a href="https://github.com/Water-Run/ds4viz" target="_blank" class="github-link">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                    </svg>
+                    <span>GitHub</span>
+                </a>
+
+                <!-- 设置 -->
+                <div class="modal-settings">
+                    <label class="switch-wrapper">
+                        <input type="checkbox" id="modalAutoImportSwitch" checked>
+                        <span class="switch-slider"></span>
+                        <span class="switch-label">矫正包导入</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 隐藏的文件上传 -->
+    <input type="file" id="tomlFileInput" accept=".toml" style="display: none;">
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <span class="loading-text">执行中...</span>
+    </div>
+
+    <script src="simp-web.js"></script>
+</body>
+
+</html>

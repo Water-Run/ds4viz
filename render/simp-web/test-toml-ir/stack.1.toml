@@ -1,0 +1,105 @@
+```toml
+# 顶层块顺序严格按 IR 定义: [meta] -> [package] -> [object] -> [[states]] -> [[steps]] -> [result]
+
+[meta] # 元数据
+created_at = "2025-12-19T00:00:00Z"
+lang = "python"
+lang_version = "3.14.0"
+
+[package] # 包信息
+name = "ds4viz"
+lang = "python"
+version = "1.0.0"
+
+[object] # 类别
+kind = "stack"
+label = "stack demo" # 自动生成
+
+[[states]]
+id = 0
+
+[states.data]
+items = []
+top = -1
+
+[[states]]
+id = 1
+
+[states.data]
+items = [10]
+top = 0
+
+[[states]]
+id = 2
+
+[states.data]
+items = [10, 20]
+top = 1
+
+[[states]]
+id = 3
+
+[states.data]
+items = [10]
+top = 0
+
+[[states]]
+id = 4
+
+[states.data]
+items = [10, 30]
+top = 1
+
+[[steps]]
+id = 0
+op = "push"
+before = 0
+after = 1
+
+[steps.args]
+value = 10
+
+[steps.code]
+line = 6 # 对应示例代码中的 stack.push(10)
+
+[[steps]]
+id = 1
+op = "push"
+before = 1
+after = 2
+
+[steps.args]
+value = 20
+
+[steps.code]
+line = 7 # 对应示例代码中的 stack.push(20)
+
+[[steps]]
+id = 2
+op = "pop"
+before = 2
+after = 3
+ret = 20
+
+[steps.args]
+# pop 无参数, 但 steps.args 必须存在(允许为空 table)
+
+[steps.code]
+line = 8 # 对应示例代码中的 stack.pop()
+
+[[steps]]
+id = 3
+op = "push"
+before = 3
+after = 4
+
+[steps.args]
+value = 30
+
+[steps.code]
+line = 9 # 对应示例代码中的 stack.push(30)
+
+[result]
+final_state = 4
+```
+
