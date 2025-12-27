@@ -56,10 +56,16 @@ CREATE INDEX IF NOT EXISTS idx_exec_runs_status     ON exec_runs(status);
 CREATE INDEX IF NOT EXISTS idx_exec_runs_request_id ON exec_runs(request_id);
 ```
 
+## 运行测试  
+
+```bash
+busted ./test/test.lua
+```
+
 ## 启动服务
 
 ```bash
-lua demo_server.lua
+lua server.lua
 ```
 
 ## 环境变量配置

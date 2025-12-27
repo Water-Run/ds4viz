@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 --[[
 ds4viz Demo Server
-执行用户提交的多语言代码，返回标准输出（TOML IR）
+执行用户提交的多语言代码，读取生成的 trace.toml 文件返回
 
 运行环境需求：
 - Lua 5.4+ 或 LuaJIT 2.1+
@@ -19,10 +19,10 @@ File:
 Date:
     2025-12-26
 Updated:
-    2025-12-26
+    2025-12-27
 ]]
 
-local pegasus = require("pegasus")
+local Pegasus = require("pegasus")
 local sqlite3 = require("lsqlite3")
 local cjson = require("cjson")
 
@@ -30,79 +30,95 @@ local cjson = require("cjson")
 -- 配置
 --------------------------------------------------------------------------------
 
---@description: 服务器配置表
---@field host: string - 服务器监听地址
---@field port: number - 服务器监听端口
---@field default_timeout_ms: number - 默认执行超时时间（毫秒）
---@field min_timeout_ms: number - 最小超时时间
---@field max_timeout_ms: number - 最大超时时间
---@field db_path: string - SQLite数据库文件路径
---@field temp_dir: string - 临时文件目录
---@field languages: table - 支持的语言配置
 local CONFIG = {
-    host = os.getenv("DS4VIZ_HOST") or "localhost",
-    port = tonumber(os.getenv("DS4VIZ_PORT")) or 9090,
+    host = os.getenv("DS4VIZ_HOST") or "0.0.0.0",
+    port = os.getenv("DS4VIZ_PORT") or "9090",
     default_timeout_ms = tonumber(os.getenv("DS4VIZ_TIMEOUT_MS")) or 5000,
     min_timeout_ms = 100,
     max_timeout_ms = 30000,
     db_path = "ds4viz.db",
     temp_dir = "/tmp/ds4viz",
+    trace_filename = "trace.toml",
 
     languages = {
         lua = {
             version_cmd = "lua -v 2>&1",
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d lua %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d lua '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".lua"
         },
         python = {
             version_cmd = "python3 --version 2>&1",
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d python3 -u %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d python3 -u '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".py"
         },
         javascript = {
             version_cmd = "node --version 2>&1",
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d node %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d node '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".js"
         },
         typescript = {
-            version_cmd = "npx ts-node --version 2>&1",
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d npx ts-node --transpile-only %s 2>&1", timeout_sec, filepath)
+            version_cmd = "tsx --version 2>&1",
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d tsx '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".ts"
         },
         c = {
             version_cmd = "gcc --version 2>&1 | head -1",
             compile = true,
-            compile_cmd = function(src, out, timeout_sec)
-                return string.format("timeout %d gcc -o %s %s -lm 2>&1", timeout_sec, out, src)
+            compile_cmd = function(src, out, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d gcc -o '%s' '%s' -lm 2>&1", work_dir, timeout_sec, out, src)
             end,
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".c"
         },
         rust = {
             version_cmd = "rustc --version 2>&1",
             compile = true,
-            compile_cmd = function(src, out, timeout_sec)
-                return string.format("timeout %d rustc -o %s %s 2>&1", timeout_sec, out, src)
+            compile_cmd = function(src, out, timeout_sec, work_dir)
+                local deps = "/home/waterrun/Coding/ds4viz/library/rust/target/debug/deps"
+                return string.format([[
+        cd '%s' && timeout %d bash -lc '
+        DS4VIZ_DEPS="%s"
+        DS4VIZ_RLIB=$(ls %s/libds4viz-*.rlib 2>/dev/null | head -n 1)
+        if [ -z "$DS4VIZ_RLIB" ]; then
+          echo "ds4viz rlib not found under %s"
+          echo "Build once: (cd /home/waterrun/Coding/ds4viz/library/rust && cargo build)"
+          exit 2
+        fi
+
+        cat > __ds4viz_runner.rs <<RS
+        mod user {
+            use ds4viz::prelude::*;
+            include!(r#"%s"#);
+        }
+        fn main() { user::main(); }
+        RS
+
+        rustc --edition=2021 -C debuginfo=0 -C opt-level=0 -C codegen-units=256 \
+          -o "%s" __ds4viz_runner.rs \
+          -L dependency="$DS4VIZ_DEPS" \
+          --extern ds4viz="$DS4VIZ_RLIB"
+        ' 2>&1
+        ]], work_dir, timeout_sec, deps, deps, deps, src, out)
             end,
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".rs"
         },
         php = {
             version_cmd = "php --version 2>&1 | head -1",
-            run_cmd = function(filepath, timeout_sec)
-                return string.format("timeout %d php %s 2>&1", timeout_sec, filepath)
+            run_cmd = function(filepath, timeout_sec, work_dir)
+                return string.format("cd '%s' && timeout %d php '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".php"
         }
@@ -110,12 +126,20 @@ local CONFIG = {
 }
 
 --------------------------------------------------------------------------------
+-- 日志工具
+--------------------------------------------------------------------------------
+
+local function log_request(method, path, status, duration_ms, extra)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local extra_str = extra and (" | " .. extra) or ""
+    print(string.format("[%s] %s %s -> %d (%.2fms)%s",
+        timestamp, method, path, status, duration_ms, extra_str))
+end
+
+--------------------------------------------------------------------------------
 -- 工具函数
 --------------------------------------------------------------------------------
 
---@description: 生成 UUID v4 格式的唯一标识符
---@return: string - UUID 字符串
---@usage: local id = uuid()
 local function uuid()
     local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
     return (template:gsub("[xy]", function(c)
@@ -124,56 +148,28 @@ local function uuid()
     end))
 end
 
---@description: 获取 ISO 8601 格式的当前 UTC 时间戳
---@return: string - ISO 8601 时间戳字符串
---@usage: local timestamp = iso8601_now()
 local function iso8601_now()
     return os.date("!%Y-%m-%dT%H:%M:%S") .. ".000Z"
 end
 
---@description: 获取毫秒级时间戳
---@return: number - 毫秒时间戳
---@usage: local ms = get_time_ms()
 local function get_time_ms()
     local ok, socket = pcall(require, "socket")
     if ok and socket.gettime then
-        return math.floor(socket.gettime() * 1000)
+        return socket.gettime() * 1000
     end
     return os.time() * 1000
 end
 
---@description: 发送 JSON 格式的 HTTP 响应
---@param res: table - Pegasus 响应对象
---@param status: number - HTTP 状态码
---@param data: table - 响应数据表
---@usage: json_response(res, 200, {status = "ok"})
-local function json_response(res, status, data)
-    res:statusCode(status)
-    res:addHeader("Content-Type", "application/json; charset=utf-8")
-    res:addHeader("Access-Control-Allow-Origin", "*")
-    res:addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    res:addHeader("Access-Control-Allow-Headers", "Content-Type")
-    res:write(cjson.encode(data))
-end
-
---@description: 读取 HTTP 请求体
---@param req: table - Pegasus 请求对象
---@return: string|nil - 请求体内容或 nil
---@usage: local body = read_body(req)
-local function read_body(req)
-    local body = req:post()
-    if type(body) == "string" then
-        return body
+local function read_file(path)
+    local file = io.open(path, "r")
+    if not file then
+        return nil
     end
-    return nil
+    local content = file:read("*a")
+    file:close()
+    return content
 end
 
---@description: 写入文件内容
---@param path: string - 文件路径
---@param content: string - 文件内容
---@return: boolean - 是否成功
---@return: string|nil - 错误信息
---@usage: local ok, err = write_file("/tmp/test.txt", "content")
 local function write_file(path, content)
     local file = io.open(path, "w")
     if not file then
@@ -184,39 +180,37 @@ local function write_file(path, content)
     return true
 end
 
---@description: 删除文件（静默失败）
---@param path: string - 文件路径
---@usage: remove_file("/tmp/test.txt")
+local function file_exists(path)
+    local file = io.open(path, "r")
+    if file then
+        file:close()
+        return true
+    end
+    return false
+end
+
 local function remove_file(path)
     os.remove(path)
 end
 
---@description: 确保目录存在，不存在则创建
---@param path: string - 目录路径
---@usage: ensure_dir("/tmp/ds4viz")
+local function remove_dir(path)
+    os.execute(string.format("rm -rf '%s' 2>/dev/null", path))
+end
+
 local function ensure_dir(path)
     os.execute(string.format("mkdir -p '%s' 2>/dev/null", path))
 end
 
---@description: 执行 shell 命令并获取输出
---@param cmd: string - shell 命令
---@return: string|nil - 命令输出
---@return: number|nil - 退出码
---@usage: local output, code = exec_shell("ls -la")
 local function exec_shell(cmd)
     local handle = io.popen(cmd, "r")
     if not handle then
-        return nil, "无法执行命令"
+        return nil, -1
     end
     local output = handle:read("*a")
     local success, exit_type, exit_code = handle:close()
-    return output, exit_code
+    return output, exit_code or 0
 end
 
---@description: 获取编程语言的版本信息
---@param lang_config: table - 语言配置表
---@return: string - 版本信息字符串
---@usage: local version = get_lang_version(CONFIG.languages.python)
 local function get_lang_version(lang_config)
     local output, _ = exec_shell(lang_config.version_cmd)
     if output then
@@ -228,9 +222,6 @@ local function get_lang_version(lang_config)
     return "unknown"
 end
 
---@description: 获取支持的语言列表
---@return: table - 语言名称数组
---@usage: local langs = get_supported_languages()
 local function get_supported_languages()
     local langs = {}
     for lang, _ in pairs(CONFIG.languages) do
@@ -244,11 +235,8 @@ end
 -- 数据库
 --------------------------------------------------------------------------------
 
---@description: SQLite 数据库连接对象
 local db
 
---@description: 初始化 SQLite 数据库，创建必要的表和索引
---@usage: init_db()
 local function init_db()
     db = sqlite3.open(CONFIG.db_path)
     db:exec([[
@@ -264,6 +252,7 @@ local function init_db()
             timeout_ms    INTEGER NULL,
             client_ip     TEXT NULL,
             toml          TEXT NULL,
+            stdout        TEXT NULL,
             http_error    TEXT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_exec_runs_created_at ON exec_runs(created_at);
@@ -272,23 +261,10 @@ local function init_db()
     ]])
 end
 
---@description: 记录代码执行日志到数据库
---@param params: table - 执行参数表
---@field request_id: string - 请求ID
---@field lang: string - 编程语言
---@field lang_version: string - 语言版本
---@field code: string - 源代码
---@field status: string - 执行状态
---@field duration_ms: number - 执行耗时
---@field timeout_ms: number|nil - 超时设置
---@field client_ip: string|nil - 客户端IP
---@field toml: string|nil - TOML输出
---@field http_error: string|nil - HTTP错误信息
---@usage: log_execution({request_id = "xxx", lang = "python", ...})
 local function log_execution(params)
     local stmt = db:prepare([[
-        INSERT INTO exec_runs (request_id, lang, lang_version, code, status, duration_ms, timeout_ms, client_ip, toml, http_error)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO exec_runs (request_id, lang, lang_version, code, status, duration_ms, timeout_ms, client_ip, toml, stdout, http_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]])
     if stmt then
         stmt:bind_values(
@@ -301,6 +277,7 @@ local function log_execution(params)
             params.timeout_ms,
             params.client_ip,
             params.toml,
+            params.stdout,
             params.http_error
         )
         stmt:step()
@@ -312,118 +289,164 @@ end
 -- 代码执行器
 --------------------------------------------------------------------------------
 
---@description: 执行用户提交的代码
---@param lang: string - 编程语言
---@param code: string - 源代码
---@param timeout_ms: number - 超时时间（毫秒）
---@return: string|nil - 标准输出内容
---@return: number - 执行耗时（毫秒）
---@return: string - 执行状态（"ok" 或 "error"）
---@return: string|nil - 错误信息
---@usage: local output, duration, status, err = execute_code("python", code, 5000)
 local function execute_code(lang, code, timeout_ms)
     local lang_config = CONFIG.languages[lang]
     if not lang_config then
-        return nil, 0, "error", "不支持的语言: " .. lang
+        return nil, nil, 0, "error", "不支持的语言: " .. lang
     end
 
     local start_time = get_time_ms()
     local timeout_sec = math.ceil(timeout_ms / 1000)
 
-    ensure_dir(CONFIG.temp_dir)
+    -- 为每次执行创建独立的工作目录
+    local exec_id = uuid()
+    local work_dir = CONFIG.temp_dir .. "/" .. exec_id
+    ensure_dir(work_dir)
 
-    local file_id = uuid()
-    local src_path = CONFIG.temp_dir .. "/" .. file_id .. lang_config.extension
-    local exe_path = CONFIG.temp_dir .. "/" .. file_id
+    local src_filename = "main" .. lang_config.extension
+    local src_path = work_dir .. "/" .. src_filename
+    local exe_path = work_dir .. "/main"
+    local trace_path = work_dir .. "/" .. CONFIG.trace_filename
 
     local ok, err = write_file(src_path, code)
     if not ok then
-        return nil, get_time_ms() - start_time, "error", err
+        remove_dir(work_dir)
+        return nil, nil, get_time_ms() - start_time, "error", err
     end
 
-    local output, exit_code
-    local cleanup_files = { src_path }
+    local stdout, exit_code
 
+    -- 编译型语言：先编译
     if lang_config.compile then
-        local compile_cmd = lang_config.compile_cmd(src_path, exe_path, timeout_sec)
+        local compile_cmd = lang_config.compile_cmd(src_path, exe_path, timeout_sec, work_dir)
         local compile_output, compile_exit = exec_shell(compile_cmd)
 
         if compile_exit ~= 0 then
-            for _, f in ipairs(cleanup_files) do remove_file(f) end
+            remove_dir(work_dir)
             local duration = get_time_ms() - start_time
-            return compile_output or "编译失败", duration, "error", nil
+            return nil, compile_output or "编译失败", duration, "error", "编译失败"
         end
-
-        table.insert(cleanup_files, exe_path)
     end
 
+    -- 执行代码
     local run_target = lang_config.compile and exe_path or src_path
-    local run_cmd = lang_config.run_cmd(run_target, timeout_sec)
+    local run_cmd = lang_config.run_cmd(run_target, timeout_sec, work_dir)
 
-    output, exit_code = exec_shell(run_cmd)
-
-    for _, f in ipairs(cleanup_files) do
-        remove_file(f)
-    end
+    stdout, exit_code = exec_shell(run_cmd)
 
     local duration = get_time_ms() - start_time
 
+    -- 检查超时
     if exit_code == 124 then
-        return output or "", duration, "error", "执行超时"
+        remove_dir(work_dir)
+        return nil, stdout or "", duration, "error", "执行超时"
     end
 
-    local status = (exit_code == 0) and "ok" or "error"
-    return output or "", duration, status, nil
+    -- 读取 trace.toml 文件
+    local toml_content = nil
+    if file_exists(trace_path) then
+        toml_content = read_file(trace_path)
+    end
+
+    -- 清理工作目录
+    remove_dir(work_dir)
+
+    -- 判断执行状态
+    local status
+    if exit_code ~= 0 then
+        status = "error"
+    elseif toml_content then
+        status = "ok"
+    else
+        status = "error"
+    end
+
+    return toml_content, stdout or "", duration, status, nil
 end
 
 --------------------------------------------------------------------------------
--- 请求处理器
+-- 响应辅助函数
 --------------------------------------------------------------------------------
 
---@description: 处理健康检查请求
---@param req: table - Pegasus 请求对象
---@param res: table - Pegasus 响应对象
---@usage: handle_ping(req, res)
-local function handle_ping(req, res)
-    json_response(res, 200, {
-        status = "ok",
-        timestamp = iso8601_now(),
-        supported_languages = get_supported_languages(),
-        default_timeout_ms = CONFIG.default_timeout_ms
-    })
+local function add_cors_headers(resp)
+    resp:addHeader("Access-Control-Allow-Origin", "*")
+    resp:addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    resp:addHeader("Access-Control-Allow-Headers", "Content-Type")
 end
 
---@description: 处理代码执行请求
---@param req: table - Pegasus 请求对象
---@param res: table - Pegasus 响应对象
---@usage: handle_execute(req, res)
-local function handle_execute(req, res)
-    local request_id = uuid()
-    local start_time = get_time_ms()
-    local client_ip = req:headers()["X-Forwarded-For"] or req:headers()["x-forwarded-for"] or "unknown"
+local function json_response(resp, status, data)
+    resp:statusCode(status)
+    resp:addHeader("Content-Type", "application/json; charset=utf-8")
+    add_cors_headers(resp)
+    resp:write(cjson.encode(data))
+end
 
-    local body = read_body(req)
+--------------------------------------------------------------------------------
+-- 读取 JSON 请求体
+--------------------------------------------------------------------------------
+
+local function read_json_body(req)
+    local headers = req:headers()
+    local content_length = tonumber(headers["content-length"]) or 0
+
+    if content_length <= 0 then
+        return nil, "请求体为空"
+    end
+
+    local body = req:receiveBody(content_length)
+
     if not body or body == "" then
-        local duration = get_time_ms() - start_time
-        log_execution({
-            request_id = request_id,
-            lang = "",
-            lang_version = "",
-            code = "",
-            status = "error",
-            duration_ms = duration,
-            client_ip = client_ip,
-            http_error = "请求体为空"
-        })
-        json_response(res, 400, {
-            error = "validation",
-            message = "请求体为空"
-        })
-        return
+        return nil, "请求体为空"
     end
 
     local ok, data = pcall(cjson.decode, body)
     if not ok then
+        return nil, "无效的 JSON: " .. tostring(data)
+    end
+
+    return data, nil
+end
+
+--------------------------------------------------------------------------------
+-- 请求处理
+--------------------------------------------------------------------------------
+
+local function handle_ping(req, resp)
+    local start_time = get_time_ms()
+
+    local response_data = {
+        status = "ok",
+        timestamp = iso8601_now(),
+        supported_languages = get_supported_languages(),
+        default_timeout_ms = CONFIG.default_timeout_ms
+    }
+
+    json_response(resp, 200, response_data)
+
+    local duration = get_time_ms() - start_time
+    log_request("GET", "/ping", 200, duration, "health check")
+end
+
+local function handle_options(req, resp)
+    local start_time = get_time_ms()
+
+    resp:statusCode(204)
+    add_cors_headers(resp)
+    resp:write("")
+
+    local duration = get_time_ms() - start_time
+    log_request("OPTIONS", req:path(), 204, duration, "preflight")
+end
+
+local function handle_execute(req, resp)
+    local start_time = get_time_ms()
+    local request_id = uuid()
+    local headers = req:headers()
+    local client_ip = headers["x-forwarded-for"] or req.ip or "unknown"
+
+    local data, body_err = read_json_body(req)
+
+    if not data then
         local duration = get_time_ms() - start_time
         log_execution({
             request_id = request_id,
@@ -433,12 +456,13 @@ local function handle_execute(req, res)
             status = "error",
             duration_ms = duration,
             client_ip = client_ip,
-            http_error = "无效的 JSON"
+            http_error = body_err
         })
-        json_response(res, 400, {
+        json_response(resp, 400, {
             error = "validation",
-            message = "无效的 JSON"
+            message = body_err
         })
+        log_request("POST", "/execute", 400, duration, body_err)
         return
     end
 
@@ -455,10 +479,11 @@ local function handle_execute(req, res)
             client_ip = client_ip,
             http_error = "缺少必填字段: lang"
         })
-        json_response(res, 400, {
+        json_response(resp, 400, {
             error = "validation",
             message = "缺少必填字段: lang"
         })
+        log_request("POST", "/execute", 400, duration, "missing lang")
         return
     end
 
@@ -475,10 +500,11 @@ local function handle_execute(req, res)
             client_ip = client_ip,
             http_error = "缺少必填字段: code"
         })
-        json_response(res, 400, {
+        json_response(resp, 400, {
             error = "validation",
             message = "缺少必填字段: code"
         })
+        log_request("POST", "/execute", 400, duration, "missing code")
         return
     end
 
@@ -496,10 +522,11 @@ local function handle_execute(req, res)
             client_ip = client_ip,
             http_error = "不支持的语言: " .. data.lang
         })
-        json_response(res, 400, {
+        json_response(resp, 400, {
             error = "validation",
             message = "不支持的语言: " .. data.lang
         })
+        log_request("POST", "/execute", 400, duration, "unsupported lang: " .. data.lang)
         return
     end
 
@@ -517,20 +544,22 @@ local function handle_execute(req, res)
             client_ip = client_ip,
             http_error = string.format("timeout_ms 必须在 %d 到 %d 之间", CONFIG.min_timeout_ms, CONFIG.max_timeout_ms)
         })
-        json_response(res, 400, {
+        json_response(resp, 400, {
             error = "validation",
             message = string.format("timeout_ms 必须在 %d 到 %d 之间", CONFIG.min_timeout_ms, CONFIG.max_timeout_ms)
         })
+        log_request("POST", "/execute", 400, duration, "invalid timeout")
         return
     end
 
     local lang_version = get_lang_version(lang_config)
 
-    local output, exec_duration, status, exec_error = execute_code(data.lang, data.code, timeout_ms)
+    local toml_content, stdout, exec_duration, status, exec_error = execute_code(data.lang, data.code, timeout_ms)
 
     local total_duration = get_time_ms() - start_time
 
-    if exec_error and not output then
+    -- 内部错误（如无法创建文件）
+    if exec_error and not toml_content and not stdout then
         log_execution({
             request_id = request_id,
             lang = data.lang,
@@ -542,13 +571,15 @@ local function handle_execute(req, res)
             client_ip = client_ip,
             http_error = exec_error
         })
-        json_response(res, 500, {
+        json_response(resp, 500, {
             error = "internal",
             message = exec_error
         })
+        log_request("POST", "/execute", 500, total_duration, data.lang .. " | " .. exec_error)
         return
     end
 
+    -- 记录执行日志
     log_execution({
         request_id = request_id,
         lang = data.lang,
@@ -558,55 +589,55 @@ local function handle_execute(req, res)
         duration_ms = total_duration,
         timeout_ms = timeout_ms,
         client_ip = client_ip,
-        toml = output
+        toml = toml_content,
+        stdout = stdout
     })
 
-    json_response(res, 200, {
+    -- 构建响应
+    local response_data = {
         request_id = request_id,
         duration_ms = exec_duration,
-        toml = output
-    })
+        status = status
+    }
+
+    if toml_content then
+        response_data.toml = toml_content
+    end
+
+    if stdout and stdout ~= "" then
+        response_data.stdout = stdout
+    end
+
+    if status == "error" then
+        if exec_error then
+            response_data.error = exec_error
+        elseif not toml_content then
+            response_data.error = "未生成 trace.toml 文件"
+        end
+    end
+
+    json_response(resp, 200, response_data)
+
+    log_request("POST", "/execute", 200, total_duration,
+        string.format("%s | %s | %.0fms exec | toml=%s",
+            data.lang,
+            status,
+            exec_duration,
+            toml_content and "yes" or "no"))
 end
 
---@description: 处理 CORS 预检请求
---@param req: table - Pegasus 请求对象
---@param res: table - Pegasus 响应对象
---@usage: handle_options(req, res)
-local function handle_options(req, res)
-    res:statusCode(204)
-    res:addHeader("Access-Control-Allow-Origin", "*")
-    res:addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    res:addHeader("Access-Control-Allow-Headers", "Content-Type")
-    res:write("")
-end
-
---------------------------------------------------------------------------------
--- 路由
---------------------------------------------------------------------------------
-
---@description: HTTP 请求路由处理器
---@param req: table - Pegasus 请求对象
---@param res: table - Pegasus 响应对象
---@usage: router(req, res)
-local function router(req, res)
+local function handle_not_found(req, resp)
+    local start_time = get_time_ms()
     local method = req:method()
     local path = req:path()
 
-    if method == "OPTIONS" then
-        handle_options(req, res)
-        return
-    end
+    json_response(resp, 404, {
+        error = "not_found",
+        message = "接口不存在: " .. method .. " " .. path
+    })
 
-    if path == "/ping" and method == "GET" then
-        handle_ping(req, res)
-    elseif path == "/execute" and method == "POST" then
-        handle_execute(req, res)
-    else
-        json_response(res, 404, {
-            error = "not_found",
-            message = "接口不存在: " .. method .. " " .. path
-        })
-    end
+    local duration = get_time_ms() - start_time
+    log_request(method, path, 404, duration, "not found")
 end
 
 --------------------------------------------------------------------------------
@@ -619,15 +650,39 @@ init_db()
 
 ensure_dir(CONFIG.temp_dir)
 
-print(string.format("[ds4viz] Demo Server 启动于 %s:%d", CONFIG.host, CONFIG.port))
-print("[ds4viz] 支持语言: " .. table.concat(get_supported_languages(), ", "))
-print("[ds4viz] 默认超时: " .. CONFIG.default_timeout_ms .. "ms")
-print("[ds4viz] 临时目录: " .. CONFIG.temp_dir)
-print("[ds4viz] 按 Ctrl+C 停止服务")
+print("================================================================================")
+print("  ds4viz Demo Server")
+print("================================================================================")
+print(string.format("  监听地址: %s:%s", CONFIG.host, CONFIG.port))
+print(string.format("  支持语言: %s", table.concat(get_supported_languages(), ", ")))
+print(string.format("  默认超时: %dms", CONFIG.default_timeout_ms))
+print(string.format("  临时目录: %s", CONFIG.temp_dir))
+print(string.format("  数据库:   %s", CONFIG.db_path))
+print(string.format("  trace文件: %s", CONFIG.trace_filename))
+print("--------------------------------------------------------------------------------")
+print("  按 Ctrl+C 停止服务")
+print("================================================================================")
+print("")
 
-local server = pegasus:new({
+local server = Pegasus:new({
     host = CONFIG.host,
     port = CONFIG.port
 })
 
-server:start(router)
+server:start(function(req, resp)
+    local method = req:method()
+    local path = req:path()
+
+    if method == "OPTIONS" then
+        handle_options(req, resp)
+        return
+    end
+
+    if path == "/ping" and method == "GET" then
+        handle_ping(req, resp)
+    elseif path == "/execute" and method == "POST" then
+        handle_execute(req, resp)
+    else
+        handle_not_found(req, resp)
+    end
+end)
