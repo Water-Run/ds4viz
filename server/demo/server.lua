@@ -10,16 +10,16 @@ ds4viz Demo Server
 - cjson JSON 解析库
 
 支持语言：
-- Lua, Python, JavaScript, TypeScript, C, Rust, PHP
+- Lua, Python, Rust
 
 Author:
     WaterRun
 File:
-    ds4viz/server/demo_server.lua
+    ds4viz/server/demo/server.lua
 Date:
     2025-12-26
 Updated:
-    2025-12-27
+    2025-12-29
 ]]
 
 local Pegasus = require("pegasus")
@@ -55,72 +55,40 @@ local CONFIG = {
             end,
             extension = ".py"
         },
-        javascript = {
-            version_cmd = "node --version 2>&1",
-            run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d node '%s' 2>&1", work_dir, timeout_sec, filepath)
-            end,
-            extension = ".js"
-        },
-        typescript = {
-            version_cmd = "tsx --version 2>&1",
-            run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d tsx '%s' 2>&1", work_dir, timeout_sec, filepath)
-            end,
-            extension = ".ts"
-        },
-        c = {
-            version_cmd = "gcc --version 2>&1 | head -1",
-            compile = true,
-            compile_cmd = function(src, out, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d gcc -o '%s' '%s' -lm 2>&1", work_dir, timeout_sec, out, src)
-            end,
-            run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d '%s' 2>&1", work_dir, timeout_sec, filepath)
-            end,
-            extension = ".c"
-        },
         rust = {
             version_cmd = "rustc --version 2>&1",
             compile = true,
             compile_cmd = function(src, out, timeout_sec, work_dir)
                 local deps = "/home/waterrun/Coding/ds4viz/library/rust/target/debug/deps"
                 return string.format([[
-        cd '%s' && timeout %d bash -lc '
-        DS4VIZ_DEPS="%s"
-        DS4VIZ_RLIB=$(ls %s/libds4viz-*.rlib 2>/dev/null | head -n 1)
-        if [ -z "$DS4VIZ_RLIB" ]; then
-          echo "ds4viz rlib not found under %s"
-          echo "Build once: (cd /home/waterrun/Coding/ds4viz/library/rust && cargo build)"
-          exit 2
-        fi
+cd '%s' && timeout %d bash -lc '
+DS4VIZ_DEPS="%s"
+DS4VIZ_RLIB=$(ls %s/libds4viz-*.rlib 2>/dev/null | head -n 1)
+if [ -z "$DS4VIZ_RLIB" ]; then
+  echo "ds4viz rlib not found under %s"
+  echo "Build once: (cd /home/waterrun/Coding/ds4viz/library/rust && cargo build)"
+  exit 2
+fi
 
-        cat > __ds4viz_runner.rs <<RS
-        mod user {
-            use ds4viz::prelude::*;
-            include!(r#"%s"#);
-        }
-        fn main() { user::main(); }
-        RS
+cat > __ds4viz_runner.rs <<RS
+mod user {
+    use ds4viz::prelude::*;
+    include!(r#"%s"#);
+}
+fn main() { user::main(); }
+RS
 
-        rustc --edition=2021 -C debuginfo=0 -C opt-level=0 -C codegen-units=256 \
-          -o "%s" __ds4viz_runner.rs \
-          -L dependency="$DS4VIZ_DEPS" \
-          --extern ds4viz="$DS4VIZ_RLIB"
-        ' 2>&1
-        ]], work_dir, timeout_sec, deps, deps, deps, src, out)
+rustc --edition=2021 -C debuginfo=0 -C opt-level=0 -C codegen-units=256 \
+  -o "%s" __ds4viz_runner.rs \
+  -L dependency="$DS4VIZ_DEPS" \
+  --extern ds4viz="$DS4VIZ_RLIB"
+' 2>&1
+]], work_dir, timeout_sec, deps, deps, deps, src, out)
             end,
             run_cmd = function(filepath, timeout_sec, work_dir)
                 return string.format("cd '%s' && timeout %d '%s' 2>&1", work_dir, timeout_sec, filepath)
             end,
             extension = ".rs"
-        },
-        php = {
-            version_cmd = "php --version 2>&1 | head -1",
-            run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d php '%s' 2>&1", work_dir, timeout_sec, filepath)
-            end,
-            extension = ".php"
         }
     }
 }
@@ -187,10 +155,6 @@ local function file_exists(path)
         return true
     end
     return false
-end
-
-local function remove_file(path)
-    os.remove(path)
 end
 
 local function remove_dir(path)
@@ -298,7 +262,6 @@ local function execute_code(lang, code, timeout_ms)
     local start_time = get_time_ms()
     local timeout_sec = math.ceil(timeout_ms / 1000)
 
-    -- 为每次执行创建独立的工作目录
     local exec_id = uuid()
     local work_dir = CONFIG.temp_dir .. "/" .. exec_id
     ensure_dir(work_dir)
@@ -316,7 +279,6 @@ local function execute_code(lang, code, timeout_ms)
 
     local stdout, exit_code
 
-    -- 编译型语言：先编译
     if lang_config.compile then
         local compile_cmd = lang_config.compile_cmd(src_path, exe_path, timeout_sec, work_dir)
         local compile_output, compile_exit = exec_shell(compile_cmd)
@@ -328,7 +290,6 @@ local function execute_code(lang, code, timeout_ms)
         end
     end
 
-    -- 执行代码
     local run_target = lang_config.compile and exe_path or src_path
     local run_cmd = lang_config.run_cmd(run_target, timeout_sec, work_dir)
 
@@ -336,22 +297,18 @@ local function execute_code(lang, code, timeout_ms)
 
     local duration = get_time_ms() - start_time
 
-    -- 检查超时
     if exit_code == 124 then
         remove_dir(work_dir)
         return nil, stdout or "", duration, "error", "执行超时"
     end
 
-    -- 读取 trace.toml 文件
     local toml_content = nil
     if file_exists(trace_path) then
         toml_content = read_file(trace_path)
     end
 
-    -- 清理工作目录
     remove_dir(work_dir)
 
-    -- 判断执行状态
     local status
     if exit_code ~= 0 then
         status = "error"
@@ -399,9 +356,25 @@ local function read_json_body(req)
         return nil, "请求体为空"
     end
 
+    -- 去除首尾空白
+    body = body:match("^%s*(.-)%s*$")
+    if body == "" then
+        return nil, "请求体为空"
+    end
+
     local ok, data = pcall(cjson.decode, body)
     if not ok then
         return nil, "无效的 JSON: " .. tostring(data)
+    end
+
+    -- 确保解析结果是 table
+    if type(data) ~= "table" then
+        return nil, "请求体必须是 JSON 对象"
+    end
+
+    -- 检查是否为数组（数组的第一个键是数字）
+    if data[1] ~= nil then
+        return nil, "请求体必须是 JSON 对象，不能是数组"
     end
 
     return data, nil
@@ -558,7 +531,6 @@ local function handle_execute(req, resp)
 
     local total_duration = get_time_ms() - start_time
 
-    -- 内部错误（如无法创建文件）
     if exec_error and not toml_content and not stdout then
         log_execution({
             request_id = request_id,
@@ -579,7 +551,6 @@ local function handle_execute(req, resp)
         return
     end
 
-    -- 记录执行日志
     log_execution({
         request_id = request_id,
         lang = data.lang,
@@ -593,7 +564,6 @@ local function handle_execute(req, resp)
         stdout = stdout
     })
 
-    -- 构建响应
     local response_data = {
         request_id = request_id,
         duration_ms = exec_duration,
