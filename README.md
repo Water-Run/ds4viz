@@ -2,7 +2,7 @@
 
 `WaterRun`  
 
-![logo](./temp/cutout.png)  
+![logo](./assets/logo.png)  
 
 毕业论文项目. 一个可扩展的数据结构可视化教学平台.  
 
@@ -16,6 +16,8 @@
 [编写代码]              [执行生成]                [可视化渲染]
 调用ds4viz库  ->  生成统一.toml描述文件  ->  渲染器解析并交互展示
 ```
+
+![Nano Banana Pro, 示意图](./assets/架构.png)
 
 **关键特性**
 
