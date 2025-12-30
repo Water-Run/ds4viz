@@ -17,7 +17,7 @@ fn emit_toml(path: &str) {
 }
 
 fn main() {
-    let out = "/tmp/ds4viz_rust_bst_sucess.toml";
+    let out = "trace.toml";
 
     let _ = ds4viz::binary_search_tree_with_output("demo_bst_ok", out, |bst| {
         bst.insert(10)?;

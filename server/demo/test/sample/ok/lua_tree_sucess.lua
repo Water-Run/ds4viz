@@ -1,8 +1,7 @@
 local ds4viz = require("ds4viz")
 
--- 写到 stdout，确保 Demo Server 能直接返回 TOML
 ds4viz.config({
-    output_path = "/dev/stdout",
+    output_path = "trace.toml",
     title = "Lua BinaryTree Complex Success",
     author = "WaterRun",
     comment = "覆盖 insertRoot/insertLeft/insertRight/updateValue/delete 多类操作"

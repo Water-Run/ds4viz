@@ -17,7 +17,7 @@ fn emit_toml(path: &str) {
 }
 
 fn main() {
-    let out = "/tmp/ds4viz_rust_heap_sucess.toml";
+    let out = "trace.toml";
 
     let _ = ds4viz::heap_with_output("demo_min_heap_ok", out, HeapType::Min, |h| {
         h.insert(10)?;

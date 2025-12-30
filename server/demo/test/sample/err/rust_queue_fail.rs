@@ -17,7 +17,7 @@ fn emit_toml(path: &str) {
 }
 
 fn main() {
-    let out = "/tmp/ds4viz_rust_queue_fail.toml";
+    let out = "trace.toml";
 
     // 触发 EmptyStructure：空队列 dequeue
     let _ = ds4viz::queue_with_output("demo_queue_fail_empty", out, |q| {

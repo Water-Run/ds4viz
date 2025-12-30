@@ -8,6 +8,7 @@ ds4viz Demo Server
 - Pegasus HTTP 框架
 - SQLite3 数据库
 - cjson JSON 解析库
+- cargo-script (Rust支持)
 
 支持语言：
 - Lua, Python, Rust
@@ -19,7 +20,7 @@ File:
 Date:
     2025-12-26
 Updated:
-    2025-12-29
+    2025-12-30
 ]]
 
 local Pegasus = require("pegasus")
@@ -40,53 +41,61 @@ local CONFIG = {
     temp_dir = "/tmp/ds4viz",
     trace_filename = "trace.toml",
 
+    -- Rust ds4viz 库路径
+    ds4viz_rust_path = os.getenv("DS4VIZ_RUST_PATH") or "/home/waterrun/Coding/ds4viz/library/rust",
+
     languages = {
         lua = {
             version_cmd = "lua -v 2>&1",
             run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d lua '%s' 2>&1", work_dir, timeout_sec, filepath)
+                return string.format("cd '%s' && timeout %d lua '%s' 2>&1",
+                    work_dir, timeout_sec, filepath)
             end,
             extension = ".lua"
         },
         python = {
             version_cmd = "python3 --version 2>&1",
             run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d python3 -u '%s' 2>&1", work_dir, timeout_sec, filepath)
+                return string.format("cd '%s' && timeout %d python3 -u '%s' 2>&1",
+                    work_dir, timeout_sec, filepath)
             end,
             extension = ".py"
         },
         rust = {
-            version_cmd = "rustc --version 2>&1",
-            compile = true,
-            compile_cmd = function(src, out, timeout_sec, work_dir)
-                local deps = "/home/waterrun/Coding/ds4viz/library/rust/target/debug/deps"
+            version_cmd = "cargo --version 2>&1",
+            prepare = true, -- 需要预处理代码
+            prepare_cmd = function(src_path, work_dir, ds4viz_path)
                 return string.format([[
-cd '%s' && timeout %d bash -lc '
-DS4VIZ_DEPS="%s"
-DS4VIZ_RLIB=$(ls %s/libds4viz-*.rlib 2>/dev/null | head -n 1)
-if [ -z "$DS4VIZ_RLIB" ]; then
-  echo "ds4viz rlib not found under %s"
-  echo "Build once: (cd /home/waterrun/Coding/ds4viz/library/rust && cargo build)"
-  exit 2
-fi
+cd '%s' && cat > _prepared.rs <<'RUST_EOF'
+#!/usr/bin/env cargo
+//! ```cargo
+//! [dependencies]
+//! ds4viz = { path = "%s" }
+//! ```
 
-cat > __ds4viz_runner.rs <<RS
-mod user {
-    use ds4viz::prelude::*;
-    include!(r#"%s"#);
-}
-fn main() { user::main(); }
-RS
+use ds4viz::prelude::*;
 
-rustc --edition=2021 -C debuginfo=0 -C opt-level=0 -C codegen-units=256 \
-  -o "%s" __ds4viz_runner.rs \
-  -L dependency="$DS4VIZ_DEPS" \
-  --extern ds4viz="$DS4VIZ_RLIB"
-' 2>&1
-]], work_dir, timeout_sec, deps, deps, deps, src, out)
+RUST_EOF
+cat '%s' >> _prepared.rs
+]], work_dir, ds4viz_path, src_path)
             end,
             run_cmd = function(filepath, timeout_sec, work_dir)
-                return string.format("cd '%s' && timeout %d '%s' 2>&1", work_dir, timeout_sec, filepath)
+                -- 使用 cargo-eval 或 cargo-script
+                -- 优先尝试 cargo-eval (Rust 1.74+)，回退到 cargo-script
+                return string.format([[
+cd '%s' && timeout %d bash -c '
+if cargo eval --help >/dev/null 2>&1; then
+    cargo eval _prepared.rs 2>&1
+elif cargo script --help >/dev/null 2>&1; then
+    cargo script _prepared.rs 2>&1
+else
+    echo "错误: 需要安装 cargo-script 或使用 Rust 1.74+ 的 cargo-eval"
+    echo "安装命令: cargo install cargo-script"
+    echo "或升级到 Rust 1.74+: rustup update"
+    exit 127
+fi
+' 2>&1
+]], work_dir, timeout_sec)
             end,
             extension = ".rs"
         }
@@ -268,9 +277,9 @@ local function execute_code(lang, code, timeout_ms)
 
     local src_filename = "main" .. lang_config.extension
     local src_path = work_dir .. "/" .. src_filename
-    local exe_path = work_dir .. "/main"
     local trace_path = work_dir .. "/" .. CONFIG.trace_filename
 
+    -- 写入用户代码
     local ok, err = write_file(src_path, code)
     if not ok then
         remove_dir(work_dir)
@@ -279,29 +288,37 @@ local function execute_code(lang, code, timeout_ms)
 
     local stdout, exit_code
 
-    if lang_config.compile then
-        local compile_cmd = lang_config.compile_cmd(src_path, exe_path, timeout_sec, work_dir)
-        local compile_output, compile_exit = exec_shell(compile_cmd)
+    -- 如果需要预处理（Rust）
+    if lang_config.prepare then
+        local prepare_cmd = lang_config.prepare_cmd(src_path, work_dir, CONFIG.ds4viz_rust_path)
+        local prepare_output, prepare_exit = exec_shell(prepare_cmd)
 
-        if compile_exit ~= 0 then
+        if prepare_exit ~= 0 then
             remove_dir(work_dir)
             local duration = get_time_ms() - start_time
-            return nil, compile_output or "编译失败", duration, "error", "编译失败"
+            return nil, prepare_output or "代码预处理失败", duration, "error", "代码预处理失败"
         end
     end
 
-    local run_target = lang_config.compile and exe_path or src_path
-    local run_cmd = lang_config.run_cmd(run_target, timeout_sec, work_dir)
-
+    -- 执行代码
+    local run_cmd = lang_config.run_cmd(src_path, timeout_sec, work_dir)
     stdout, exit_code = exec_shell(run_cmd)
 
     local duration = get_time_ms() - start_time
 
+    -- 检查是否超时
     if exit_code == 124 then
         remove_dir(work_dir)
         return nil, stdout or "", duration, "error", "执行超时"
     end
 
+    -- 检查 cargo-script 是否未安装 (exit code 127)
+    if exit_code == 127 and lang == "rust" then
+        remove_dir(work_dir)
+        return nil, stdout or "", duration, "error", "Rust 执行环境未配置"
+    end
+
+    -- 读取生成的 TOML 文件
     local toml_content = nil
     if file_exists(trace_path) then
         toml_content = read_file(trace_path)
@@ -309,6 +326,7 @@ local function execute_code(lang, code, timeout_ms)
 
     remove_dir(work_dir)
 
+    -- 判断执行状态
     local status
     if exit_code ~= 0 then
         status = "error"
@@ -356,7 +374,6 @@ local function read_json_body(req)
         return nil, "请求体为空"
     end
 
-    -- 去除首尾空白
     body = body:match("^%s*(.-)%s*$")
     if body == "" then
         return nil, "请求体为空"
@@ -367,12 +384,10 @@ local function read_json_body(req)
         return nil, "无效的 JSON: " .. tostring(data)
     end
 
-    -- 确保解析结果是 table
     if type(data) ~= "table" then
         return nil, "请求体必须是 JSON 对象"
     end
 
-    -- 检查是否为数组（数组的第一个键是数字）
     if data[1] ~= nil then
         return nil, "请求体必须是 JSON 对象，不能是数组"
     end
@@ -611,6 +626,41 @@ local function handle_not_found(req, resp)
 end
 
 --------------------------------------------------------------------------------
+-- 启动检查
+--------------------------------------------------------------------------------
+
+local function check_rust_environment()
+    print("检查 Rust 执行环境...")
+
+    -- 检查 cargo
+    local cargo_version, _ = exec_shell("cargo --version 2>&1")
+    if not cargo_version or cargo_version == "" then
+        print("  ⚠ 警告: cargo 未安装，Rust 支持将不可用")
+        return false
+    end
+    print("  ✓ cargo: " .. (cargo_version:match("^([^\n]*)") or "unknown"))
+
+    -- 检查 cargo-eval 或 cargo-script
+    local has_eval = exec_shell("cargo eval --help >/dev/null 2>&1; echo $?"):match("^0")
+    local has_script = exec_shell("cargo script --help >/dev/null 2>&1; echo $?"):match("^0")
+
+    if has_eval then
+        print("  ✓ cargo-eval: 可用 (Rust 1.74+)")
+        return true
+    elseif has_script then
+        local script_version, _ = exec_shell("cargo script --version 2>&1")
+        print("  ✓ cargo-script: " .. (script_version:match("^([^\n]*)") or "unknown"))
+        return true
+    else
+        print("  ⚠ 警告: 需要 cargo-eval (Rust 1.74+) 或 cargo-script")
+        print("     安装方法:")
+        print("       - 升级 Rust: rustup update")
+        print("       - 或安装 cargo-script: cargo install cargo-script")
+        return false
+    end
+end
+
+--------------------------------------------------------------------------------
 -- 主程序
 --------------------------------------------------------------------------------
 
@@ -629,6 +679,10 @@ print(string.format("  默认超时: %dms", CONFIG.default_timeout_ms))
 print(string.format("  临时目录: %s", CONFIG.temp_dir))
 print(string.format("  数据库:   %s", CONFIG.db_path))
 print(string.format("  trace文件: %s", CONFIG.trace_filename))
+print("--------------------------------------------------------------------------------")
+
+check_rust_environment()
+
 print("--------------------------------------------------------------------------------")
 print("  按 Ctrl+C 停止服务")
 print("================================================================================")
