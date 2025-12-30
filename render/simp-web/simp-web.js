@@ -3,7 +3,7 @@
  * Version: 2.0.0
  * 
  * 数据结构可视化教学平台 Demo 前端
- * 支持远程执行和本地 JavaScript 执行
+ * 支持远程执行(Python, Rust, Lua)和本地执行(JavaScript)
  * 
  * @file render/simp-web/simp-web.js
  * @author WaterRun
@@ -24,103 +24,92 @@
         defaultTimeout: 10000,
         pingInterval: 30000,
         autoPlayDelay: 800,
-        toastDuration: 4000
+        toastDuration: 4000,
+        autocompleteMinChars: 2,
+        autocompleteDebounce: 100
     };
 
     const LANGUAGE_COLORS = {
         python: '#3776ab',
         javascript: '#f7df1e',
-        typescript: '#3178c6',
         lua: '#000080',
-        c: '#a8b9cc',
-        rust: '#dea584',
-        php: '#777bb4'
+        rust: '#dea584'
     };
 
+    // 支持的语言列表
+    const SUPPORTED_LANGUAGES = ['python', 'javascript', 'lua', 'rust'];
+    const REMOTE_ONLY_LANGUAGES = ['python', 'lua', 'rust'];
+
     // ============================================
-    // 语法高亮规则
+    // 语法规则定义
     // ============================================
 
     const SYNTAX_RULES = {
         python: {
-            keywords: ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'try', 'except', 'finally', 'with', 'as', 'import', 'from', 'return', 'yield', 'raise', 'pass', 'break', 'continue', 'and', 'or', 'not', 'in', 'is', 'None', 'True', 'False', 'lambda', 'global', 'nonlocal', 'async', 'await'],
-            types: ['int', 'float', 'str', 'bool', 'list', 'dict', 'set', 'tuple', 'None'],
+            keywords: [
+                'def', 'class', 'if', 'elif', 'else', 'for', 'while', 'try', 'except',
+                'finally', 'with', 'as', 'import', 'from', 'return', 'yield', 'raise',
+                'pass', 'break', 'continue', 'and', 'or', 'not', 'in', 'is', 'lambda',
+                'global', 'nonlocal', 'async', 'await', 'assert', 'del'
+            ],
+            constants: ['None', 'True', 'False'],
+            builtins: ['print', 'len', 'range', 'str', 'int', 'float', 'list', 'dict', 'set', 'tuple', 'type', 'isinstance', 'hasattr', 'getattr', 'setattr', 'open', 'input', 'map', 'filter', 'zip', 'enumerate', 'sorted', 'reversed', 'min', 'max', 'sum', 'abs', 'all', 'any'],
             ds4vizImports: ['ds4viz', 'dv'],
             ds4vizFunctions: ['stack', 'queue', 'single_linked_list', 'double_linked_list', 'binary_tree', 'binary_search_tree', 'heap', 'graph_undirected', 'graph_directed', 'graph_weighted', 'config'],
             ds4vizMethods: ['push', 'pop', 'clear', 'enqueue', 'dequeue', 'insert_head', 'insert_tail', 'insert_after', 'insert_before', 'delete', 'delete_head', 'delete_tail', 'reverse', 'insert_root', 'insert_left', 'insert_right', 'update_value', 'insert', 'extract', 'add_node', 'add_edge', 'remove_node', 'remove_edge', 'update_node_label', 'update_weight'],
-            commentSingle: '#',
-            stringDelimiters: ['"', "'", '"""', "'''"]
+            stringDelimiters: [{ start: '"""', end: '"""' }, { start: "'''", end: "'''" }, { start: '"', end: '"' }, { start: "'", end: "'" }],
+            lineComment: '#',
+            decorator: '@'
         },
         javascript: {
-            keywords: ['function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return', 'try', 'catch', 'finally', 'throw', 'new', 'class', 'extends', 'import', 'export', 'from', 'default', 'async', 'await', 'yield', 'typeof', 'instanceof', 'delete', 'void', 'this', 'super', 'true', 'false', 'null', 'undefined'],
-            types: ['Array', 'Object', 'String', 'Number', 'Boolean', 'Function', 'Promise', 'Map', 'Set'],
+            keywords: [
+                'function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'do',
+                'switch', 'case', 'break', 'continue', 'return', 'try', 'catch', 'finally',
+                'throw', 'new', 'class', 'extends', 'import', 'export', 'from', 'default',
+                'async', 'await', 'yield', 'typeof', 'instanceof', 'delete', 'void', 'of', 'in'
+            ],
+            constants: ['true', 'false', 'null', 'undefined', 'NaN', 'Infinity', 'this', 'super'],
+            builtins: ['console', 'Math', 'JSON', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Function', 'Promise', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol', 'Date', 'RegExp', 'Error', 'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'encodeURI', 'decodeURI', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'fetch'],
             ds4vizImports: ['ds4viz'],
             ds4vizFunctions: ['stack', 'queue', 'singleLinkedList', 'doubleLinkedList', 'binaryTree', 'binarySearchTree', 'heap', 'graphUndirected', 'graphDirected', 'graphWeighted', 'config', 'withContext'],
             ds4vizMethods: ['push', 'pop', 'clear', 'enqueue', 'dequeue', 'insertHead', 'insertTail', 'insertAfter', 'insertBefore', 'delete', 'deleteHead', 'deleteTail', 'reverse', 'insertRoot', 'insertLeft', 'insertRight', 'updateValue', 'insert', 'extract', 'addNode', 'addEdge', 'removeNode', 'removeEdge', 'updateNodeLabel', 'updateWeight'],
-            commentSingle: '//',
-            commentMultiStart: '/*',
-            commentMultiEnd: '*/',
-            stringDelimiters: ['"', "'", '`']
-        },
-        typescript: {
-            keywords: ['function', 'const', 'let', 'var', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'return', 'try', 'catch', 'finally', 'throw', 'new', 'class', 'extends', 'implements', 'import', 'export', 'from', 'default', 'async', 'await', 'yield', 'typeof', 'instanceof', 'delete', 'void', 'this', 'super', 'true', 'false', 'null', 'undefined', 'interface', 'type', 'enum', 'namespace', 'module', 'declare', 'abstract', 'public', 'private', 'protected', 'readonly', 'static', 'as', 'is', 'keyof', 'infer'],
-            types: ['string', 'number', 'boolean', 'void', 'never', 'any', 'unknown', 'object', 'Array', 'Promise', 'Map', 'Set', 'Record', 'Partial', 'Required', 'Readonly'],
-            ds4vizImports: ['ds4viz'],
-            ds4vizFunctions: ['stack', 'queue', 'singleLinkedList', 'doubleLinkedList', 'binaryTree', 'binarySearchTree', 'heap', 'graphUndirected', 'graphDirected', 'graphWeighted', 'config', 'withContext'],
-            ds4vizMethods: ['push', 'pop', 'clear', 'enqueue', 'dequeue', 'insertHead', 'insertTail', 'insertAfter', 'insertBefore', 'delete', 'deleteHead', 'deleteTail', 'reverse', 'insertRoot', 'insertLeft', 'insertRight', 'updateValue', 'insert', 'extract', 'addNode', 'addEdge', 'removeNode', 'removeEdge', 'updateNodeLabel', 'updateWeight'],
-            commentSingle: '//',
-            commentMultiStart: '/*',
-            commentMultiEnd: '*/',
-            stringDelimiters: ['"', "'", '`']
+            stringDelimiters: [{ start: '`', end: '`', template: true }, { start: '"', end: '"' }, { start: "'", end: "'" }],
+            lineComment: '//',
+            blockComment: { start: '/*', end: '*/' }
         },
         lua: {
-            keywords: ['and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then', 'true', 'until', 'while', 'require'],
-            types: ['table', 'string', 'number', 'boolean', 'function', 'thread', 'userdata'],
+            keywords: [
+                'and', 'break', 'do', 'else', 'elseif', 'end', 'for', 'function', 'goto',
+                'if', 'in', 'local', 'not', 'or', 'repeat', 'return', 'then', 'until', 'while'
+            ],
+            constants: ['nil', 'true', 'false'],
+            builtins: ['print', 'type', 'pairs', 'ipairs', 'next', 'select', 'tonumber', 'tostring', 'error', 'assert', 'pcall', 'xpcall', 'require', 'load', 'loadfile', 'dofile', 'rawget', 'rawset', 'rawequal', 'rawlen', 'setmetatable', 'getmetatable', 'collectgarbage', 'table', 'string', 'math', 'io', 'os', 'coroutine', 'debug', 'package', 'utf8'],
             ds4vizImports: ['ds4viz'],
             ds4vizFunctions: ['stack', 'queue', 'singleLinkedList', 'doubleLinkedList', 'binaryTree', 'binarySearchTree', 'heap', 'graphUndirected', 'graphDirected', 'graphWeighted', 'config', 'withContext'],
             ds4vizMethods: ['push', 'pop', 'clear', 'enqueue', 'dequeue', 'insertHead', 'insertTail', 'insertAfter', 'insertBefore', 'delete', 'deleteHead', 'deleteTail', 'reverse', 'insertRoot', 'insertLeft', 'insertRight', 'updateValue', 'insert', 'extract', 'addNode', 'addEdge', 'removeNode', 'removeEdge', 'updateNodeLabel', 'updateWeight'],
-            commentSingle: '--',
-            commentMultiStart: '--[[',
-            commentMultiEnd: ']]',
-            stringDelimiters: ['"', "'", '[[']
-        },
-        c: {
-            keywords: ['auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 'extern', 'float', 'for', 'goto', 'if', 'inline', 'int', 'long', 'register', 'restrict', 'return', 'short', 'signed', 'sizeof', 'static', 'struct', 'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while', '_Bool', '_Complex', '_Imaginary', 'NULL', 'true', 'false'],
-            types: ['int', 'char', 'float', 'double', 'void', 'long', 'short', 'unsigned', 'signed', 'size_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t', 'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t', 'bool'],
-            ds4vizImports: ['ds4viz'],
-            ds4vizFunctions: ['dv_stack_create', 'dv_stack_destroy', 'dv_stack_commit', 'dv_stack_push_int', 'dv_stack_push_float', 'dv_stack_push_string', 'dv_stack_push_bool', 'dv_stack_pop', 'dv_stack_clear', 'dv_queue_create', 'dv_queue_destroy', 'dv_queue_commit', 'dv_queue_enqueue_int', 'dv_queue_dequeue', 'dv_slist_create', 'dv_slist_destroy', 'dv_slist_commit', 'dv_slist_insert_head_int', 'dv_slist_insert_tail_int', 'dv_dlist_create', 'dv_binary_tree_create', 'dv_bst_create', 'dv_heap_create', 'dv_graph_undirected_create', 'dv_graph_directed_create', 'dv_graph_weighted_create', 'dv_config', 'DV_CHECK_GOTO', 'DV_CHECK_RETURN'],
-            ds4vizMethods: [],
-            ds4vizTypes: ['dv_stack_t', 'dv_queue_t', 'dv_slist_t', 'dv_dlist_t', 'dv_binary_tree_t', 'dv_bst_t', 'dv_heap_t', 'dv_graph_undirected_t', 'dv_graph_directed_t', 'dv_graph_weighted_t', 'dv_error_t', 'dv_heap_type_t', 'DV_OK', 'DV_HEAP_MIN', 'DV_HEAP_MAX'],
-            commentSingle: '//',
-            commentMultiStart: '/*',
-            commentMultiEnd: '*/',
-            stringDelimiters: ['"', "'"],
-            preprocessor: '#'
+            stringDelimiters: [{ start: '[[', end: ']]' }, { start: '"', end: '"' }, { start: "'", end: "'" }],
+            lineComment: '--',
+            blockComment: { start: '--[[', end: ']]' }
         },
         rust: {
-            keywords: ['as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else', 'enum', 'extern', 'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return', 'self', 'Self', 'static', 'struct', 'super', 'trait', 'true', 'type', 'unsafe', 'use', 'where', 'while', 'Ok', 'Err', 'Some', 'None'],
-            types: ['i8', 'i16', 'i32', 'i64', 'i128', 'isize', 'u8', 'u16', 'u32', 'u64', 'u128', 'usize', 'f32', 'f64', 'bool', 'char', 'str', 'String', 'Vec', 'Option', 'Result', 'Box', 'Rc', 'Arc', 'Cell', 'RefCell', 'HashMap', 'HashSet'],
+            keywords: [
+                'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else',
+                'enum', 'extern', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop', 'match',
+                'mod', 'move', 'mut', 'pub', 'ref', 'return', 'self', 'Self', 'static',
+                'struct', 'super', 'trait', 'type', 'unsafe', 'use', 'where', 'while'
+            ],
+            constants: ['true', 'false', 'Some', 'None', 'Ok', 'Err'],
+            types: ['i8', 'i16', 'i32', 'i64', 'i128', 'isize', 'u8', 'u16', 'u32', 'u64', 'u128', 'usize', 'f32', 'f64', 'bool', 'char', 'str', 'String', 'Vec', 'Option', 'Result', 'Box', 'Rc', 'Arc', 'Cell', 'RefCell', 'HashMap', 'HashSet', 'BTreeMap', 'BTreeSet'],
+            builtins: ['println', 'print', 'eprintln', 'eprint', 'format', 'panic', 'assert', 'assert_eq', 'assert_ne', 'debug_assert', 'todo', 'unimplemented', 'unreachable', 'cfg', 'include', 'include_str', 'include_bytes', 'env', 'option_env', 'concat', 'stringify', 'line', 'column', 'file', 'module_path', 'vec'],
             ds4vizImports: ['ds4viz'],
             ds4vizFunctions: ['stack', 'queue', 'single_linked_list', 'double_linked_list', 'binary_tree', 'binary_search_tree', 'heap', 'graph_undirected', 'graph_directed', 'graph_weighted', 'config', 'stack_with_output', 'queue_with_output'],
             ds4vizMethods: ['push', 'pop', 'clear', 'enqueue', 'dequeue', 'insert_head', 'insert_tail', 'insert_after', 'insert_before', 'delete', 'delete_head', 'delete_tail', 'reverse', 'insert_root', 'insert_left', 'insert_right', 'update_value', 'insert', 'extract', 'add_node', 'add_edge', 'remove_node', 'remove_edge', 'update_node_label', 'update_weight'],
             ds4vizTypes: ['Stack', 'Queue', 'SingleLinkedList', 'DoubleLinkedList', 'BinaryTree', 'BinarySearchTree', 'Heap', 'HeapType', 'GraphUndirected', 'GraphDirected', 'GraphWeighted', 'Value', 'NumericValue', 'Config'],
-            commentSingle: '//',
-            commentMultiStart: '/*',
-            commentMultiEnd: '*/',
-            stringDelimiters: ['"'],
-            lifetimes: true
-        },
-        php: {
-            keywords: ['abstract', 'and', 'array', 'as', 'break', 'callable', 'case', 'catch', 'class', 'clone', 'const', 'continue', 'declare', 'default', 'die', 'do', 'echo', 'else', 'elseif', 'empty', 'enddeclare', 'endfor', 'endforeach', 'endif', 'endswitch', 'endwhile', 'eval', 'exit', 'extends', 'final', 'finally', 'fn', 'for', 'foreach', 'function', 'global', 'goto', 'if', 'implements', 'include', 'include_once', 'instanceof', 'insteadof', 'interface', 'isset', 'list', 'match', 'namespace', 'new', 'or', 'print', 'private', 'protected', 'public', 'readonly', 'require', 'require_once', 'return', 'static', 'switch', 'throw', 'trait', 'try', 'unset', 'use', 'var', 'while', 'xor', 'yield', 'true', 'false', 'null'],
-            types: ['int', 'float', 'string', 'bool', 'array', 'object', 'callable', 'iterable', 'void', 'mixed', 'never'],
-            ds4vizImports: ['Ds4viz'],
-            ds4vizFunctions: ['stack', 'queue', 'singleLinkedList', 'doubleLinkedList', 'binaryTree', 'binarySearchTree', 'heap', 'graphUndirected', 'graphDirected', 'graphWeighted', 'config'],
-            ds4vizMethods: ['run', 'push', 'pop', 'clear', 'enqueue', 'dequeue', 'insertHead', 'insertTail', 'insertAfter', 'insertBefore', 'delete', 'deleteHead', 'deleteTail', 'reverse', 'insertRoot', 'insertLeft', 'insertRight', 'updateValue', 'insert', 'extract', 'addNode', 'addEdge', 'removeNode', 'removeEdge', 'updateNodeLabel', 'updateWeight'],
-            commentSingle: '//',
-            commentMultiStart: '/*',
-            commentMultiEnd: '*/',
-            stringDelimiters: ['"', "'"],
-            phpTag: '<?php'
+            stringDelimiters: [{ start: 'r#"', end: '"#' }, { start: 'r"', end: '"' }, { start: '"', end: '"' }],
+            charDelimiter: "'",
+            lineComment: '//',
+            blockComment: { start: '/*', end: '*/' },
+            lifetime: "'"
         }
     };
 
@@ -156,20 +145,6 @@ async function main() {
 
 main();
 `,
-        typescript: `import { stack, withContext } from 'ds4viz';
-
-async function main(): Promise<void> {
-    await withContext(stack({ label: 'demo_stack' }), async (s) => {
-        s.push(10);
-        s.push(20);
-        s.push(30);
-        s.pop();
-        s.push(40);
-    });
-}
-
-main();
-`,
         lua: `local ds4viz = require("ds4viz")
 
 ds4viz.withContext(ds4viz.stack("demo_stack"), function(s)
@@ -180,29 +155,6 @@ ds4viz.withContext(ds4viz.stack("demo_stack"), function(s)
     s:push(40)
 end)
 `,
-        c: (libPath) => {
-            const headerPath = libPath.replace(/javascript\/ds4viz\.js$/, 'c/ds4viz.h');
-            return `#define DS4VIZ_IMPLEMENTATION
-#include "${headerPath}"
-
-int main(void)
-{
-    dv_stack_t *s = dv_stack_create("demo_stack", NULL);
-    if (s == NULL) return 1;
-
-    dv_stack_push_int(s, 10);
-    dv_stack_push_int(s, 20);
-    dv_stack_push_int(s, 30);
-    dv_stack_pop(s);
-    dv_stack_push_int(s, 40);
-
-    dv_stack_commit(s);
-    dv_stack_destroy(s);
-
-    return 0;
-}
-`;
-        },
         rust: `use ds4viz::prelude::*;
 
 fn main() -> ds4viz::Result<()> {
@@ -215,21 +167,6 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }
-`,
-        php: `<?php
-
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Ds4viz\\Ds4viz;
-
-Ds4viz::stack(label: 'demo_stack')
-    ->run(function ($s) {
-        $s->push(10);
-        $s->push(20);
-        $s->push(30);
-        $s->pop();
-        $s->push(40);
-    });
 `
     };
 
@@ -250,11 +187,16 @@ Ds4viz::stack(label: 'demo_stack')
         isPlaying: false,
         playInterval: null,
         ds4vizModule: null,
+        editor: {
+            cursorLine: 0,
+            cursorCol: 0
+        },
         autocomplete: {
             visible: false,
             items: [],
             selectedIndex: 0,
-            triggerPosition: null
+            prefix: '',
+            startPos: 0
         }
     };
 
@@ -283,11 +225,13 @@ Ds4viz::stack(label: 'demo_stack')
             languageSelect: document.getElementById('languageSelect'),
             langColorDot: document.getElementById('langColorDot'),
             runBtn: document.getElementById('runBtn'),
+            editorContainer: document.getElementById('editorContainer'),
+            editorArea: document.getElementById('editorArea'),
             codeEditor: document.getElementById('codeEditor'),
             codeHighlight: document.getElementById('codeHighlight'),
             lineNumbers: document.getElementById('lineNumbers'),
-            autocompleteContainer: document.getElementById('autocompleteContainer'),
-            errorIndicator: document.getElementById('errorIndicator'),
+            autocompletePopup: document.getElementById('autocompletePopup'),
+            autocompleteList: document.getElementById('autocompleteList'),
             executionStatus: document.getElementById('executionStatus'),
             vizContainer: document.getElementById('vizContainer'),
             stepFirstBtn: document.getElementById('stepFirstBtn'),
@@ -312,9 +256,14 @@ Ds4viz::stack(label: 'demo_stack')
     // ============================================
 
     function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return String(text).replace(/[&<>"']/g, c => map[c]);
     }
 
     function debounce(func, wait) {
@@ -343,123 +292,327 @@ Ds4viz::stack(label: 'demo_stack')
             </button>
         `;
 
-        toast.querySelector('.toast-close').addEventListener('click', () => {
-            toast.remove();
-        });
-
+        toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
         elements.toastContainer.appendChild(toast);
 
         setTimeout(() => {
-            if (toast.parentNode) {
-                toast.remove();
-            }
+            if (toast.parentNode) toast.remove();
         }, CONFIG.toastDuration);
     }
 
     // ============================================
-    // 语法高亮
+    // 语法高亮器
     // ============================================
 
-    function highlightCode(code, language) {
-        const rules = SYNTAX_RULES[language] || SYNTAX_RULES.javascript;
-        let result = escapeHtml(code);
-
-        // 处理注释
-        if (rules.commentMultiStart && rules.commentMultiEnd) {
-            const multiStart = escapeHtml(rules.commentMultiStart);
-            const multiEnd = escapeHtml(rules.commentMultiEnd);
-            const multiRegex = new RegExp(
-                multiStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-                '[\\s\\S]*?' +
-                multiEnd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-                'g'
-            );
-            result = result.replace(multiRegex, match => `<span class="token-comment">${match}</span>`);
+    class SyntaxHighlighter {
+        constructor(language) {
+            this.rules = SYNTAX_RULES[language] || SYNTAX_RULES.javascript;
+            this.language = language;
         }
 
-        // 处理单行注释
-        if (rules.commentSingle) {
-            const singleComment = escapeHtml(rules.commentSingle);
-            const singleRegex = new RegExp(`(${singleComment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*)`, 'g');
-            result = result.replace(singleRegex, '<span class="token-comment">$1</span>');
+        highlight(code) {
+            const tokens = this.tokenize(code);
+            return tokens.map(t => this.renderToken(t)).join('');
         }
 
-        // 处理字符串
-        result = result.replace(/(&quot;(?:[^&]|&(?!quot;))*?&quot;|&#39;(?:[^&]|&(?!#39;))*?&#39;|`[^`]*`)/g,
-            '<span class="token-string">$1</span>');
+        tokenize(code) {
+            const tokens = [];
+            let pos = 0;
+            const len = code.length;
 
-        // 处理数字
-        result = result.replace(/\b(\d+\.?\d*(?:e[+-]?\d+)?)\b/gi, '<span class="token-number">$1</span>');
+            while (pos < len) {
+                let matched = false;
 
-        // 处理 ds4viz 函数
-        if (rules.ds4vizFunctions) {
-            rules.ds4vizFunctions.forEach(fn => {
-                const regex = new RegExp(`\\b(${fn})\\b`, 'g');
-                result = result.replace(regex, '<span class="token-ds4viz">$1</span>');
+                // 尝试匹配各种 token 类型
+                matched = matched || this.tryMatchBlockComment(code, pos, tokens);
+                matched = matched || this.tryMatchLineComment(code, pos, tokens);
+                matched = matched || this.tryMatchString(code, pos, tokens);
+                matched = matched || this.tryMatchNumber(code, pos, tokens);
+                matched = matched || this.tryMatchDecorator(code, pos, tokens);
+                matched = matched || this.tryMatchLifetime(code, pos, tokens);
+                matched = matched || this.tryMatchWord(code, pos, tokens);
+                matched = matched || this.tryMatchOperator(code, pos, tokens);
+
+                if (!matched) {
+                    // 普通字符
+                    const char = code[pos];
+                    if (tokens.length > 0 && tokens[tokens.length - 1].type === 'plain') {
+                        tokens[tokens.length - 1].value += char;
+                    } else {
+                        tokens.push({ type: 'plain', value: char });
+                    }
+                    pos++;
+                } else {
+                    pos = tokens.reduce((sum, t) => sum + t.value.length, 0);
+                }
+            }
+
+            return tokens;
+        }
+
+        tryMatchBlockComment(code, pos, tokens) {
+            const rules = this.rules;
+            if (!rules.blockComment) return false;
+
+            const { start, end } = rules.blockComment;
+            if (!code.startsWith(start, pos)) return false;
+
+            let endPos = code.indexOf(end, pos + start.length);
+            if (endPos === -1) endPos = code.length - end.length;
+
+            tokens.push({
+                type: 'comment',
+                value: code.slice(pos, endPos + end.length)
             });
+            return true;
         }
 
-        // 处理 ds4viz 方法
-        if (rules.ds4vizMethods) {
-            rules.ds4vizMethods.forEach(method => {
-                const regex = new RegExp(`\\.(${method})\\b`, 'g');
-                result = result.replace(regex, '.<span class="token-ds4viz">$1</span>');
+        tryMatchLineComment(code, pos, tokens) {
+            const comment = this.rules.lineComment;
+            if (!comment || !code.startsWith(comment, pos)) return false;
+
+            let endPos = code.indexOf('\n', pos);
+            if (endPos === -1) endPos = code.length;
+
+            tokens.push({
+                type: 'comment',
+                value: code.slice(pos, endPos)
             });
+            return true;
         }
 
-        // 处理 ds4viz 类型 (C/Rust)
-        if (rules.ds4vizTypes) {
-            rules.ds4vizTypes.forEach(type => {
-                const regex = new RegExp(`\\b(${type})\\b`, 'g');
-                result = result.replace(regex, '<span class="token-ds4viz">$1</span>');
-            });
+        tryMatchString(code, pos, tokens) {
+            const delimiters = this.rules.stringDelimiters || [];
+
+            for (const delim of delimiters) {
+                if (!code.startsWith(delim.start, pos)) continue;
+
+                let endPos = pos + delim.start.length;
+                let escaped = false;
+
+                while (endPos < code.length) {
+                    const char = code[endPos];
+
+                    if (escaped) {
+                        escaped = false;
+                        endPos++;
+                        continue;
+                    }
+
+                    if (char === '\\' && !delim.template) {
+                        escaped = true;
+                        endPos++;
+                        continue;
+                    }
+
+                    if (code.startsWith(delim.end, endPos)) {
+                        endPos += delim.end.length;
+                        break;
+                    }
+
+                    // 单行字符串不能跨行（除了模板字符串和多行字符串）
+                    if (char === '\n' && delim.start.length === 1 && !delim.template) {
+                        break;
+                    }
+
+                    endPos++;
+                }
+
+                tokens.push({
+                    type: 'string',
+                    value: code.slice(pos, endPos)
+                });
+                return true;
+            }
+
+            // Rust char literal
+            if (this.language === 'rust' && code[pos] === "'" && pos + 2 < code.length) {
+                // 检查是否是 char literal 而不是 lifetime
+                const next = code[pos + 1];
+                if (next === '\\' || (code[pos + 2] === "'" && /[^a-zA-Z_]/.test(next) === false)) {
+                    let endPos = pos + 2;
+                    if (next === '\\') endPos++;
+                    if (code[endPos] === "'") endPos++;
+                    tokens.push({ type: 'string', value: code.slice(pos, endPos) });
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        // 处理类型
-        if (rules.types) {
-            rules.types.forEach(type => {
-                const regex = new RegExp(`\\b(${type})\\b`, 'g');
-                result = result.replace(regex, '<span class="token-type">$1</span>');
-            });
+        tryMatchNumber(code, pos, tokens) {
+            // 匹配各种数字格式
+            const patterns = [
+                /^0x[0-9a-fA-F_]+/,  // 十六进制
+                /^0o[0-7_]+/,        // 八进制
+                /^0b[01_]+/,         // 二进制
+                /^\d[\d_]*\.[\d_]*(?:[eE][+-]?\d+)?/, // 浮点数
+                /^\d[\d_]*[eE][+-]?\d+/, // 科学计数法
+                /^\d[\d_]*/          // 整数
+            ];
+
+            for (const pattern of patterns) {
+                const match = code.slice(pos).match(pattern);
+                if (match) {
+                    // 后面可能有类型后缀 (Rust)
+                    let value = match[0];
+                    const suffix = code.slice(pos + value.length).match(/^(?:i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64)/);
+                    if (suffix) value += suffix[0];
+
+                    tokens.push({ type: 'number', value });
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        // 处理关键字
-        if (rules.keywords) {
-            rules.keywords.forEach(keyword => {
-                const regex = new RegExp(`\\b(${keyword})\\b`, 'g');
-                result = result.replace(regex, '<span class="token-keyword">$1</span>');
-            });
+        tryMatchDecorator(code, pos, tokens) {
+            if (this.language !== 'python' || code[pos] !== '@') return false;
+
+            const match = code.slice(pos).match(/^@[a-zA-Z_][a-zA-Z0-9_]*/);
+            if (match) {
+                tokens.push({ type: 'decorator', value: match[0] });
+                return true;
+            }
+            return false;
         }
 
-        // 处理函数名
-        result = result.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(?=\()/g, '<span class="token-function">$1</span>');
+        tryMatchLifetime(code, pos, tokens) {
+            if (this.language !== 'rust') return false;
 
-        // 处理预处理器指令 (C)
-        if (rules.preprocessor) {
-            result = result.replace(/^(#\w+)/gm, '<span class="token-keyword">$1</span>');
+            // Rust lifetime: 'a, 'static, 'lifetime
+            const match = code.slice(pos).match(/^'(?:static|[a-zA-Z_][a-zA-Z0-9_]*)/);
+            if (match && (pos === 0 || /[\s<(,:]/.test(code[pos - 1]))) {
+                tokens.push({ type: 'lifetime', value: match[0] });
+                return true;
+            }
+            return false;
         }
 
-        return result;
+        tryMatchWord(code, pos, tokens) {
+            const match = code.slice(pos).match(/^[a-zA-Z_][a-zA-Z0-9_]*/);
+            if (!match) return false;
+
+            const word = match[0];
+            let type = 'plain';
+
+            const rules = this.rules;
+
+            // 检查 ds4viz 相关
+            if (rules.ds4vizFunctions?.includes(word) || rules.ds4vizMethods?.includes(word)) {
+                type = 'ds4viz';
+            } else if (rules.ds4vizTypes?.includes(word)) {
+                type = 'ds4viz';
+            } else if (rules.ds4vizImports?.includes(word)) {
+                type = 'ds4viz';
+            }
+            // 检查关键字
+            else if (rules.keywords?.includes(word)) {
+                type = 'keyword';
+            }
+            // 检查常量
+            else if (rules.constants?.includes(word)) {
+                type = 'constant';
+            }
+            // 检查类型 (Rust)
+            else if (rules.types?.includes(word)) {
+                type = 'type';
+            }
+            // 检查内置函数
+            else if (rules.builtins?.includes(word)) {
+                type = 'function';
+            }
+            // 检查是否是函数调用
+            else {
+                const nextNonSpace = code.slice(pos + word.length).match(/^\s*(.)/);
+                if (nextNonSpace && (nextNonSpace[1] === '(' || nextNonSpace[1] === '!')) {
+                    type = 'function';
+                }
+            }
+
+            tokens.push({ type, value: word });
+            return true;
+        }
+
+        tryMatchOperator(code, pos, tokens) {
+            const operators = [
+                '>>>=', '===', '!==', '>>>', '<<=', '>>=', '**=',
+                '&&=', '||=', '??=', '...', '::',
+                '==', '!=', '<=', '>=', '&&', '||', '??', '++', '--',
+                '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=',
+                '<<', '>>', '**', '=>', '->',
+                '+', '-', '*', '/', '%', '&', '|', '^', '~', '!',
+                '<', '>', '=', '?', ':', ';', ',', '.',
+                '(', ')', '[', ']', '{', '}', '@', '#', '$'
+            ];
+
+            for (const op of operators) {
+                if (code.startsWith(op, pos)) {
+                    const type = /^[()[\]{}]$/.test(op) ? 'punctuation' : 'operator';
+                    tokens.push({ type, value: op });
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        renderToken(token) {
+            const escaped = escapeHtml(token.value);
+
+            switch (token.type) {
+                case 'keyword': return `<span class="tok-keyword">${escaped}</span>`;
+                case 'string': return `<span class="tok-string">${escaped}</span>`;
+                case 'number': return `<span class="tok-number">${escaped}</span>`;
+                case 'comment': return `<span class="tok-comment">${escaped}</span>`;
+                case 'function': return `<span class="tok-function">${escaped}</span>`;
+                case 'type': return `<span class="tok-type">${escaped}</span>`;
+                case 'constant': return `<span class="tok-constant">${escaped}</span>`;
+                case 'operator': return `<span class="tok-operator">${escaped}</span>`;
+                case 'punctuation': return `<span class="tok-punctuation">${escaped}</span>`;
+                case 'ds4viz': return `<span class="tok-ds4viz">${escaped}</span>`;
+                case 'decorator': return `<span class="tok-decorator">${escaped}</span>`;
+                case 'lifetime': return `<span class="tok-lifetime">${escaped}</span>`;
+                default: return escaped;
+            }
+        }
     }
+
+    // ============================================
+    // 编辑器功能
+    // ============================================
 
     function updateHighlight() {
         const code = elements.codeEditor.value;
-        elements.codeHighlight.innerHTML = highlightCode(code, state.language);
+        const highlighter = new SyntaxHighlighter(state.language);
+        elements.codeHighlight.innerHTML = highlighter.highlight(code) + '\n';
         updateLineNumbers();
     }
-
-    // ============================================
-    // 行号
-    // ============================================
 
     function updateLineNumbers() {
         const code = elements.codeEditor.value;
         const lines = code.split('\n');
-        const lineCount = lines.length;
+        const cursorPos = elements.codeEditor.selectionStart;
+
+        // 计算当前行
+        let currentLine = 0;
+        let charCount = 0;
+        for (let i = 0; i < lines.length; i++) {
+            charCount += lines[i].length + 1;
+            if (charCount > cursorPos) {
+                currentLine = i;
+                break;
+            }
+        }
+
+        state.editor.cursorLine = currentLine;
 
         let html = '';
-        for (let i = 1; i <= lineCount; i++) {
-            html += `<div class="line-number">${i}</div>`;
+        for (let i = 0; i < lines.length; i++) {
+            const isActive = i === currentLine;
+            html += `<div class="line-number${isActive ? ' active' : ''}">${i + 1}</div>`;
         }
         elements.lineNumbers.innerHTML = html;
     }
@@ -474,50 +627,66 @@ Ds4viz::stack(label: 'demo_stack')
     // 自动补全
     // ============================================
 
-    function getCompletions(prefix, language) {
+    function getCompletionItems(prefix, language) {
         const rules = SYNTAX_RULES[language] || SYNTAX_RULES.javascript;
-        const completions = [];
+        const items = [];
+        const lowerPrefix = prefix.toLowerCase();
 
         // ds4viz 函数
         if (rules.ds4vizFunctions) {
-            rules.ds4vizFunctions.forEach(fn => {
-                if (fn.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    completions.push({ text: fn, type: 'function', hint: 'ds4viz' });
+            for (const fn of rules.ds4vizFunctions) {
+                if (fn.toLowerCase().startsWith(lowerPrefix)) {
+                    items.push({ text: fn, type: 'ds4viz', hint: 'ds4viz' });
                 }
-            });
+            }
         }
 
         // ds4viz 方法
         if (rules.ds4vizMethods) {
-            rules.ds4vizMethods.forEach(method => {
-                if (method.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    completions.push({ text: method, type: 'method', hint: 'ds4viz' });
+            for (const method of rules.ds4vizMethods) {
+                if (method.toLowerCase().startsWith(lowerPrefix)) {
+                    items.push({ text: method, type: 'method', hint: 'ds4viz' });
                 }
-            });
+            }
         }
 
         // 关键字
         if (rules.keywords) {
-            rules.keywords.forEach(keyword => {
-                if (keyword.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    completions.push({ text: keyword, type: 'keyword', hint: '' });
+            for (const kw of rules.keywords) {
+                if (kw.toLowerCase().startsWith(lowerPrefix)) {
+                    items.push({ text: kw, type: 'keyword', hint: '' });
                 }
-            });
+            }
         }
 
-        // 类型
-        if (rules.types) {
-            rules.types.forEach(type => {
-                if (type.toLowerCase().startsWith(prefix.toLowerCase())) {
-                    completions.push({ text: type, type: 'type', hint: '' });
+        // 内置函数
+        if (rules.builtins) {
+            for (const fn of rules.builtins) {
+                if (fn.toLowerCase().startsWith(lowerPrefix)) {
+                    items.push({ text: fn, type: 'function', hint: 'builtin' });
                 }
-            });
+            }
         }
 
-        return completions.slice(0, 10);
+        // 常量
+        if (rules.constants) {
+            for (const c of rules.constants) {
+                if (c.toLowerCase().startsWith(lowerPrefix)) {
+                    items.push({ text: c, type: 'type', hint: 'constant' });
+                }
+            }
+        }
+
+        // 去重并限制数量
+        const seen = new Set();
+        return items.filter(item => {
+            if (seen.has(item.text)) return false;
+            seen.add(item.text);
+            return true;
+        }).slice(0, 12);
     }
 
-    function showAutocomplete(items, position) {
+    function showAutocomplete(items) {
         if (items.length === 0) {
             hideAutocomplete();
             return;
@@ -527,39 +696,80 @@ Ds4viz::stack(label: 'demo_stack')
         state.autocomplete.selectedIndex = 0;
         state.autocomplete.visible = true;
 
+        renderAutocompleteList();
+        positionAutocomplete();
+        elements.autocompletePopup.classList.add('visible');
+    }
+
+    function renderAutocompleteList() {
+        const { items, selectedIndex } = state.autocomplete;
+
         let html = '';
         items.forEach((item, index) => {
+            const iconLetter = item.type === 'ds4viz' ? 'D' :
+                item.type === 'method' ? 'M' :
+                    item.type === 'function' ? 'F' :
+                        item.type === 'keyword' ? 'K' : 'T';
+
             html += `
-                <div class="autocomplete-item ${index === 0 ? 'selected' : ''}" data-index="${index}">
-                    <span class="autocomplete-item-icon ${item.type}">${item.type[0].toUpperCase()}</span>
-                    <span class="autocomplete-item-text">${escapeHtml(item.text)}</span>
-                    ${item.hint ? `<span class="autocomplete-item-hint">${escapeHtml(item.hint)}</span>` : ''}
+                <div class="autocomplete-item${index === selectedIndex ? ' selected' : ''}" data-index="${index}">
+                    <span class="autocomplete-icon ${item.type}">${iconLetter}</span>
+                    <span class="autocomplete-text">${escapeHtml(item.text)}</span>
+                    ${item.hint ? `<span class="autocomplete-hint">${escapeHtml(item.hint)}</span>` : ''}
                 </div>
             `;
         });
 
-        elements.autocompleteContainer.innerHTML = html;
-        elements.autocompleteContainer.classList.add('visible');
-
-        // 定位
-        const editorRect = elements.codeEditor.getBoundingClientRect();
-        const lineHeight = parseFloat(getComputedStyle(elements.codeEditor).lineHeight);
-        const charWidth = 8; // 估算的字符宽度
-
-        elements.autocompleteContainer.style.left = `${position.col * charWidth + 48 + 16}px`;
-        elements.autocompleteContainer.style.top = `${position.line * lineHeight + 16}px`;
+        elements.autocompleteList.innerHTML = html;
 
         // 绑定点击事件
-        elements.autocompleteContainer.querySelectorAll('.autocomplete-item').forEach(item => {
-            item.addEventListener('click', () => {
-                applyCompletion(parseInt(item.dataset.index));
+        elements.autocompleteList.querySelectorAll('.autocomplete-item').forEach(el => {
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                applyCompletion(parseInt(el.dataset.index));
             });
         });
     }
 
+    function positionAutocomplete() {
+        const editor = elements.codeEditor;
+        const container = elements.editorContainer;
+
+        // 获取光标位置
+        const text = editor.value.substring(0, editor.selectionStart);
+        const lines = text.split('\n');
+        const lineIndex = lines.length - 1;
+        const colIndex = lines[lineIndex].length;
+
+        // 计算位置
+        const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 21;
+        const charWidth = 8.4; // 等宽字体近似值
+        const gutterWidth = 50;
+        const padding = 12;
+
+        const top = (lineIndex + 1) * lineHeight + padding;
+        const left = colIndex * charWidth + gutterWidth + padding;
+
+        const popup = elements.autocompletePopup;
+        popup.style.top = `${top}px`;
+        popup.style.left = `${left}px`;
+
+        // 确保不超出容器
+        const containerRect = container.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+
+        if (popupRect.right > containerRect.right - 10) {
+            popup.style.left = `${containerRect.width - popupRect.width - 10}px`;
+        }
+        if (popupRect.bottom > containerRect.bottom - 10) {
+            popup.style.top = `${top - popupRect.height - lineHeight}px`;
+        }
+    }
+
     function hideAutocomplete() {
         state.autocomplete.visible = false;
-        elements.autocompleteContainer.classList.remove('visible');
+        state.autocomplete.items = [];
+        elements.autocompletePopup.classList.remove('visible');
     }
 
     function applyCompletion(index) {
@@ -577,8 +787,13 @@ Ds4viz::stack(label: 'demo_stack')
         }
 
         // 替换当前单词
-        editor.value = text.substring(0, wordStart) + item.text + text.substring(cursorPos);
-        editor.selectionStart = editor.selectionEnd = wordStart + item.text.length;
+        const before = text.substring(0, wordStart);
+        const after = text.substring(cursorPos);
+        editor.value = before + item.text + after;
+
+        // 设置光标位置
+        const newPos = wordStart + item.text.length;
+        editor.selectionStart = editor.selectionEnd = newPos;
 
         hideAutocomplete();
         updateHighlight();
@@ -586,23 +801,22 @@ Ds4viz::stack(label: 'demo_stack')
     }
 
     function updateAutocompleteSelection(delta) {
-        const items = elements.autocompleteContainer.querySelectorAll('.autocomplete-item');
+        const { items } = state.autocomplete;
         if (items.length === 0) return;
 
-        items[state.autocomplete.selectedIndex].classList.remove('selected');
-        state.autocomplete.selectedIndex = (state.autocomplete.selectedIndex + delta + items.length) % items.length;
-        items[state.autocomplete.selectedIndex].classList.add('selected');
-        items[state.autocomplete.selectedIndex].scrollIntoView({ block: 'nearest' });
+        state.autocomplete.selectedIndex =
+            (state.autocomplete.selectedIndex + delta + items.length) % items.length;
+
+        renderAutocompleteList();
+
+        // 滚动到可见区域
+        const selected = elements.autocompleteList.querySelector('.selected');
+        if (selected) {
+            selected.scrollIntoView({ block: 'nearest' });
+        }
     }
 
-    // ============================================
-    // 编辑器事件处理
-    // ============================================
-
-    function handleEditorInput() {
-        updateHighlight();
-
-        // 触发自动补全
+    function triggerAutocomplete() {
         const editor = elements.codeEditor;
         const cursorPos = editor.selectionStart;
         const text = editor.value;
@@ -612,73 +826,87 @@ Ds4viz::stack(label: 'demo_stack')
         while (wordStart > 0 && /[a-zA-Z0-9_]/.test(text[wordStart - 1])) {
             wordStart--;
         }
-        const currentWord = text.substring(wordStart, cursorPos);
 
-        if (currentWord.length >= 2) {
-            const completions = getCompletions(currentWord, state.language);
-            const lines = text.substring(0, cursorPos).split('\n');
-            const position = {
-                line: lines.length - 1,
-                col: lines[lines.length - 1].length
-            };
-            showAutocomplete(completions, position);
+        const currentWord = text.substring(wordStart, cursorPos);
+        state.autocomplete.prefix = currentWord;
+        state.autocomplete.startPos = wordStart;
+
+        if (currentWord.length >= CONFIG.autocompleteMinChars) {
+            const items = getCompletionItems(currentWord, state.language);
+            showAutocomplete(items);
         } else {
             hideAutocomplete();
         }
     }
 
+    const debouncedTriggerAutocomplete = debounce(triggerAutocomplete, CONFIG.autocompleteDebounce);
+
+    // ============================================
+    // 编辑器事件处理
+    // ============================================
+
+    function handleEditorInput() {
+        updateHighlight();
+        debouncedTriggerAutocomplete();
+    }
+
     function handleEditorKeydown(e) {
+        const editor = elements.codeEditor;
+
         // 自动补全导航
         if (state.autocomplete.visible) {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                updateAutocompleteSelection(1);
-                return;
-            }
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                updateAutocompleteSelection(-1);
-                return;
-            }
-            if (e.key === 'Tab' || e.key === 'Enter') {
-                if (state.autocomplete.items.length > 0) {
+            switch (e.key) {
+                case 'ArrowDown':
                     e.preventDefault();
-                    applyCompletion(state.autocomplete.selectedIndex);
+                    updateAutocompleteSelection(1);
                     return;
-                }
-            }
-            if (e.key === 'Escape') {
-                hideAutocomplete();
-                return;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    updateAutocompleteSelection(-1);
+                    return;
+                case 'Tab':
+                case 'Enter':
+                    if (state.autocomplete.items.length > 0) {
+                        e.preventDefault();
+                        applyCompletion(state.autocomplete.selectedIndex);
+                        return;
+                    }
+                    break;
+                case 'Escape':
+                    e.preventDefault();
+                    hideAutocomplete();
+                    return;
             }
         }
 
-        const editor = elements.codeEditor;
-
-        // Tab 键处理
-        if (e.key === 'Tab' && !state.autocomplete.visible) {
+        // Tab 缩进
+        if (e.key === 'Tab') {
             e.preventDefault();
             const start = editor.selectionStart;
             const end = editor.selectionEnd;
             const value = editor.value;
 
             if (e.shiftKey) {
-                // Shift+Tab: 减少缩进
+                // 减少缩进
                 const lineStart = value.lastIndexOf('\n', start - 1) + 1;
                 const lineText = value.substring(lineStart, start);
                 if (lineText.startsWith('    ')) {
                     editor.value = value.substring(0, lineStart) + value.substring(lineStart + 4);
                     editor.selectionStart = editor.selectionEnd = Math.max(start - 4, lineStart);
+                } else if (lineText.startsWith('\t')) {
+                    editor.value = value.substring(0, lineStart) + value.substring(lineStart + 1);
+                    editor.selectionStart = editor.selectionEnd = Math.max(start - 1, lineStart);
                 }
             } else {
-                // Tab: 增加缩进
+                // 增加缩进
                 editor.value = value.substring(0, start) + '    ' + value.substring(end);
                 editor.selectionStart = editor.selectionEnd = start + 4;
             }
             updateHighlight();
+            return;
         }
 
-        // Enter 键自动缩进
+        // Enter 自动缩进
         if (e.key === 'Enter' && !state.autocomplete.visible) {
             e.preventDefault();
             const start = editor.selectionStart;
@@ -690,14 +918,18 @@ Ds4viz::stack(label: 'demo_stack')
             // 检查是否需要额外缩进
             let extraIndent = '';
             const trimmed = lineText.trimEnd();
-            if (trimmed.endsWith(':') || trimmed.endsWith('{') || trimmed.endsWith('(') ||
-                trimmed.endsWith('then') || trimmed.endsWith('do') || trimmed.endsWith('->')) {
+            const needsIndent = [
+                ':', '{', '(', '[', 'then', 'do', '->', '=>', 'function'
+            ].some(s => trimmed.endsWith(s));
+
+            if (needsIndent) {
                 extraIndent = '    ';
             }
 
             editor.value = value.substring(0, start) + '\n' + indent + extraIndent + value.substring(start);
             editor.selectionStart = editor.selectionEnd = start + 1 + indent.length + extraIndent.length;
             updateHighlight();
+            return;
         }
 
         // 自动闭合括号和引号
@@ -717,242 +949,519 @@ Ds4viz::stack(label: 'demo_stack')
                 updateHighlight();
             }
         }
-    }
 
-    // ============================================
-    // TOML 解析器
-    // ============================================
+        // 跳转到行首 (Home)
+        if (e.key === 'Home' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            const value = editor.value;
+            const start = editor.selectionStart;
+            const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            const lineText = value.substring(lineStart, start);
+            const indentMatch = lineText.match(/^(\s*)/);
+            const indentEnd = lineStart + (indentMatch ? indentMatch[1].length : 0);
 
-    function parseToml(tomlString) {
-        const result = {
-            meta: {},
-            package: {},
-            remarks: {},
-            object: {},
-            states: [],
-            steps: [],
-            result: null,
-            error: null
-        };
-
-        const lines = tomlString.split('\n');
-        let currentSection = null;
-        let currentArrayItem = null;
-        let inArraySection = null;
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            if (!trimmed || trimmed.startsWith('#')) continue;
-
-            // 数组表头 [[xxx]]
-            const arrayMatch = trimmed.match(/^\[\[(\w+)\]\]$/);
-            if (arrayMatch) {
-                // 保存之前的数组项
-                if (inArraySection && currentArrayItem && Object.keys(currentArrayItem).length > 0) {
-                    result[inArraySection].push(currentArrayItem);
-                }
-                inArraySection = arrayMatch[1];
-                currentArrayItem = {};
-                currentSection = null;
-                continue;
-            }
-
-            // 子表头 [xxx.yyy]
-            const subSectionMatch = trimmed.match(/^\[(\w+)\.(\w+)\]$/);
-            if (subSectionMatch) {
-                const [, parent, child] = subSectionMatch;
-                if (inArraySection === parent) {
-                    currentSection = child;
-                    if (!currentArrayItem[child]) {
-                        currentArrayItem[child] = {};
-                    }
-                } else if (parent === 'result') {
-                    if (!result.result) result.result = {};
-                    currentSection = `result.${child}`;
-                    if (!result.result[child]) result.result[child] = {};
-                }
-                continue;
-            }
-
-            // 普通表头 [xxx]
-            const sectionMatch = trimmed.match(/^\[(\w+)\]$/);
-            if (sectionMatch) {
-                // 保存之前的数组项
-                if (inArraySection && currentArrayItem && Object.keys(currentArrayItem).length > 0) {
-                    result[inArraySection].push(currentArrayItem);
-                    currentArrayItem = null;
-                }
-                inArraySection = null;
-                currentSection = sectionMatch[1];
-                continue;
-            }
-
-            // 键值对
-            const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
-            if (kvMatch) {
-                const [, key, valueStr] = kvMatch;
-                const value = parseTomlValue(valueStr.trim());
-
-                if (inArraySection && currentArrayItem) {
-                    if (currentSection && currentArrayItem[currentSection]) {
-                        currentArrayItem[currentSection][key] = value;
-                    } else {
-                        currentArrayItem[key] = value;
-                    }
-                } else if (currentSection) {
-                    if (currentSection.startsWith('result.')) {
-                        const subKey = currentSection.split('.')[1];
-                        result.result[subKey][key] = value;
-                    } else if (currentSection === 'result') {
-                        if (!result.result) result.result = {};
-                        result.result[key] = value;
-                    } else if (currentSection === 'error') {
-                        if (!result.error) result.error = {};
-                        result.error[key] = value;
-                    } else {
-                        if (!result[currentSection]) result[currentSection] = {};
-                        result[currentSection][key] = value;
-                    }
-                }
-            }
-        }
-
-        // 保存最后一个数组项
-        if (inArraySection && currentArrayItem && Object.keys(currentArrayItem).length > 0) {
-            result[inArraySection].push(currentArrayItem);
-        }
-
-        return result;
-    }
-
-    function parseTomlValue(valueStr) {
-        // 去除首尾空白
-        valueStr = valueStr.trim();
-
-        // 字符串
-        if ((valueStr.startsWith('"') && valueStr.endsWith('"')) ||
-            (valueStr.startsWith("'") && valueStr.endsWith("'"))) {
-            return valueStr.slice(1, -1)
-                .replace(/\\n/g, '\n')
-                .replace(/\\t/g, '\t')
-                .replace(/\\"/g, '"')
-                .replace(/\\'/g, "'")
-                .replace(/\\\\/g, '\\');
-        }
-
-        // 布尔值
-        if (valueStr === 'true') return true;
-        if (valueStr === 'false') return false;
-
-        // 数组
-        if (valueStr.startsWith('[')) {
-            return parseTomlArray(valueStr);
-        }
-
-        // 数字
-        if (/^-?\d+$/.test(valueStr)) {
-            return parseInt(valueStr, 10);
-        }
-        if (/^-?\d+\.\d+$/.test(valueStr)) {
-            return parseFloat(valueStr);
-        }
-
-        return valueStr;
-    }
-
-    function parseTomlArray(valueStr) {
-        const content = valueStr.slice(1, -1).trim();
-        if (!content) return [];
-
-        const items = [];
-        let current = '';
-        let depth = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = 0; i < content.length; i++) {
-            const char = content[i];
-            const prevChar = i > 0 ? content[i - 1] : '';
-
-            if (!inString && (char === '"' || char === "'")) {
-                inString = true;
-                stringChar = char;
-                current += char;
-            } else if (inString && char === stringChar && prevChar !== '\\') {
-                inString = false;
-                current += char;
-            } else if (!inString && (char === '{' || char === '[')) {
-                depth++;
-                current += char;
-            } else if (!inString && (char === '}' || char === ']')) {
-                depth--;
-                current += char;
-            } else if (!inString && char === ',' && depth === 0) {
-                const trimmed = current.trim();
-                if (trimmed) {
-                    items.push(parseTomlValueOrInlineTable(trimmed));
-                }
-                current = '';
+            // 如果光标在缩进后面，跳到缩进后；否则跳到行首
+            const newPos = (start === indentEnd) ? lineStart : indentEnd;
+            if (e.shiftKey) {
+                editor.selectionEnd = start;
+                editor.selectionStart = newPos;
             } else {
-                current += char;
+                editor.selectionStart = editor.selectionEnd = newPos;
+            }
+            updateLineNumbers();
+        }
+
+        // 跳转到行尾 (End)
+        if (e.key === 'End' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            const value = editor.value;
+            const start = editor.selectionStart;
+            let lineEnd = value.indexOf('\n', start);
+            if (lineEnd === -1) lineEnd = value.length;
+
+            if (e.shiftKey) {
+                editor.selectionEnd = lineEnd;
+            } else {
+                editor.selectionStart = editor.selectionEnd = lineEnd;
+            }
+            updateLineNumbers();
+        }
+
+        // Ctrl+Home 跳转到文件开头
+        if (e.key === 'Home' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (e.shiftKey) {
+                editor.selectionEnd = editor.selectionStart;
+                editor.selectionStart = 0;
+            } else {
+                editor.selectionStart = editor.selectionEnd = 0;
+            }
+            updateLineNumbers();
+        }
+
+        // Ctrl+End 跳转到文件末尾
+        if (e.key === 'End' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            const len = editor.value.length;
+            if (e.shiftKey) {
+                editor.selectionEnd = len;
+            } else {
+                editor.selectionStart = editor.selectionEnd = len;
+            }
+            updateLineNumbers();
+        }
+    }
+
+    function handleEditorClick() {
+        hideAutocomplete();
+        updateLineNumbers();
+    }
+
+    function handleEditorBlur() {
+        setTimeout(hideAutocomplete, 200);
+    }
+
+    // ============================================
+    // TOML 解析器 (完整重写)
+    // ============================================
+
+    class TomlParser {
+        constructor(input) {
+            this.input = input;
+            this.pos = 0;
+            this.line = 1;
+            this.col = 1;
+        }
+
+        parse() {
+            const result = {
+                meta: {},
+                package: {},
+                remarks: null,
+                object: {},
+                states: [],
+                steps: [],
+                result: null,
+                error: null
+            };
+
+            let currentSection = null;
+            let currentArraySection = null;
+            let currentArrayItem = null;
+            let currentSubSection = null;
+
+            while (this.pos < this.input.length) {
+                this.skipWhitespaceAndComments();
+                if (this.pos >= this.input.length) break;
+
+                const char = this.input[this.pos];
+
+                // 数组表头 [[xxx]]
+                if (char === '[' && this.input[this.pos + 1] === '[') {
+                    // 保存之前的数组项
+                    if (currentArraySection && currentArrayItem) {
+                        result[currentArraySection].push(currentArrayItem);
+                    }
+
+                    const name = this.parseArrayTableHeader();
+                    currentArraySection = name;
+                    currentArrayItem = {};
+                    currentSection = null;
+                    currentSubSection = null;
+                    continue;
+                }
+
+                // 表头 [xxx] 或 [xxx.yyy]
+                if (char === '[') {
+                    // 保存之前的数组项
+                    if (currentArraySection && currentArrayItem && currentSubSection === null) {
+                        // 不保存，可能是子节
+                    }
+
+                    const name = this.parseTableHeader();
+
+                    if (name.includes('.')) {
+                        // 子表头
+                        const parts = name.split('.');
+                        if (parts[0] === currentArraySection && currentArrayItem) {
+                            currentSubSection = parts.slice(1).join('.');
+                            if (!currentArrayItem[currentSubSection]) {
+                                currentArrayItem[currentSubSection] = {};
+                            }
+                        } else if (parts[0] === 'result') {
+                            if (!result.result) result.result = {};
+                            currentSection = 'result';
+                            currentSubSection = parts[1];
+                            if (!result.result[currentSubSection]) {
+                                result.result[currentSubSection] = {};
+                            }
+                        } else {
+                            currentSection = name;
+                            currentSubSection = null;
+                        }
+                    } else {
+                        // 普通表头
+                        if (currentArraySection && currentArrayItem && Object.keys(currentArrayItem).length > 0 && name !== currentArraySection) {
+                            result[currentArraySection].push(currentArrayItem);
+                            currentArrayItem = null;
+                            currentArraySection = null;
+                        }
+                        currentSection = name;
+                        currentSubSection = null;
+                    }
+                    continue;
+                }
+
+                // 键值对
+                if (/[a-zA-Z_]/.test(char)) {
+                    const { key, value } = this.parseKeyValue();
+
+                    if (currentArraySection && currentArrayItem) {
+                        if (currentSubSection) {
+                            currentArrayItem[currentSubSection][key] = value;
+                        } else {
+                            currentArrayItem[key] = value;
+                        }
+                    } else if (currentSection) {
+                        if (currentSection === 'result' && currentSubSection) {
+                            result.result[currentSubSection][key] = value;
+                        } else if (currentSection === 'result') {
+                            if (!result.result) result.result = {};
+                            result.result[key] = value;
+                        } else if (currentSection === 'error') {
+                            if (!result.error) result.error = {};
+                            result.error[key] = value;
+                        } else {
+                            if (!result[currentSection]) result[currentSection] = {};
+                            result[currentSection][key] = value;
+                        }
+                    }
+                    continue;
+                }
+
+                this.pos++;
+            }
+
+            // 保存最后一个数组项
+            if (currentArraySection && currentArrayItem && Object.keys(currentArrayItem).length > 0) {
+                result[currentArraySection].push(currentArrayItem);
+            }
+
+            return result;
+        }
+
+        skipWhitespaceAndComments() {
+            while (this.pos < this.input.length) {
+                const char = this.input[this.pos];
+                if (char === ' ' || char === '\t' || char === '\r') {
+                    this.pos++;
+                    this.col++;
+                } else if (char === '\n') {
+                    this.pos++;
+                    this.line++;
+                    this.col = 1;
+                } else if (char === '#') {
+                    // 跳过注释
+                    while (this.pos < this.input.length && this.input[this.pos] !== '\n') {
+                        this.pos++;
+                    }
+                } else {
+                    break;
+                }
             }
         }
 
-        const trimmed = current.trim();
-        if (trimmed) {
-            items.push(parseTomlValueOrInlineTable(trimmed));
+        parseArrayTableHeader() {
+            this.pos += 2; // 跳过 [[
+            this.skipWhitespace();
+
+            let name = '';
+            while (this.pos < this.input.length && this.input[this.pos] !== ']') {
+                name += this.input[this.pos++];
+            }
+            name = name.trim();
+
+            this.pos += 2; // 跳过 ]]
+            this.skipToEndOfLine();
+
+            return name;
         }
 
-        return items;
-    }
+        parseTableHeader() {
+            this.pos++; // 跳过 [
+            this.skipWhitespace();
 
-    function parseTomlValueOrInlineTable(valueStr) {
-        valueStr = valueStr.trim();
+            let name = '';
+            while (this.pos < this.input.length && this.input[this.pos] !== ']') {
+                name += this.input[this.pos++];
+            }
+            name = name.trim();
 
-        if (valueStr.startsWith('{') && valueStr.endsWith('}')) {
-            const obj = {};
-            const content = valueStr.slice(1, -1).trim();
-            if (!content) return obj;
+            this.pos++; // 跳过 ]
+            this.skipToEndOfLine();
 
-            let current = '';
-            let depth = 0;
-            let inString = false;
-            let stringChar = '';
+            return name;
+        }
 
-            for (let i = 0; i <= content.length; i++) {
-                const char = content[i];
-                const prevChar = i > 0 ? content[i - 1] : '';
+        parseKeyValue() {
+            // 解析键
+            let key = '';
+            while (this.pos < this.input.length && /[a-zA-Z0-9_\-]/.test(this.input[this.pos])) {
+                key += this.input[this.pos++];
+            }
 
-                if (i === content.length || (!inString && char === ',' && depth === 0)) {
-                    const pair = current.trim();
-                    const eqIndex = pair.indexOf('=');
-                    if (eqIndex > 0) {
-                        const key = pair.substring(0, eqIndex).trim();
-                        const val = pair.substring(eqIndex + 1).trim();
-                        obj[key] = parseTomlValue(val);
+            this.skipWhitespace();
+
+            // 跳过 =
+            if (this.input[this.pos] === '=') {
+                this.pos++;
+            }
+
+            this.skipWhitespace();
+
+            // 解析值
+            const value = this.parseValue();
+
+            this.skipToEndOfLine();
+
+            return { key, value };
+        }
+
+        parseValue() {
+            this.skipWhitespace();
+            const char = this.input[this.pos];
+
+            if (char === '"') {
+                return this.parseString();
+            } else if (char === "'") {
+                return this.parseLiteralString();
+            } else if (char === '[') {
+                return this.parseArray();
+            } else if (char === '{') {
+                return this.parseInlineTable();
+            } else if (char === 't' || char === 'f') {
+                return this.parseBoolean();
+            } else if (char === '-' || /\d/.test(char)) {
+                return this.parseNumber();
+            }
+
+            return null;
+        }
+
+        parseString() {
+            // 检查是否是多行字符串
+            if (this.input.startsWith('"""', this.pos)) {
+                return this.parseMultilineString();
+            }
+
+            this.pos++; // 跳过开始的 "
+            let value = '';
+            let escaped = false;
+
+            while (this.pos < this.input.length) {
+                const char = this.input[this.pos];
+
+                if (escaped) {
+                    switch (char) {
+                        case 'n': value += '\n'; break;
+                        case 't': value += '\t'; break;
+                        case 'r': value += '\r'; break;
+                        case '\\': value += '\\'; break;
+                        case '"': value += '"'; break;
+                        default: value += char;
                     }
-                    current = '';
+                    escaped = false;
+                    this.pos++;
+                } else if (char === '\\') {
+                    escaped = true;
+                    this.pos++;
+                } else if (char === '"') {
+                    this.pos++;
+                    break;
                 } else {
-                    if (!inString && (char === '"' || char === "'")) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (inString && char === stringChar && prevChar !== '\\') {
-                        inString = false;
-                    } else if (!inString && (char === '{' || char === '[')) {
-                        depth++;
-                    } else if (!inString && (char === '}' || char === ']')) {
-                        depth--;
-                    }
-                    current += char;
+                    value += char;
+                    this.pos++;
+                }
+            }
+
+            return value;
+        }
+
+        parseMultilineString() {
+            this.pos += 3; // 跳过 """
+            let value = '';
+
+            // 跳过紧跟的换行符
+            if (this.input[this.pos] === '\n') {
+                this.pos++;
+            }
+
+            while (this.pos < this.input.length) {
+                if (this.input.startsWith('"""', this.pos)) {
+                    this.pos += 3;
+                    break;
+                }
+                value += this.input[this.pos++];
+            }
+
+            return value;
+        }
+
+        parseLiteralString() {
+            this.pos++; // 跳过开始的 '
+            let value = '';
+
+            while (this.pos < this.input.length && this.input[this.pos] !== "'") {
+                value += this.input[this.pos++];
+            }
+            this.pos++; // 跳过结束的 '
+
+            return value;
+        }
+
+        parseArray() {
+            this.pos++; // 跳过 [
+            const items = [];
+
+            while (this.pos < this.input.length) {
+                this.skipWhitespaceAndComments();
+
+                if (this.input[this.pos] === ']') {
+                    this.pos++;
+                    break;
+                }
+
+                const value = this.parseValue();
+                if (value !== null && value !== undefined) {
+                    items.push(value);
+                }
+
+                this.skipWhitespaceAndComments();
+
+                if (this.input[this.pos] === ',') {
+                    this.pos++;
+                }
+            }
+
+            return items;
+        }
+
+        parseInlineTable() {
+            this.pos++; // 跳过 {
+            const obj = {};
+
+            while (this.pos < this.input.length) {
+                this.skipWhitespace();
+
+                if (this.input[this.pos] === '}') {
+                    this.pos++;
+                    break;
+                }
+
+                // 解析键
+                let key = '';
+                while (this.pos < this.input.length && /[a-zA-Z0-9_\-]/.test(this.input[this.pos])) {
+                    key += this.input[this.pos++];
+                }
+
+                this.skipWhitespace();
+
+                // 跳过 =
+                if (this.input[this.pos] === '=') {
+                    this.pos++;
+                }
+
+                this.skipWhitespace();
+
+                // 解析值
+                const value = this.parseValue();
+                obj[key] = value;
+
+                this.skipWhitespace();
+
+                if (this.input[this.pos] === ',') {
+                    this.pos++;
                 }
             }
 
             return obj;
         }
 
-        return parseTomlValue(valueStr);
+        parseBoolean() {
+            if (this.input.startsWith('true', this.pos)) {
+                this.pos += 4;
+                return true;
+            } else if (this.input.startsWith('false', this.pos)) {
+                this.pos += 5;
+                return false;
+            }
+            return null;
+        }
+
+        parseNumber() {
+            let numStr = '';
+
+            // 负号
+            if (this.input[this.pos] === '-') {
+                numStr += this.input[this.pos++];
+            }
+
+            // 整数部分
+            while (this.pos < this.input.length && /[\d_]/.test(this.input[this.pos])) {
+                if (this.input[this.pos] !== '_') {
+                    numStr += this.input[this.pos];
+                }
+                this.pos++;
+            }
+
+            // 小数部分
+            if (this.input[this.pos] === '.') {
+                numStr += this.input[this.pos++];
+                while (this.pos < this.input.length && /[\d_]/.test(this.input[this.pos])) {
+                    if (this.input[this.pos] !== '_') {
+                        numStr += this.input[this.pos];
+                    }
+                    this.pos++;
+                }
+            }
+
+            // 指数部分
+            if (this.input[this.pos] === 'e' || this.input[this.pos] === 'E') {
+                numStr += this.input[this.pos++];
+                if (this.input[this.pos] === '+' || this.input[this.pos] === '-') {
+                    numStr += this.input[this.pos++];
+                }
+                while (this.pos < this.input.length && /\d/.test(this.input[this.pos])) {
+                    numStr += this.input[this.pos++];
+                }
+            }
+
+            return numStr.includes('.') || numStr.includes('e') || numStr.includes('E')
+                ? parseFloat(numStr)
+                : parseInt(numStr, 10);
+        }
+
+        skipWhitespace() {
+            while (this.pos < this.input.length && /[ \t]/.test(this.input[this.pos])) {
+                this.pos++;
+            }
+        }
+
+        skipToEndOfLine() {
+            while (this.pos < this.input.length && this.input[this.pos] !== '\n') {
+                this.pos++;
+            }
+            if (this.input[this.pos] === '\n') {
+                this.pos++;
+                this.line++;
+                this.col = 1;
+            }
+        }
+    }
+
+    function parseToml(tomlString) {
+        const parser = new TomlParser(tomlString);
+        return parser.parse();
     }
 
     // ============================================
@@ -998,14 +1507,12 @@ Ds4viz::stack(label: 'demo_stack')
             ? `${state.currentStep + 1} / ${state.totalSteps}`
             : '0 / 0';
 
-        // 更新步骤信息
         updateStepInfo();
     }
 
     function updateStepInfo() {
         const steps = state.parsedToml?.steps || [];
 
-        // 找到当前状态对应的步骤
         let currentStepData = null;
         for (const step of steps) {
             if (step.after === state.currentStep) {
@@ -1087,7 +1594,6 @@ Ds4viz::stack(label: 'demo_stack')
     function renderUnsupported(kind) {
         elements.vizContainer.innerHTML = `
             <div class="viz-empty">
-                <img src="images/code_off_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="不支持" class="viz-empty-icon">
                 <div class="viz-empty-text">不支持的数据结构类型: ${escapeHtml(kind)}</div>
             </div>
         `;
@@ -1098,16 +1604,22 @@ Ds4viz::stack(label: 'demo_stack')
             <div class="viz-wrapper">
                 <div class="viz-label">${escapeHtml(label)} (${escapeHtml(structureType)})</div>
                 <div class="viz-empty">
-                    <img src="images/data_array_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="空" class="viz-empty-icon">
                     <div class="viz-empty-text">空${escapeHtml(structureType)}</div>
                 </div>
             </div>
         `;
     }
 
+    function formatValue(value) {
+        if (typeof value === 'string') {
+            return `"${value}"`;
+        }
+        return String(value);
+    }
+
     function renderStack(data, label) {
         const items = data.items || [];
-        const top = data.top ?? items.length - 1;
+        const top = data.top ?? (items.length > 0 ? items.length - 1 : -1);
 
         if (items.length === 0) {
             renderEmpty(label, 'Stack');
@@ -1120,7 +1632,7 @@ Ds4viz::stack(label: 'demo_stack')
 
         for (let i = 0; i < items.length; i++) {
             const isTop = i === top;
-            html += `<div class="viz-stack-item ${isTop ? 'top' : ''}">${escapeHtml(String(items[i]))}</div>`;
+            html += `<div class="viz-stack-item${isTop ? ' top' : ''}">${escapeHtml(formatValue(items[i]))}</div>`;
         }
 
         html += `</div>
@@ -1133,7 +1645,7 @@ Ds4viz::stack(label: 'demo_stack')
     function renderQueue(data, label) {
         const items = data.items || [];
         const front = data.front ?? 0;
-        const rear = data.rear ?? items.length - 1;
+        const rear = data.rear ?? (items.length > 0 ? items.length - 1 : -1);
 
         if (items.length === 0) {
             renderEmpty(label, 'Queue');
@@ -1152,7 +1664,7 @@ Ds4viz::stack(label: 'demo_stack')
             else if (isFront) classes += ' front';
             else if (isRear) classes += ' rear';
 
-            html += `<div class="${classes}">${escapeHtml(String(items[i]))}</div>`;
+            html += `<div class="${classes}">${escapeHtml(formatValue(items[i]))}</div>`;
             if (i < items.length - 1) {
                 html += '<span class="viz-queue-arrow">→</span>';
             }
@@ -1194,7 +1706,7 @@ Ds4viz::stack(label: 'demo_stack')
             html += `
                 <div class="viz-list-node">
                     <div class="viz-list-node-box">
-                        <div class="viz-list-node-value">${escapeHtml(String(node.value))}</div>
+                        <div class="viz-list-node-value">${escapeHtml(formatValue(node.value))}</div>
                         <div class="viz-list-node-pointer">${node.next === -1 ? 'null' : node.next}</div>
                     </div>
                 </div>`;
@@ -1229,7 +1741,7 @@ Ds4viz::stack(label: 'demo_stack')
             <div class="viz-label">${escapeHtml(label)} (Double Linked List)</div>
             <div class="viz-list">
                 <div class="viz-list-null">NULL</div>
-                <span class="viz-list-arrow">⟷</span>`;
+                <span class="viz-list-arrow">↔</span>`;
 
         let currentId = head;
         let visited = new Set();
@@ -1245,20 +1757,20 @@ Ds4viz::stack(label: 'demo_stack')
                 <div class="viz-list-node">
                     <div class="viz-list-node-box">
                         <div class="viz-list-node-pointer">${node.prev === -1 ? 'null' : node.prev}</div>
-                        <div class="viz-list-node-value">${escapeHtml(String(node.value))}</div>
+                        <div class="viz-list-node-value">${escapeHtml(formatValue(node.value))}</div>
                         <div class="viz-list-node-pointer">${node.next === -1 ? 'null' : node.next}</div>
                     </div>
                 </div>`;
 
             if (node.next !== -1 && nodeMap[node.next]) {
-                html += '<span class="viz-list-arrow">⟷</span>';
+                html += '<span class="viz-list-arrow">↔</span>';
             }
 
             currentId = node.next;
             count++;
         }
 
-        html += `<span class="viz-list-arrow">⟷</span>
+        html += `<span class="viz-list-arrow">↔</span>
             <div class="viz-list-null">NULL</div>
         </div></div>`;
 
@@ -1287,7 +1799,7 @@ Ds4viz::stack(label: 'demo_stack')
 
         let svg = `<div class="viz-wrapper">
             <div class="viz-label">${escapeHtml(label)} (${kind === 'bst' ? 'BST' : 'Binary Tree'})</div>
-            <svg class="viz-tree-svg" viewBox="0 0 ${svgWidth} ${svgHeight}" style="max-width: 100%;">`;
+            <svg class="viz-tree-svg" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
 
         // 绘制边
         for (const [id, pos] of Object.entries(positions)) {
@@ -1296,13 +1808,11 @@ Ds4viz::stack(label: 'demo_stack')
 
             if (node.left !== -1 && positions[node.left]) {
                 const childPos = positions[node.left];
-                svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}" 
-                         stroke="var(--border-default)" stroke-width="2"/>`;
+                svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}"/>`;
             }
             if (node.right !== -1 && positions[node.right]) {
                 const childPos = positions[node.right];
-                svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}" 
-                         stroke="var(--border-default)" stroke-width="2"/>`;
+                svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}"/>`;
             }
         }
 
@@ -1313,18 +1823,8 @@ Ds4viz::stack(label: 'demo_stack')
 
             const isRoot = parseInt(id) === root;
             svg += `
-                <circle cx="${pos.x}" cy="${pos.y}" r="${nodeRadius}" 
-                        class="${isRoot ? 'root' : ''}"
-                        fill="${isRoot ? 'var(--accent-brand)' : 'var(--bg-surface)'}"
-                        stroke="${isRoot ? 'var(--accent-brand)' : 'var(--border-default)'}" 
-                        stroke-width="2"/>
-                <text x="${pos.x}" y="${pos.y}" 
-                      class="${isRoot ? 'root' : ''}"
-                      fill="${isRoot ? 'white' : 'var(--text-primary)'}"
-                      font-family="var(--font-mono)" font-size="14" font-weight="500"
-                      text-anchor="middle" dominant-baseline="central">
-                    ${escapeHtml(String(node.value))}
-                </text>`;
+                <circle cx="${pos.x}" cy="${pos.y}" r="${nodeRadius}" class="${isRoot ? 'root' : ''}"/>
+                <text x="${pos.x}" y="${pos.y}" class="${isRoot ? 'root' : ''}">${escapeHtml(formatValue(node.value))}</text>`;
         }
 
         svg += `</svg></div>`;
@@ -1371,7 +1871,7 @@ Ds4viz::stack(label: 'demo_stack')
 
         if (nodes.length === 0) {
             const typeName = kind === 'graph_directed' ? 'Directed Graph' :
-                kind === 'graph_weighted' ? 'Weighted Graph' : 'Graph';
+                kind === 'graph_weighted' ? 'Weighted Graph' : 'Undirected Graph';
             renderEmpty(label, typeName);
             return;
         }
@@ -1415,7 +1915,6 @@ Ds4viz::stack(label: 'demo_stack')
             const to = nodePositions[edge.to];
             if (!from || !to) return;
 
-            // 计算边的端点（考虑节点半径）
             const dx = to.x - from.x;
             const dy = to.y - from.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1538,7 +2037,7 @@ Ds4viz::stack(label: 'demo_stack')
     }
 
     // ============================================
-    // 本地执行
+    // 本地执行 (JavaScript only)
     // ============================================
 
     async function loadDs4vizModule() {
@@ -1548,11 +2047,8 @@ Ds4viz::stack(label: 'demo_stack')
 
         try {
             showLoading(true, '加载 ds4viz 库...');
-
-            // 动态导入模块
             const module = await import(state.libraryPath);
             state.ds4vizModule = module;
-
             showLoading(false);
             return module;
         } catch (error) {
@@ -1577,33 +2073,24 @@ Ds4viz::stack(label: 'demo_stack')
         const startTime = performance.now();
 
         try {
-            // 加载 ds4viz 模块
             const ds4viz = await loadDs4vizModule();
 
-            // 创建执行环境
-            // 移除 import 语句并提取实际代码
+            // 移除 import 语句
             const cleanedCode = code
                 .replace(/import\s+\{[^}]*\}\s+from\s+['"][^'"]*['"]\s*;?/g, '')
                 .replace(/import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*['"]\s*;?/g, '')
                 .replace(/const\s+\{[^}]*\}\s*=\s*require\s*\(['"][^'"]*['"]\)\s*;?/g, '')
                 .trim();
 
-            // 创建包含 ds4viz 所有导出的上下文
-            const contextVars = {};
-            for (const [key, value] of Object.entries(ds4viz)) {
-                contextVars[key] = value;
-            }
+            // 创建上下文
+            const contextVars = { ...ds4viz };
 
-            // 捕获生成的 TOML
             let generatedToml = null;
-            let capturedStructure = null;
 
-            // 包装 withContext 以捕获结果
+            // 包装 withContext
             const originalWithContext = ds4viz.withContext;
             contextVars.withContext = async (structure, callback) => {
-                capturedStructure = structure;
                 await originalWithContext(structure, callback);
-                // 尝试获取 TOML 字符串
                 if (ds4viz.getTomlString) {
                     generatedToml = ds4viz.getTomlString(structure);
                 } else if (structure._getToml) {
@@ -1613,18 +2100,11 @@ Ds4viz::stack(label: 'demo_stack')
                 }
             };
 
-            // 创建异步函数来执行代码
             const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
             const argNames = Object.keys(contextVars);
             const argValues = Object.values(contextVars);
 
-            // 包装代码以确保返回 Promise
-            const wrappedCode = `
-                return (async () => {
-                    ${cleanedCode}
-                })();
-            `;
-
+            const wrappedCode = `return (async () => { ${cleanedCode} })();`;
             const fn = new AsyncFunction(...argNames, wrappedCode);
             await fn(...argValues);
 
@@ -1641,7 +2121,6 @@ Ds4viz::stack(label: 'demo_stack')
 
         } catch (error) {
             console.error('本地执行失败:', error);
-            const duration = Math.round(performance.now() - startTime);
             showStatus('error', '执行失败: ' + error.message);
             showToast('执行失败: ' + error.message, 'error');
         } finally {
@@ -1687,7 +2166,6 @@ Ds4viz::stack(label: 'demo_stack')
             elements.langColorDot.style.backgroundColor = LANGUAGE_COLORS.javascript;
         }
 
-        // 更新语法高亮
         updateHighlight();
     }
 
@@ -1762,7 +2240,7 @@ Ds4viz::stack(label: 'demo_stack')
         elements.localModeBtn.addEventListener('click', () => {
             if (state.mode === 'local') return;
             state.mode = 'local';
-            state.ds4vizModule = null; // 重置模块缓存
+            state.ds4vizModule = null;
             elements.localModeBtn.classList.add('active');
             elements.remoteModeBtn.classList.remove('active');
             elements.remoteInputWrapper.classList.add('hidden');
@@ -1786,7 +2264,7 @@ Ds4viz::stack(label: 'demo_stack')
 
         elements.libraryPath.addEventListener('change', () => {
             state.libraryPath = elements.libraryPath.value.trim();
-            state.ds4vizModule = null; // 重置模块缓存
+            state.ds4vizModule = null;
         });
 
         elements.pingBtn.addEventListener('click', pingServer);
@@ -1856,12 +2334,16 @@ Ds4viz::stack(label: 'demo_stack')
         elements.runBtn.addEventListener('click', executeCode);
 
         // 代码编辑器
-        elements.codeEditor.addEventListener('input', debounce(handleEditorInput, 50));
+        elements.codeEditor.addEventListener('input', handleEditorInput);
         elements.codeEditor.addEventListener('scroll', syncScroll);
         elements.codeEditor.addEventListener('keydown', handleEditorKeydown);
-        elements.codeEditor.addEventListener('click', hideAutocomplete);
-        elements.codeEditor.addEventListener('blur', () => {
-            setTimeout(hideAutocomplete, 150);
+        elements.codeEditor.addEventListener('click', handleEditorClick);
+        elements.codeEditor.addEventListener('blur', handleEditorBlur);
+        elements.codeEditor.addEventListener('keyup', (e) => {
+            // 更新行号（光标移动时）
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                updateLineNumbers();
+            }
         });
 
         // 可视化控制
@@ -1961,7 +2443,7 @@ Ds4viz::stack(label: 'demo_stack')
         elements.serverUrl.value = state.serverUrl;
         elements.libraryPath.value = state.libraryPath;
 
-        // 默认使用 JavaScript（本地模式友好）
+        // 默认使用 JavaScript
         state.language = CONFIG.defaultLanguage;
         updateLanguageUI();
         loadTemplate();
@@ -1981,7 +2463,7 @@ Ds4viz::stack(label: 'demo_stack')
             }
         }, CONFIG.pingInterval);
 
-        console.log('ds4viz Demo initialized');
+        console.log('ds4viz Demo v2.0 initialized');
     }
 
     if (document.readyState === 'loading') {

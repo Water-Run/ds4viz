@@ -158,11 +158,8 @@
                         <select id="languageSelect" class="language-select">
                             <option value="python">Python</option>
                             <option value="javascript">JavaScript</option>
-                            <option value="typescript">TypeScript</option>
                             <option value="lua">Lua</option>
-                            <option value="c">C</option>
                             <option value="rust">Rust</option>
-                            <option value="php">PHP</option>
                         </select>
                     </div>
 
@@ -177,19 +174,19 @@
                 </div>
             </div>
             <div class="panel-content">
-                <div class="editor-container">
+                <div class="editor-container" id="editorContainer">
                     <div class="editor-wrapper">
                         <div class="line-numbers" id="lineNumbers"></div>
-                        <div class="editor-area">
-                            <div class="code-highlight" id="codeHighlight"></div>
+                        <div class="editor-area" id="editorArea">
+                            <pre class="code-highlight" id="codeHighlight"></pre>
                             <textarea id="codeEditor" class="code-editor" spellcheck="false" autocomplete="off"
-                                autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+                                autocorrect="off" autocapitalize="off"></textarea>
                         </div>
-                        <!-- 自动补全 -->
-                        <div class="autocomplete-container" id="autocompleteContainer"></div>
                     </div>
-                    <!-- 错误指示器 -->
-                    <div class="error-indicator" id="errorIndicator"></div>
+                    <!-- 自动补全 -->
+                    <div class="autocomplete-popup" id="autocompletePopup">
+                        <div class="autocomplete-list" id="autocompleteList"></div>
+                    </div>
                 </div>
 
                 <!-- 执行状态 -->
