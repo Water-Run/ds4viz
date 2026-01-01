@@ -20,7 +20,7 @@
     const CONFIG = {
         defaultServer: 'http://localhost:9090',
         defaultLibraryPath: '../../library/javascript/ds4viz.js',
-        defaultLanguage: 'javascript',
+        defaultLanguage: 'python',
         defaultTimeout: 10000,
         pingInterval: 30000,
         autoPlayDelay: 800,
@@ -34,6 +34,18 @@
         javascript: '#f7df1e',
         lua: '#000080',
         rust: '#dea584'
+    };
+
+    const MODE_LANGUAGES = {
+        remote: ['python', 'lua', 'rust'],
+        local: ['javascript'],
+    };
+
+    const LANGUAGE_LABELS = {
+        python: 'Python',
+        javascript: 'JavaScript',
+        lua: 'Lua',
+        rust: 'Rust'
     };
 
     // 支持的语言列表
@@ -197,7 +209,9 @@ fn main() -> ds4viz::Result<()> {
             selectedIndex: 0,
             prefix: '',
             startPos: 0
-        }
+        },
+        remoteLanguage: 'python',
+        localLanguage: 'javascript',
     };
 
     // ============================================
@@ -274,25 +288,80 @@ fn main() -> ds4viz::Result<()> {
         };
     }
 
+    function notifyExecutionSuccess(duration) {
+        showStatus('success', '执行成功', duration);
+        showToast('执行成功', 'success');
+    }
+
     function showToast(message, type = 'info') {
+        const palette = {
+            success: '#22c55e',
+            error: '#ef4444',
+            info: '#60a5fa'
+        };
+
+        const icons = {
+            success: '<path d="M5 13l4 4L19 7" />',
+            error: '<line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line>',
+            info: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12" y2="16"></line>'
+        };
+
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.innerHTML = `
-            <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                ${type === 'error'
-                ? '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>'
-                : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>'}
-            </svg>
-            <span class="toast-message">${escapeHtml(message)}</span>
-            <button class="toast-close">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="toast-icon-wrapper">
+                <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    ${icons[type] || icons.info}
+                </svg>
+            </div>
+            <div class="toast-message">${escapeHtml(message)}</div>
+            <button class="toast-close" aria-label="关闭">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
         `;
 
-        toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
+        toast.style.background = 'rgba(33,33,33,0.95)';
+        toast.style.color = '#fff';
+        toast.style.borderRadius = '999px';
+        toast.style.boxShadow = '0 12px 32px rgba(0,0,0,0.35)';
+        toast.style.display = 'flex';
+        toast.style.alignItems = 'center';
+        toast.style.gap = '0.75rem';
+        toast.style.padding = '0.75rem 1.25rem';
+        toast.style.border = 'none';
+
+        const iconWrapper = toast.querySelector('.toast-icon-wrapper');
+        iconWrapper.style.width = '32px';
+        iconWrapper.style.height = '32px';
+        iconWrapper.style.borderRadius = '999px';
+        iconWrapper.style.display = 'flex';
+        iconWrapper.style.alignItems = 'center';
+        iconWrapper.style.justifyContent = 'center';
+        iconWrapper.style.background = palette[type] || palette.info;
+        iconWrapper.querySelector('.toast-icon').style.color = '#fff';
+
+        const closeBtn = toast.querySelector('.toast-close');
+        closeBtn.style.background = 'transparent';
+        closeBtn.style.border = 'none';
+        closeBtn.style.color = '#fff';
+        closeBtn.style.display = 'flex';
+        closeBtn.style.alignItems = 'center';
+        closeBtn.style.justifyContent = 'center';
+        closeBtn.style.width = '32px';
+        closeBtn.style.height = '32px';
+        closeBtn.style.borderRadius = '50%';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.background = 'rgba(255,255,255,0.12)';
+        });
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.background = 'transparent';
+        });
+
+        closeBtn.addEventListener('click', () => toast.remove());
         elements.toastContainer.appendChild(toast);
 
         setTimeout(() => {
@@ -2045,17 +2114,39 @@ fn main() -> ds4viz::Result<()> {
             return state.ds4vizModule;
         }
 
-        try {
-            showLoading(true, '加载 ds4viz 库...');
-            const module = await import(state.libraryPath);
-            state.ds4vizModule = module;
-            showLoading(false);
-            return module;
-        } catch (error) {
-            showLoading(false);
-            console.error('加载 ds4viz 失败:', error);
-            throw new Error(`无法加载 ds4viz 库: ${error.message}`);
+        if (window.ds4viz) {
+            state.ds4vizModule = window.ds4viz;
+            return state.ds4vizModule;
         }
+
+        showLoading(true, '加载 ds4viz 库...');
+
+        await new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-ds4viz]');
+            if (existing) {
+                existing.remove();
+            }
+
+            const script = document.createElement('script');
+            script.src = state.libraryPath;
+            script.async = true;
+            script.dataset.ds4viz = 'true';
+
+            script.onload = () => {
+                if (window.ds4viz) {
+                    state.ds4vizModule = window.ds4viz;
+                    resolve();
+                } else {
+                    reject(new Error('ds4viz 全局对象未在脚本加载后挂载'));
+                }
+            };
+
+            script.onerror = () => reject(new Error(`无法加载脚本: ${state.libraryPath}`));
+            document.body.appendChild(script);
+        });
+
+        showLoading(false);
+        return state.ds4vizModule;
     }
 
     async function executeLocalCode() {
@@ -2155,18 +2246,61 @@ fn main() -> ds4viz::Result<()> {
     }
 
     function updateLanguageUI() {
-        const color = LANGUAGE_COLORS[state.language] || '#666';
-        elements.langColorDot.style.backgroundColor = color;
-        elements.languageSelect.value = state.language;
+        const allowed = MODE_LANGUAGES[state.mode] || MODE_LANGUAGES.remote;
 
-        // 本地模式仅支持 JavaScript
-        if (state.mode === 'local' && state.language !== 'javascript') {
-            state.language = 'javascript';
-            elements.languageSelect.value = 'javascript';
-            elements.langColorDot.style.backgroundColor = LANGUAGE_COLORS.javascript;
+        if (!allowed.includes(state.language)) {
+            state.language = allowed[0];
         }
 
-        updateHighlight();
+        if (state.mode === 'remote') {
+            state.remoteLanguage = state.language;
+        } else {
+            state.localLanguage = state.language;
+        }
+
+        elements.languageSelect.innerHTML = allowed
+            .map((lang) => `<option value="${lang}">${LANGUAGE_LABELS[lang] || lang}</option>`)
+            .join('');
+
+        elements.languageSelect.disabled = state.mode === 'local';
+        elements.languageSelect.value = state.language;
+
+        const color = LANGUAGE_COLORS[state.language] || '#666';
+        elements.langColorDot.style.backgroundColor = color;
+    }
+
+    function applyMode(nextMode) {
+        if (state.mode === nextMode) return;
+
+        if (state.mode === 'remote') {
+            state.remoteLanguage = state.language;
+        } else {
+            state.localLanguage = state.language;
+        }
+
+        state.mode = nextMode;
+
+        if (nextMode === 'remote') {
+            state.language = state.remoteLanguage || MODE_LANGUAGES.remote[0];
+            elements.remoteModeBtn.classList.add('active');
+            elements.localModeBtn.classList.remove('active');
+            elements.remoteInputWrapper.classList.remove('hidden');
+            elements.localInputWrapper.classList.add('hidden');
+            elements.languageSelect.disabled = false;
+            pingServer();
+        } else {
+            state.language = 'javascript';
+            state.localLanguage = 'javascript';
+            state.ds4vizModule = null;
+            elements.localModeBtn.classList.add('active');
+            elements.remoteModeBtn.classList.remove('active');
+            elements.remoteInputWrapper.classList.add('hidden');
+            elements.localInputWrapper.classList.remove('hidden');
+            elements.connectionStatus.className = 'connection-status';
+        }
+
+        updateLanguageUI();
+        loadTemplate();
     }
 
     function loadTemplate() {
@@ -2227,33 +2361,11 @@ fn main() -> ds4viz::Result<()> {
     function setupEventListeners() {
         // 模式切换
         elements.remoteModeBtn.addEventListener('click', () => {
-            if (state.mode === 'remote') return;
-            state.mode = 'remote';
-            elements.remoteModeBtn.classList.add('active');
-            elements.localModeBtn.classList.remove('active');
-            elements.remoteInputWrapper.classList.remove('hidden');
-            elements.localInputWrapper.classList.add('hidden');
-            elements.languageSelect.disabled = false;
-            pingServer();
+            applyMode('remote');
         });
 
         elements.localModeBtn.addEventListener('click', () => {
-            if (state.mode === 'local') return;
-            state.mode = 'local';
-            state.ds4vizModule = null;
-            elements.localModeBtn.classList.add('active');
-            elements.remoteModeBtn.classList.remove('active');
-            elements.remoteInputWrapper.classList.add('hidden');
-            elements.localInputWrapper.classList.remove('hidden');
-            elements.connectionStatus.className = 'connection-status';
-
-            // 本地模式强制使用 JavaScript
-            if (state.language !== 'javascript') {
-                state.language = 'javascript';
-                updateLanguageUI();
-                loadTemplate();
-            }
-            elements.languageSelect.disabled = true;
+            applyMode('local');
         });
 
         // 服务器/库路径

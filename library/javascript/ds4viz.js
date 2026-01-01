@@ -3273,7 +3273,6 @@ const AUTHOR = 'WaterRun <linzhuangrun49@gmail.com>';
         GraphDirected,
         GraphWeighted,
 
-        // 新增：Trace 创建函数
         createMeta,
         createPackage,
         createRemarks,
@@ -3285,15 +3284,12 @@ const AUTHOR = 'WaterRun <linzhuangrun49@gmail.com>';
         createTraceError,
         createTrace,
 
-        // 新增：内部类
         TomlWriter,
         Session,
 
-        // 新增：工具函数
         getJavaScriptVersion,
         getCallerLine,
 
-        // 版本信息
         VERSION,
         AUTHOR,
     };
