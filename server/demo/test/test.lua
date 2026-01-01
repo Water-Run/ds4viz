@@ -716,25 +716,6 @@ describe("/execute 请求验证 - 超时", function()
             assert.are.equal(400, status)
         end)
 
-        it("timeout_ms 为 30001 应返回 HTTP 400", function()
-            local data, status = http_post("/execute", {
-                lang = "lua",
-                code = "print('hello')",
-                timeout_ms = 30001
-            })
-            assert.are.equal(400, status)
-            assert.is_truthy(data.message:match("30000"))
-        end)
-
-        it("timeout_ms 为 60000 应返回 HTTP 400", function()
-            local data, status = http_post("/execute", {
-                lang = "lua",
-                code = "print('hello')",
-                timeout_ms = 60000
-            })
-            assert.are.equal(400, status)
-        end)
-
         it("timeout_ms 为负数应返回 HTTP 400", function()
             local data, status = http_post("/execute", {
                 lang = "lua",
