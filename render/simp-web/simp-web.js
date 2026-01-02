@@ -2149,6 +2149,125 @@ fn main() -> ds4viz::Result<()> {
         return state.ds4vizModule;
     }
 
+    /**
+     * 预处理代码，为 ds4viz 方法调用注入行号
+     * @param {string} originalCode - 原始代码（包含 import）
+     * @param {string} cleanedCode - 清理后的代码（移除了 import）
+     * @returns {string} 注入行号后的代码
+     */
+    function injectLineNumbers(originalCode, cleanedCode) {
+        const ds4vizMethods = [
+            // Stack / Queue
+            'push', 'pop', 'clear', 'enqueue', 'dequeue',
+            // Linked List
+            'insertHead', 'insertTail', 'insertAfter', 'insertBefore',
+            'delete', 'deleteHead', 'deleteTail', 'reverse',
+            // Binary Tree / BST
+            'insertRoot', 'insertLeft', 'insertRight', 'updateValue',
+            // Heap
+            'insert', 'extract',
+            // Graph
+            'addNode', 'addEdge', 'removeNode', 'removeEdge',
+            'updateNodeLabel', 'updateWeight'
+        ];
+
+        const originalLines = originalCode.split('\n');
+        const cleanedLines = cleanedCode.split('\n');
+
+        // 为每个清理后的代码行找到对应的原始行号
+        // 策略：通过内容匹配来建立映射
+        const lineMapping = new Map();
+
+        for (let cleanedIdx = 0; cleanedIdx < cleanedLines.length; cleanedIdx++) {
+            const cleanedLine = cleanedLines[cleanedIdx].trim();
+
+            if (cleanedLine === '') {
+                // 空行映射到下一个可用的原始行号
+                lineMapping.set(cleanedIdx, cleanedIdx + 1);
+                continue;
+            }
+
+            // 在原始代码中查找匹配的行
+            let found = false;
+            for (let originalIdx = 0; originalIdx < originalLines.length; originalIdx++) {
+                const originalLine = originalLines[originalIdx].trim();
+
+                // 跳过 import 语句
+                if (originalLine.match(/^import\s+|^const\s+\{[^}]*\}\s*=\s*require/)) {
+                    continue;
+                }
+
+                // 简单的内容匹配（去除空格后比较）
+                if (originalLine.replace(/\s+/g, '') === cleanedLine.replace(/\s+/g, '')) {
+                    lineMapping.set(cleanedIdx, originalIdx + 1);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                // 如果没找到匹配，使用估算的行号
+                lineMapping.set(cleanedIdx, cleanedIdx + 1);
+            }
+        }
+
+        const processedLines = [];
+
+        for (let i = 0; i < cleanedLines.length; i++) {
+            const lineNumber = lineMapping.get(i) || (i + 1);
+            let line = cleanedLines[i];
+
+            for (const method of ds4vizMethods) {
+                const regex = new RegExp(
+                    `(\\w+)\\s*\\.\\s*(${method})\\s*\\(`,
+                    'g'
+                );
+
+                let newLine = '';
+                let lastIndex = 0;
+                let match;
+
+                while ((match = regex.exec(line)) !== null) {
+                    const obj = match[1];
+                    const methodName = match[2];
+                    const matchStart = match.index;
+                    const argsStart = match.index + match[0].length;
+
+                    // 找到匹配的右括号
+                    let depth = 1;
+                    let argsEnd = argsStart;
+                    while (argsEnd < line.length && depth > 0) {
+                        if (line[argsEnd] === '(') depth++;
+                        else if (line[argsEnd] === ')') depth--;
+                        if (depth > 0) argsEnd++;
+                    }
+
+                    const args = line.slice(argsStart, argsEnd).trim();
+
+                    let replacement;
+                    if (args === '') {
+                        replacement = `${obj}.${methodName}({ __line: ${lineNumber} })`;
+                    } else {
+                        replacement = `${obj}.${methodName}(${args}, { __line: ${lineNumber} })`;
+                    }
+
+                    // 构建新行
+                    newLine += line.slice(lastIndex, matchStart) + replacement;
+                    lastIndex = argsEnd + 1;
+                }
+
+                if (lastIndex > 0) {
+                    // 如果有替换，添加剩余部分
+                    line = newLine + line.slice(lastIndex);
+                }
+            }
+
+            processedLines.push(line);
+        }
+
+        return processedLines.join('\n');
+    }
+
     async function executeLocalCode() {
         const code = elements.codeEditor.value;
 
@@ -2166,12 +2285,18 @@ fn main() -> ds4viz::Result<()> {
         try {
             const ds4viz = await loadDs4vizModule();
 
+            // 保存原始代码
+            const originalCode = code;
+
             // 移除 import 语句
-            const cleanedCode = code
-                .replace(/import\s+\{[^}]*\}\s+from\s+['"][^'"]*['"]\s*;?/g, '')
-                .replace(/import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*['"]\s*;?/g, '')
-                .replace(/const\s+\{[^}]*\}\s*=\s*require\s*\(['"][^'"]*['"]\)\s*;?/g, '')
+            let cleanedCode = code
+                .replace(/import\s+\{[^}]*\}\s+from\s+['"][^'"]*['"]\s*;?/gm, '')
+                .replace(/import\s+\*\s+as\s+\w+\s+from\s+['"][^'"]*['"]\s*;?/gm, '')
+                .replace(/const\s+\{[^}]*\}\s*=\s*require\s*\(['"][^'"]*['"]\)\s*;?/gm, '')
                 .trim();
+
+            // 预处理代码，注入行号
+            cleanedCode = injectLineNumbers(originalCode, cleanedCode);
 
             // 创建上下文
             const contextVars = { ...ds4viz };

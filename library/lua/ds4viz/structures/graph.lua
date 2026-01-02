@@ -10,7 +10,7 @@ File:
 Date:
     2025-12-24
 Updated:
-    2025-12-24
+    2026-01-02
 ]]
 
 local session = require("ds4viz.session")
@@ -107,7 +107,7 @@ function GraphUndirected:addNode(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_node", before, after, { id = node_id, label = node_label }, nil, nil, line)
@@ -135,7 +135,7 @@ function GraphUndirected:addEdge(from_id, to_id)
         self:raiseError(string.format("Edge already exists: (%d, %d)", norm_from, norm_to))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = true
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_edge", before, after, { from = from_id, to = to_id }, nil, nil, line)
@@ -151,7 +151,7 @@ function GraphUndirected:removeNode(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local edges_to_remove = {}
     for key in pairs(self.edges) do
         local from_str, to_str = key:match("(%d+),(%d+)")
@@ -182,7 +182,7 @@ function GraphUndirected:removeEdge(from_id, to_id)
         self:raiseError(string.format("Edge not found: (%d, %d)", norm_from, norm_to))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = nil
     local after = self.session:addState(self:buildData())
     self.session:addStep("remove_edge", before, after, { from = from_id, to = to_id }, nil, nil, line)
@@ -202,7 +202,7 @@ function GraphUndirected:updateNodeLabel(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_label = self.nodes[node_id]
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())
@@ -279,7 +279,7 @@ function GraphDirected:addNode(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_node", before, after, { id = node_id, label = node_label }, nil, nil, line)
@@ -306,7 +306,7 @@ function GraphDirected:addEdge(from_id, to_id)
         self:raiseError(string.format("Edge already exists: (%d, %d)", from_id, to_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = true
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_edge", before, after, { from = from_id, to = to_id }, nil, nil, line)
@@ -322,7 +322,7 @@ function GraphDirected:removeNode(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local edges_to_remove = {}
     for key in pairs(self.edges) do
         local from_str, to_str = key:match("(%d+),(%d+)")
@@ -352,7 +352,7 @@ function GraphDirected:removeEdge(from_id, to_id)
         self:raiseError(string.format("Edge not found: (%d, %d)", from_id, to_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = nil
     local after = self.session:addState(self:buildData())
     self.session:addStep("remove_edge", before, after, { from = from_id, to = to_id }, nil, nil, line)
@@ -372,7 +372,7 @@ function GraphDirected:updateNodeLabel(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_label = self.nodes[node_id]
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())
@@ -468,7 +468,7 @@ function GraphWeighted:addNode(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_node", before, after, { id = node_id, label = node_label }, nil, nil, line)
@@ -497,7 +497,7 @@ function GraphWeighted:addEdge(from_id, to_id, weight)
         self:raiseError(string.format("Edge already exists: (%d, %d)", norm_from, norm_to))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = weight
     local after = self.session:addState(self:buildData())
     self.session:addStep("add_edge", before, after, { from = from_id, to = to_id, weight = weight }, nil, nil, line)
@@ -513,7 +513,7 @@ function GraphWeighted:removeNode(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local edges_to_remove = {}
     for key in pairs(self.edges) do
         local from_str, to_str = key:match("(%d+),(%d+)")
@@ -544,7 +544,7 @@ function GraphWeighted:removeEdge(from_id, to_id)
         self:raiseError(string.format("Edge not found: (%d, %d)", norm_from, norm_to))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.edges[key] = nil
     local after = self.session:addState(self:buildData())
     self.session:addStep("remove_edge", before, after, { from = from_id, to = to_id }, nil, nil, line)
@@ -564,7 +564,7 @@ function GraphWeighted:updateWeight(from_id, to_id, weight)
         self:raiseError(string.format("Edge not found: (%d, %d)", norm_from, norm_to))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_weight = self.edges[key]
     self.edges[key] = weight
     local after = self.session:addState(self:buildData())
@@ -586,7 +586,7 @@ function GraphWeighted:updateNodeLabel(node_id, node_label)
         self:raiseError(string.format("Label length must be 1-32, got %d", #node_label))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_label = self.nodes[node_id]
     self.nodes[node_id] = node_label
     local after = self.session:addState(self:buildData())

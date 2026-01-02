@@ -11,7 +11,7 @@ File:
 Date:
     2025-12-24
 Updated:
-    2025-12-24
+    2026-01-02
 ]]
 
 local trace_mod = require("ds4viz.trace")
@@ -294,10 +294,11 @@ end
 
 --@description: 进入上下文（模拟with语句的开始）
 --@param self: BaseStructure - BaseStructure实例
+--@param entry_line: number|nil - 入口行号（由withContext传入）
 --@return: BaseStructure - 自身实例
-function BaseStructure:enter()
+function BaseStructure:enter(entry_line)
     self.entered = true
-    self.session:setEntryLine(M.getCallerLine(3))
+    self.session:setEntryLine(entry_line or 1)
     self:initialize()
     return self
 end
@@ -306,9 +307,10 @@ end
 --@param self: BaseStructure - BaseStructure实例
 --@param err_msg: string|nil - 错误消息
 --@param err_line: number|nil - 错误行号
+--@param exit_line: number|nil - 退出行号（由withContext传入）
 --@return: nil
-function BaseStructure:exit(err_msg, err_line)
-    self.session:setExitLine(M.getCallerLine(3))
+function BaseStructure:exit(err_msg, err_line, exit_line)
+    self.session:setExitLine(exit_line or 1)
     if err_msg then
         self.session:setError(
             M.ErrorType.RUNTIME,
@@ -340,7 +342,7 @@ end
 --@return: nil
 --@raise: error - 始终抛出错误
 function BaseStructure:raiseError(message)
-    local line = M.getCallerLine(3)
+    local line = M.getCallerLine(4)
     local step_id = self.session.step_counter
     self.session.failed_step_id = step_id
     error({ message = message, line = line, is_ds4viz_error = true })
@@ -355,7 +357,7 @@ end
 --@return: nil
 function BaseStructure:recordStep(op, args, ret, note)
     local before = self.session:getLastStateId()
-    local line = M.getCallerLine(3)
+    local line = M.getCallerLine(4)
     local new_data = self:buildData()
     local after = self.session:addState(new_data)
     self.session:addStep(op, before, after, args, ret, note, line)
@@ -369,10 +371,11 @@ M.BaseStructure = BaseStructure
 --@return: boolean - 是否成功执行
 --@return: any - 错误信息（如果有）
 function M.withContext(structure, fn)
-    structure:enter()
+    local context_line = M.getCallerLine(2)
+    structure:enter(context_line)
     local ok, err = pcall(fn, structure)
     if ok then
-        structure:exit()
+        structure:exit(nil, nil, context_line)
     else
         local err_msg = err
         local err_line = nil
@@ -385,7 +388,7 @@ function M.withContext(structure, fn)
                 err_line = tonumber(line_match)
             end
         end
-        structure:exit(tostring(err_msg), err_line)
+        structure:exit(tostring(err_msg), err_line, context_line)
     end
     return ok, err
 end

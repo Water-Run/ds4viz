@@ -10,7 +10,7 @@ File:
 Date:
     2025-12-24
 Updated:
-    2025-12-24
+    2026-01-02
 ]]
 
 local session = require("ds4viz.session")
@@ -110,7 +110,7 @@ function BinaryTree:insertRoot(value)
         self:raiseError("Root node already exists")
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, left = -1, right = -1 }
@@ -134,7 +134,7 @@ function BinaryTree:insertLeft(parent_id, value)
         self:raiseError(string.format("Left child already exists for node: %d", parent_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, left = -1, right = -1 }
@@ -158,7 +158,7 @@ function BinaryTree:insertRight(parent_id, value)
         self:raiseError(string.format("Right child already exists for node: %d", parent_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, left = -1, right = -1 }
@@ -178,7 +178,7 @@ function BinaryTree:delete(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local subtree_ids = self:collectSubtree(node_id)
     local parent_id = self:findParent(node_id)
     if parent_id ~= -1 then
@@ -208,7 +208,7 @@ function BinaryTree:updateValue(node_id, value)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_value = self.nodes[node_id].value
     self.nodes[node_id].value = value
     local after = self.session:addState(self:buildData())
@@ -312,7 +312,7 @@ end
 --@return: number - 新插入节点的id
 function BinarySearchTree:insert(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, left = -1, right = -1 }
@@ -397,7 +397,7 @@ function BinarySearchTree:delete(value)
         self:raiseError(string.format("Node with value %s not found", tostring(value)))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self:deleteNode(node_id)
     local after = self.session:addState(self:buildData())
     self.session:addStep("delete", before, after, { value = value }, nil, nil, line)
@@ -519,7 +519,7 @@ end
 --@return: nil
 function Heap:insert(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items[#self.items + 1] = value
     self:siftUp(#self.items)
     local after = self.session:addState(self:buildData())
@@ -535,7 +535,7 @@ function Heap:extract()
         self:raiseError("Cannot extract from empty heap")
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local extracted = self.items[1]
     if #self.items == 1 then
         table.remove(self.items)
@@ -552,7 +552,7 @@ end
 --@return: nil
 function Heap:clear()
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items = {}
     local after = self.session:addState(self:buildData())
     self.session:addStep("clear", before, after, {}, nil, nil, line)

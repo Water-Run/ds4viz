@@ -10,7 +10,7 @@ File:
 Date:
     2025-12-24
 Updated:
-    2025-12-24
+    2026-01-02
 ]]
 
 local session = require("ds4viz.session")
@@ -59,7 +59,7 @@ end
 --@return: nil
 function Stack:push(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items[#self.items + 1] = value
     local after = self.session:addState(self:buildData())
     self.session:addStep("push", before, after, { value = value }, nil, nil, line)
@@ -74,7 +74,7 @@ function Stack:pop()
         self:raiseError("Cannot pop from empty stack")
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local popped = table.remove(self.items)
     local after = self.session:addState(self:buildData())
     self.session:addStep("pop", before, after, {}, popped, nil, line)
@@ -85,7 +85,7 @@ end
 --@return: nil
 function Stack:clear()
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items = {}
     local after = self.session:addState(self:buildData())
     self.session:addStep("clear", before, after, {}, nil, nil, line)
@@ -139,7 +139,7 @@ end
 --@return: nil
 function Queue:enqueue(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items[#self.items + 1] = value
     local after = self.session:addState(self:buildData())
     self.session:addStep("enqueue", before, after, { value = value }, nil, nil, line)
@@ -154,7 +154,7 @@ function Queue:dequeue()
         self:raiseError("Cannot dequeue from empty queue")
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local dequeued = table.remove(self.items, 1)
     local after = self.session:addState(self:buildData())
     self.session:addStep("dequeue", before, after, {}, dequeued, nil, line)
@@ -165,7 +165,7 @@ end
 --@return: nil
 function Queue:clear()
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     self.items = {}
     local after = self.session:addState(self:buildData())
     self.session:addStep("clear", before, after, {}, nil, nil, line)
@@ -260,7 +260,7 @@ end
 --@return: number - 新插入节点的id
 function SingleLinkedList:insertHead(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, next = self.head }
@@ -276,7 +276,7 @@ end
 --@return: number - 新插入节点的id
 function SingleLinkedList:insertTail(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, next = -1 }
@@ -302,7 +302,7 @@ function SingleLinkedList:insertAfter(node_id, value)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     local old_next = self.nodes[node_id].next
@@ -323,7 +323,7 @@ function SingleLinkedList:delete(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local deleted_value = self.nodes[node_id].value
     if self.head == node_id then
         self.head = self.nodes[node_id].next
@@ -347,7 +347,7 @@ function SingleLinkedList:deleteHead()
         self:raiseError("Cannot delete from empty list")
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local old_head = self.head
     local deleted_value = self.nodes[old_head].value
     self.head = self.nodes[old_head].next
@@ -361,7 +361,7 @@ end
 --@return: nil
 function SingleLinkedList:reverse()
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local prev = -1
     local current = self.head
     while current ~= -1 do
@@ -433,7 +433,7 @@ end
 --@return: number - 新插入节点的id
 function DoubleLinkedList:insertHead(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, prev = -1, next = self.head }
@@ -455,7 +455,7 @@ end
 --@return: number - 新插入节点的id
 function DoubleLinkedList:insertTail(value)
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     self.nodes[new_id] = { value = value, prev = self.tail, next = -1 }
@@ -482,7 +482,7 @@ function DoubleLinkedList:insertBefore(node_id, value)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     local old_prev = self.nodes[node_id].prev
@@ -509,7 +509,7 @@ function DoubleLinkedList:insertAfter(node_id, value)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local new_id = self.next_id
     self.next_id = self.next_id + 1
     local old_next = self.nodes[node_id].next
@@ -535,7 +535,7 @@ function DoubleLinkedList:delete(node_id)
         self:raiseError(string.format("Node not found: %d", node_id))
     end
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local deleted_value = self.nodes[node_id].value
     local prev_id = self.nodes[node_id].prev
     local next_id = self.nodes[node_id].next
@@ -581,7 +581,7 @@ end
 --@return: nil
 function DoubleLinkedList:reverse()
     local before = self.session:getLastStateId()
-    local line = session.getCallerLine(2)
+    local line = session.getCallerLine(3)
     local current = self.head
     while current ~= -1 do
         local node = self.nodes[current]

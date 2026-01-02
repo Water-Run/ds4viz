@@ -27,7 +27,7 @@ class Package:
     """
     name: str = "ds4viz"
     lang: str = "python"
-    version: str = "1.0.0"
+    version: str = "0.1.0"
 
 
 @dataclass

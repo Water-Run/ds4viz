@@ -196,6 +196,30 @@ function getCallerLine(depth = 2) {
     return 1;
 }
 
+/**
+ * 从参数列表中提取注入的行号
+ *
+ * @param {IArguments|Array} args - 原始参数数组
+ * @returns {{ line: number|null, args: Array }} - 行号和清理后的参数
+ */
+function extractLineFromArgs(args) {
+    const argsArray = Array.from(args);
+    if (argsArray.length === 0) {
+        return { line: null, args: [] };
+    }
+
+    const lastArg = argsArray[argsArray.length - 1];
+
+    if (lastArg && typeof lastArg === 'object' && lastArg !== null && '__line' in lastArg) {
+        return {
+            line: lastArg.__line,
+            args: argsArray.slice(0, -1)
+        };
+    }
+
+    return { line: null, args: argsArray };
+}
+
 // ============================================================================
 // Trace 数据结构定义
 // ============================================================================
@@ -1160,13 +1184,14 @@ class ContextManager {
     }
 
     /**
-     * 抛出数据结构错误
+     * 抛出数据结构错误（支持注入行号）
      *
      * @param {string} message - 错误消息
+     * @param {number} [injectedLine] - 注入的行号
      * @throws {StructureError} 始终抛出
      */
-    _raiseError(message) {
-        const line = getCallerLine(3);
+    _raiseError(message, injectedLine) {
+        const line = injectedLine ?? getCallerLine(3);
         const stepId = this._session.stepCounter;
         this._session.failedStepId = stepId;
         const error = new StructureError(message, line);
@@ -1175,17 +1200,18 @@ class ContextManager {
     }
 
     /**
-     * 记录操作步骤并添加新状态
+     * 记录操作步骤并添加新状态（支持注入行号）
      *
      * @param {string} op - 操作名称
      * @param {StepArgs} args - 操作参数
+     * @param {number} [injectedLine] - 注入的行号
      * @param {*} [ret] - 返回值
      * @param {string} [note] - 备注
      * @returns {void}
      */
-    _recordStep(op, args, ret, note) {
+    _recordStep(op, args, injectedLine, ret, note) {
         const before = this._session.getLastStateId();
-        const line = getCallerLine(3);
+        const line = injectedLine ?? getCallerLine(3);
         const newData = this._buildData();
         const after = this._session.addState(newData);
         this._session.addStep(op, before, after, args, ret, note, line);
@@ -1270,11 +1296,14 @@ class Stack extends ContextManager {
      * @returns {void}
      */
     push(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._items.push(value);
+        this._items.push(actualValue);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('push', before, after, { value }, undefined, undefined, line);
+        this._session.addStep('push', before, after, { value: actualValue }, undefined, undefined, line);
     }
 
     /**
@@ -1284,11 +1313,13 @@ class Stack extends ContextManager {
      * @throws {StructureError} 当栈为空时抛出异常
      */
     pop() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._items.length === 0) {
-            this._raiseError('Cannot pop from empty stack');
+            this._raiseError('Cannot pop from empty stack', line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const popped = this._items.pop();
         const after = this._session.addState(this._buildData());
         this._session.addStep('pop', before, after, {}, popped, undefined, line);
@@ -1300,8 +1331,10 @@ class Stack extends ContextManager {
      * @returns {void}
      */
     clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._items.length = 0;
         const after = this._session.addState(this._buildData());
         this._session.addStep('clear', before, after, {}, undefined, undefined, line);
@@ -1355,11 +1388,14 @@ class Queue extends ContextManager {
      * @returns {void}
      */
     enqueue(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._items.push(value);
+        this._items.push(actualValue);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('enqueue', before, after, { value }, undefined, undefined, line);
+        this._session.addStep('enqueue', before, after, { value: actualValue }, undefined, undefined, line);
     }
 
     /**
@@ -1369,11 +1405,13 @@ class Queue extends ContextManager {
      * @throws {StructureError} 当队列为空时抛出异常
      */
     dequeue() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._items.length === 0) {
-            this._raiseError('Cannot dequeue from empty queue');
+            this._raiseError('Cannot dequeue from empty queue', line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const dequeued = this._items.shift();
         const after = this._session.addState(this._buildData());
         this._session.addStep('dequeue', before, after, {}, dequeued, undefined, line);
@@ -1385,8 +1423,10 @@ class Queue extends ContextManager {
      * @returns {void}
      */
     clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._items.length = 0;
         const after = this._session.addState(this._buildData());
         this._session.addStep('clear', before, after, {}, undefined, undefined, line);
@@ -1491,14 +1531,17 @@ class SingleLinkedList extends ContextManager {
      * @returns {number} 新插入节点的 id
      */
     insertHead(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, next: this._head });
+        this._nodes.set(newId, { value: actualValue, next: this._head });
         this._head = newId;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_head', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert_head', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1509,11 +1552,14 @@ class SingleLinkedList extends ContextManager {
      * @returns {number} 新插入节点的 id
      */
     insertTail(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, next: -1 });
+        this._nodes.set(newId, { value: actualValue, next: -1 });
         if (this._head === -1) {
             this._head = newId;
         } else {
@@ -1524,7 +1570,7 @@ class SingleLinkedList extends ContextManager {
             }
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_tail', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert_tail', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1537,19 +1583,23 @@ class SingleLinkedList extends ContextManager {
      * @throws {StructureError} 当指定节点不存在时抛出异常
      */
     insertAfter(nodeId, value) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        const targetNode = this._nodes.get(nodeId);
+        const targetNode = this._nodes.get(actualNodeId);
         const oldNext = targetNode.next;
-        this._nodes.set(newId, { value, next: oldNext });
+        this._nodes.set(newId, { value: actualValue, next: oldNext });
         targetNode.next = newId;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_after', before, after, { node_id: nodeId, value }, newId, undefined, line);
+        this._session.addStep('insert_after', before, after, { node_id: actualNodeId, value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1561,17 +1611,20 @@ class SingleLinkedList extends ContextManager {
      * @throws {StructureError} 当指定节点不存在时抛出异常
      */
     delete(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const deletedNode = this._nodes.get(nodeId);
+        const deletedNode = this._nodes.get(actualNodeId);
         const deletedValue = deletedNode.value;
-        if (this._head === nodeId) {
+        if (this._head === actualNodeId) {
             this._head = deletedNode.next;
         } else {
-            const prev = this._findPrev(nodeId);
+            const prev = this._findPrev(actualNodeId);
             if (prev !== -1) {
                 const prevNode = this._nodes.get(prev);
                 if (prevNode !== undefined) {
@@ -1579,9 +1632,9 @@ class SingleLinkedList extends ContextManager {
                 }
             }
         }
-        this._nodes.delete(nodeId);
+        this._nodes.delete(actualNodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('delete', before, after, { node_id: nodeId }, deletedValue, undefined, line);
+        this._session.addStep('delete', before, after, { node_id: actualNodeId }, deletedValue, undefined, line);
     }
 
     /**
@@ -1591,11 +1644,13 @@ class SingleLinkedList extends ContextManager {
      * @throws {StructureError} 当链表为空时抛出异常
      */
     deleteHead() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._head === -1) {
-            this._raiseError('Cannot delete from empty list');
+            this._raiseError('Cannot delete from empty list', line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const oldHead = this._head;
         const headNode = this._nodes.get(oldHead);
         const deletedValue = headNode.value;
@@ -1606,13 +1661,61 @@ class SingleLinkedList extends ContextManager {
     }
 
     /**
+     * 删除尾节点
+     *
+     * @returns {void}
+     * @throws {StructureError} 当链表为空时抛出异常
+     */
+    deleteTail() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        if (this._head === -1) {
+            this._raiseError('Cannot delete from empty list', line);
+        }
+        const before = this._session.getLastStateId();
+
+        // 如果只有一个节点
+        if (this._nodes.get(this._head).next === -1) {
+            const deletedValue = this._nodes.get(this._head).value;
+            const oldHead = this._head;
+            this._nodes.delete(this._head);
+            this._head = -1;
+            const after = this._session.addState(this._buildData());
+            this._session.addStep('delete_tail', before, after, {}, deletedValue, undefined, line);
+            return;
+        }
+
+        // 找到倒数第二个节点
+        let prev = this._head;
+        let current = this._nodes.get(this._head);
+        while (current.next !== -1) {
+            const nextNode = this._nodes.get(current.next);
+            if (nextNode.next === -1) {
+                break;
+            }
+            prev = current.next;
+            current = nextNode;
+        }
+
+        const tailId = current.next;
+        const deletedValue = this._nodes.get(tailId).value;
+        current.next = -1;
+        this._nodes.delete(tailId);
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('delete_tail', before, after, {}, deletedValue, undefined, line);
+    }
+
+    /**
      * 反转链表
      *
      * @returns {void}
      */
     reverse() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         let prev = -1;
         let current = this._head;
         while (current !== -1) {
@@ -1628,6 +1731,23 @@ class SingleLinkedList extends ContextManager {
         this._head = prev;
         const after = this._session.addState(this._buildData());
         this._session.addStep('reverse', before, after, {}, undefined, undefined, line);
+    }
+
+    /**
+     * 清空链表
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._head = -1;
+        this._nextId = 0;
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -1692,11 +1812,14 @@ class DoubleLinkedList extends ContextManager {
      * @returns {number} 新插入节点的 id
      */
     insertHead(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, prev: -1, next: this._head });
+        this._nodes.set(newId, { value: actualValue, prev: -1, next: this._head });
         if (this._head !== -1) {
             const headNode = this._nodes.get(this._head);
             if (headNode !== undefined) {
@@ -1708,7 +1831,7 @@ class DoubleLinkedList extends ContextManager {
             this._tail = newId;
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_head', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert_head', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1719,11 +1842,14 @@ class DoubleLinkedList extends ContextManager {
      * @returns {number} 新插入节点的 id
      */
     insertTail(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, prev: this._tail, next: -1 });
+        this._nodes.set(newId, { value: actualValue, prev: this._tail, next: -1 });
         if (this._tail !== -1) {
             const tailNode = this._nodes.get(this._tail);
             if (tailNode !== undefined) {
@@ -1735,7 +1861,7 @@ class DoubleLinkedList extends ContextManager {
             this._head = newId;
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_tail', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert_tail', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1748,16 +1874,20 @@ class DoubleLinkedList extends ContextManager {
      * @throws {StructureError} 当指定节点不存在时抛出异常
      */
     insertBefore(nodeId, value) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        const targetNode = this._nodes.get(nodeId);
+        const targetNode = this._nodes.get(actualNodeId);
         const oldPrev = targetNode.prev;
-        this._nodes.set(newId, { value, prev: oldPrev, next: nodeId });
+        this._nodes.set(newId, { value: actualValue, prev: oldPrev, next: actualNodeId });
         targetNode.prev = newId;
         if (oldPrev !== -1) {
             const prevNode = this._nodes.get(oldPrev);
@@ -1768,7 +1898,7 @@ class DoubleLinkedList extends ContextManager {
             this._head = newId;
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_before', before, after, { node_id: nodeId, value }, newId, undefined, line);
+        this._session.addStep('insert_before', before, after, { node_id: actualNodeId, value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1781,16 +1911,20 @@ class DoubleLinkedList extends ContextManager {
      * @throws {StructureError} 当指定节点不存在时抛出异常
      */
     insertAfter(nodeId, value) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        const targetNode = this._nodes.get(nodeId);
+        const targetNode = this._nodes.get(actualNodeId);
         const oldNext = targetNode.next;
-        this._nodes.set(newId, { value, prev: nodeId, next: oldNext });
+        this._nodes.set(newId, { value: actualValue, prev: actualNodeId, next: oldNext });
         targetNode.next = newId;
         if (oldNext !== -1) {
             const nextNode = this._nodes.get(oldNext);
@@ -1801,7 +1935,7 @@ class DoubleLinkedList extends ContextManager {
             this._tail = newId;
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_after', before, after, { node_id: nodeId, value }, newId, undefined, line);
+        this._session.addStep('insert_after', before, after, { node_id: actualNodeId, value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -1813,12 +1947,15 @@ class DoubleLinkedList extends ContextManager {
      * @throws {StructureError} 当指定节点不存在时抛出异常
      */
     delete(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const nodeData = this._nodes.get(nodeId);
+        const nodeData = this._nodes.get(actualNodeId);
         const deletedValue = nodeData.value;
         const prevId = nodeData.prev;
         const nextId = nodeData.next;
@@ -1841,9 +1978,9 @@ class DoubleLinkedList extends ContextManager {
             this._tail = prevId;
         }
 
-        this._nodes.delete(nodeId);
+        this._nodes.delete(actualNodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('delete', before, after, { node_id: nodeId }, deletedValue, undefined, line);
+        this._session.addStep('delete', before, after, { node_id: actualNodeId }, deletedValue, undefined, line);
     }
 
     /**
@@ -1853,11 +1990,45 @@ class DoubleLinkedList extends ContextManager {
      * @throws {StructureError} 当链表为空时抛出异常
      */
     deleteHead() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._head === -1) {
-            this._raiseError('Cannot delete from empty list');
+            this._raiseError('Cannot delete from empty list', line);
         }
-        this.delete(this._head);
+
+        // 直接调用 delete 方法，但需要传递行号
+        const headId = this._head;
+
+        const before = this._session.getLastStateId();
+        const nodeData = this._nodes.get(headId);
+        const deletedValue = nodeData.value;
+        const prevId = nodeData.prev;
+        const nextId = nodeData.next;
+
+        if (prevId !== -1) {
+            const prevNode = this._nodes.get(prevId);
+            if (prevNode !== undefined) {
+                prevNode.next = nextId;
+            }
+        } else {
+            this._head = nextId;
+        }
+
+        if (nextId !== -1) {
+            const nextNode = this._nodes.get(nextId);
+            if (nextNode !== undefined) {
+                nextNode.prev = prevId;
+            }
+        } else {
+            this._tail = prevId;
+        }
+
+        this._nodes.delete(headId);
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('delete', before, after, { node_id: headId }, deletedValue, undefined, line);
     }
+    
 
     /**
      * 删除尾节点
@@ -1866,11 +2037,44 @@ class DoubleLinkedList extends ContextManager {
      * @throws {StructureError} 当链表为空时抛出异常
      */
     deleteTail() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._tail === -1) {
-            this._raiseError('Cannot delete from empty list');
+            this._raiseError('Cannot delete from empty list', line);
         }
-        this.delete(this._tail);
+
+        const tailId = this._tail;
+
+        const before = this._session.getLastStateId();
+        const nodeData = this._nodes.get(tailId);
+        const deletedValue = nodeData.value;
+        const prevId = nodeData.prev;
+        const nextId = nodeData.next;
+
+        if (prevId !== -1) {
+            const prevNode = this._nodes.get(prevId);
+            if (prevNode !== undefined) {
+                prevNode.next = nextId;
+            }
+        } else {
+            this._head = nextId;
+        }
+
+        if (nextId !== -1) {
+            const nextNode = this._nodes.get(nextId);
+            if (nextNode !== undefined) {
+                nextNode.prev = prevId;
+            }
+        } else {
+            this._tail = prevId;
+        }
+
+        this._nodes.delete(tailId);
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('delete', before, after, { node_id: tailId }, deletedValue, undefined, line);
     }
+
 
     /**
      * 反转链表
@@ -1878,8 +2082,10 @@ class DoubleLinkedList extends ContextManager {
      * @returns {void}
      */
     reverse() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         let current = this._head;
         while (current !== -1) {
             const node = this._nodes.get(current);
@@ -1896,6 +2102,24 @@ class DoubleLinkedList extends ContextManager {
         this._tail = temp;
         const after = this._session.addState(this._buildData());
         this._session.addStep('reverse', before, after, {}, undefined, undefined, line);
+    }
+
+    /**
+     * 清空链表
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._head = -1;
+        this._tail = -1;
+        this._nextId = 0;
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -1998,17 +2222,20 @@ class BinaryTree extends ContextManager {
      * @throws {StructureError} 当根节点已存在时抛出异常
      */
     insertRoot(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         if (this._root !== -1) {
-            this._raiseError('Root node already exists');
+            this._raiseError('Root node already exists', line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, left: -1, right: -1 });
+        this._nodes.set(newId, { value: actualValue, left: -1, right: -1 });
         this._root = newId;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_root', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert_root', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -2021,21 +2248,25 @@ class BinaryTree extends ContextManager {
      * @throws {StructureError} 当父节点不存在或左子节点已存在时抛出异常
      */
     insertLeft(parentId, value) {
-        if (!this._nodes.has(parentId)) {
-            this._raiseError(`Parent node not found: ${parentId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualParentId = extracted.args.length >= 1 ? extracted.args[0] : parentId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualParentId)) {
+            this._raiseError(`Parent node not found: ${actualParentId}`, line);
         }
-        const parentNode = this._nodes.get(parentId);
+        const parentNode = this._nodes.get(actualParentId);
         if (parentNode.left !== -1) {
-            this._raiseError(`Left child already exists for node: ${parentId}`);
+            this._raiseError(`Left child already exists for node: ${actualParentId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, left: -1, right: -1 });
+        this._nodes.set(newId, { value: actualValue, left: -1, right: -1 });
         parentNode.left = newId;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_left', before, after, { parent: parentId, value }, newId, undefined, line);
+        this._session.addStep('insert_left', before, after, { parent: actualParentId, value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -2048,21 +2279,25 @@ class BinaryTree extends ContextManager {
      * @throws {StructureError} 当父节点不存在或右子节点已存在时抛出异常
      */
     insertRight(parentId, value) {
-        if (!this._nodes.has(parentId)) {
-            this._raiseError(`Parent node not found: ${parentId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualParentId = extracted.args.length >= 1 ? extracted.args[0] : parentId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualParentId)) {
+            this._raiseError(`Parent node not found: ${actualParentId}`, line);
         }
-        const parentNode = this._nodes.get(parentId);
+        const parentNode = this._nodes.get(actualParentId);
         if (parentNode.right !== -1) {
-            this._raiseError(`Right child already exists for node: ${parentId}`);
+            this._raiseError(`Right child already exists for node: ${actualParentId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, left: -1, right: -1 });
+        this._nodes.set(newId, { value: actualValue, left: -1, right: -1 });
         parentNode.right = newId;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert_right', before, after, { parent: parentId, value }, newId, undefined, line);
+        this._session.addStep('insert_right', before, after, { parent: actualParentId, value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -2074,17 +2309,20 @@ class BinaryTree extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     delete(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const subtreeIds = this._collectSubtree(nodeId);
-        const parentId = this._findParent(nodeId);
+        const subtreeIds = this._collectSubtree(actualNodeId);
+        const parentId = this._findParent(actualNodeId);
         if (parentId !== -1) {
             const parentNode = this._nodes.get(parentId);
             if (parentNode !== undefined) {
-                if (parentNode.left === nodeId) {
+                if (parentNode.left === actualNodeId) {
                     parentNode.left = -1;
                 } else {
                     parentNode.right = -1;
@@ -2097,7 +2335,7 @@ class BinaryTree extends ContextManager {
             this._nodes.delete(nid);
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('delete', before, after, { node_id: nodeId }, undefined, undefined, line);
+        this._session.addStep('delete', before, after, { node_id: actualNodeId }, undefined, undefined, line);
     }
 
     /**
@@ -2109,16 +2347,37 @@ class BinaryTree extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     updateValue(nodeId, value) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualValue = extracted.args.length >= 2 ? extracted.args[1] : value;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const node = this._nodes.get(nodeId);
+        const node = this._nodes.get(actualNodeId);
         const oldValue = node.value;
-        node.value = value;
+        node.value = actualValue;
         const after = this._session.addState(this._buildData());
-        this._session.addStep('update_value', before, after, { node_id: nodeId, value }, oldValue, undefined, line);
+        this._session.addStep('update_value', before, after, { node_id: actualNodeId, value: actualValue }, oldValue, undefined, line);
+    }
+
+    /**
+     * 清空二叉树
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._root = -1;
+        this._nextId = 0;
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -2285,11 +2544,14 @@ class BinarySearchTree extends ContextManager {
      * @returns {number} 新插入节点的 id
      */
     insert(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const newId = this._nextId;
         this._nextId += 1;
-        this._nodes.set(newId, { value, left: -1, right: -1 });
+        this._nodes.set(newId, { value: actualValue, left: -1, right: -1 });
 
         if (this._root === -1) {
             this._root = newId;
@@ -2301,7 +2563,7 @@ class BinarySearchTree extends ContextManager {
                     break;
                 }
                 const currentValue = currentNode.value;
-                if (value < currentValue) {
+                if (actualValue < currentValue) {
                     if (currentNode.left === -1) {
                         currentNode.left = newId;
                         break;
@@ -2318,7 +2580,7 @@ class BinarySearchTree extends ContextManager {
         }
 
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert', before, after, { value }, newId, undefined, line);
+        this._session.addStep('insert', before, after, { value: actualValue }, newId, undefined, line);
         return newId;
     }
 
@@ -2330,15 +2592,35 @@ class BinarySearchTree extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     delete(value) {
-        const nodeId = this._findNodeByValue(value);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
+        const nodeId = this._findNodeByValue(actualValue);
         if (nodeId === -1) {
-            this._raiseError(`Node with value ${value} not found`);
+            this._raiseError(`Node with value ${actualValue} not found`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._deleteNode(nodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('delete', before, after, { value }, undefined, undefined, line);
+        this._session.addStep('delete', before, after, { value: actualValue }, undefined, undefined, line);
+    }
+
+    /**
+     * 清空二叉搜索树
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._root = -1;
+        this._nextId = 0;
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -2477,12 +2759,15 @@ class Heap extends ContextManager {
      * @returns {void}
      */
     insert(value) {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualValue = extracted.args.length > 0 ? extracted.args[0] : value;
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._items.push(value);
+        this._items.push(actualValue);
         this._siftUp(this._items.length - 1);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('insert', before, after, { value }, undefined, undefined, line);
+        this._session.addStep('insert', before, after, { value: actualValue }, undefined, undefined, line);
     }
 
     /**
@@ -2492,12 +2777,14 @@ class Heap extends ContextManager {
      * @throws {StructureError} 当堆为空时抛出异常
      */
     extract() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         if (this._items.length === 0) {
-            this._raiseError('Cannot extract from empty heap');
+            this._raiseError('Cannot extract from empty heap', line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const extracted = this._items[0];
+        const extractedValue = this._items[0];
         if (this._items.length === 1) {
             this._items.pop();
         } else {
@@ -2505,7 +2792,7 @@ class Heap extends ContextManager {
             this._siftDown(0);
         }
         const after = this._session.addState(this._buildData());
-        this._session.addStep('extract', before, after, {}, extracted, undefined, line);
+        this._session.addStep('extract', before, after, {}, extractedValue, undefined, line);
     }
 
     /**
@@ -2514,8 +2801,10 @@ class Heap extends ContextManager {
      * @returns {void}
      */
     clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._items.length = 0;
         const after = this._session.addState(this._buildData());
         this._session.addStep('clear', before, after, {}, undefined, undefined, line);
@@ -2592,17 +2881,21 @@ class GraphUndirected extends ContextManager {
      * @throws {StructureError} 当节点已存在时抛出异常
      */
     addNode(nodeId, label) {
-        if (this._nodes.has(nodeId)) {
-            this._raiseError(`Node already exists: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node already exists: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._nodes.set(nodeId, label);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_node', before, after, { id: nodeId, label }, undefined, undefined, line);
+        this._session.addStep('add_node', before, after, { id: actualNodeId, label: actualLabel }, undefined, undefined, line);
     }
 
     /**
@@ -2614,24 +2907,28 @@ class GraphUndirected extends ContextManager {
      * @throws {StructureError} 当节点不存在、边已存在或形成自环时抛出异常
      */
     addEdge(fromId, toId) {
-        if (!this._nodes.has(fromId)) {
-            this._raiseError(`Node not found: ${fromId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+
+        if (!this._nodes.has(actualFromId)) {
+            this._raiseError(`Node not found: ${actualFromId}`, line);
         }
-        if (!this._nodes.has(toId)) {
-            this._raiseError(`Node not found: ${toId}`);
+        if (!this._nodes.has(actualToId)) {
+            this._raiseError(`Node not found: ${actualToId}`, line);
         }
-        if (fromId === toId) {
-            this._raiseError(`Self-loop not allowed: ${fromId}`);
+        if (actualFromId === actualToId) {
+            this._raiseError(`Self-loop not allowed: ${actualFromId}`, line);
         }
-        const edgeKey = GraphUndirected._normalizeEdge(fromId, toId);
+        const edgeKey = GraphUndirected._normalizeEdge(actualFromId, actualToId);
         if (this._edges.has(edgeKey)) {
-            this._raiseError(`Edge already exists: (${fromId}, ${toId})`);
+            this._raiseError(`Edge already exists: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._edges.add(edgeKey);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_edge', before, after, { from: fromId, to: toId }, undefined, undefined, line);
+        this._session.addStep('add_edge', before, after, { from: actualFromId, to: actualToId }, undefined, undefined, line);
     }
 
     /**
@@ -2642,24 +2939,27 @@ class GraphUndirected extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     removeNode(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const edgesToRemove = [];
         for (const edgeKey of this._edges) {
             const [from, to] = edgeKey.split(',').map(Number);
-            if (from === nodeId || to === nodeId) {
+            if (from === actualNodeId || to === actualNodeId) {
                 edgesToRemove.push(edgeKey);
             }
         }
         for (const edgeKey of edgesToRemove) {
             this._edges.delete(edgeKey);
         }
-        this._nodes.delete(nodeId);
+        this._nodes.delete(actualNodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_node', before, after, { node_id: nodeId }, undefined, undefined, line);
+        this._session.addStep('remove_node', before, after, { node_id: actualNodeId }, undefined, undefined, line);
     }
 
     /**
@@ -2671,15 +2971,19 @@ class GraphUndirected extends ContextManager {
      * @throws {StructureError} 当边不存在时抛出异常
      */
     removeEdge(fromId, toId) {
-        const edgeKey = GraphUndirected._normalizeEdge(fromId, toId);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+
+        const edgeKey = GraphUndirected._normalizeEdge(actualFromId, actualToId);
         if (!this._edges.has(edgeKey)) {
-            this._raiseError(`Edge not found: (${fromId}, ${toId})`);
+            this._raiseError(`Edge not found: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._edges.delete(edgeKey);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_edge', before, after, { from: fromId, to: toId }, undefined, undefined, line);
+        this._session.addStep('remove_edge', before, after, { from: actualFromId, to: actualToId }, undefined, undefined, line);
     }
 
     /**
@@ -2691,18 +2995,38 @@ class GraphUndirected extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     updateNodeLabel(nodeId, label) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const oldLabel = this._nodes.get(nodeId);
-        this._nodes.set(nodeId, label);
+        const oldLabel = this._nodes.get(actualNodeId);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('update_node_label', before, after, { node_id: nodeId, label }, oldLabel, undefined, line);
+        this._session.addStep('update_node_label', before, after, { node_id: actualNodeId, label: actualLabel }, oldLabel, undefined, line);
+    }
+
+    /**
+     * 清空图
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._edges.clear();
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -2761,17 +3085,21 @@ class GraphDirected extends ContextManager {
      * @throws {StructureError} 当节点已存在时抛出异常
      */
     addNode(nodeId, label) {
-        if (this._nodes.has(nodeId)) {
-            this._raiseError(`Node already exists: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node already exists: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._nodes.set(nodeId, label);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_node', before, after, { id: nodeId, label }, undefined, undefined, line);
+        this._session.addStep('add_node', before, after, { id: actualNodeId, label: actualLabel }, undefined, undefined, line);
     }
 
     /**
@@ -2783,24 +3111,28 @@ class GraphDirected extends ContextManager {
      * @throws {StructureError} 当节点不存在、边已存在或形成自环时抛出异常
      */
     addEdge(fromId, toId) {
-        if (!this._nodes.has(fromId)) {
-            this._raiseError(`Node not found: ${fromId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+
+        if (!this._nodes.has(actualFromId)) {
+            this._raiseError(`Node not found: ${actualFromId}`, line);
         }
-        if (!this._nodes.has(toId)) {
-            this._raiseError(`Node not found: ${toId}`);
+        if (!this._nodes.has(actualToId)) {
+            this._raiseError(`Node not found: ${actualToId}`, line);
         }
-        if (fromId === toId) {
-            this._raiseError(`Self-loop not allowed: ${fromId}`);
+        if (actualFromId === actualToId) {
+            this._raiseError(`Self-loop not allowed: ${actualFromId}`, line);
         }
-        const edgeKey = `${fromId},${toId}`;
+        const edgeKey = `${actualFromId},${actualToId}`;
         if (this._edges.has(edgeKey)) {
-            this._raiseError(`Edge already exists: (${fromId}, ${toId})`);
+            this._raiseError(`Edge already exists: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._edges.add(edgeKey);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_edge', before, after, { from: fromId, to: toId }, undefined, undefined, line);
+        this._session.addStep('add_edge', before, after, { from: actualFromId, to: actualToId }, undefined, undefined, line);
     }
 
     /**
@@ -2811,24 +3143,27 @@ class GraphDirected extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     removeNode(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const edgesToRemove = [];
         for (const edgeKey of this._edges) {
             const [from, to] = edgeKey.split(',').map(Number);
-            if (from === nodeId || to === nodeId) {
+            if (from === actualNodeId || to === actualNodeId) {
                 edgesToRemove.push(edgeKey);
             }
         }
         for (const edgeKey of edgesToRemove) {
             this._edges.delete(edgeKey);
         }
-        this._nodes.delete(nodeId);
+        this._nodes.delete(actualNodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_node', before, after, { node_id: nodeId }, undefined, undefined, line);
+        this._session.addStep('remove_node', before, after, { node_id: actualNodeId }, undefined, undefined, line);
     }
 
     /**
@@ -2840,15 +3175,19 @@ class GraphDirected extends ContextManager {
      * @throws {StructureError} 当边不存在时抛出异常
      */
     removeEdge(fromId, toId) {
-        const edgeKey = `${fromId},${toId}`;
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+
+        const edgeKey = `${actualFromId},${actualToId}`;
         if (!this._edges.has(edgeKey)) {
-            this._raiseError(`Edge not found: (${fromId}, ${toId})`);
+            this._raiseError(`Edge not found: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._edges.delete(edgeKey);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_edge', before, after, { from: fromId, to: toId }, undefined, undefined, line);
+        this._session.addStep('remove_edge', before, after, { from: actualFromId, to: actualToId }, undefined, undefined, line);
     }
 
     /**
@@ -2860,18 +3199,38 @@ class GraphDirected extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     updateNodeLabel(nodeId, label) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const oldLabel = this._nodes.get(nodeId);
-        this._nodes.set(nodeId, label);
+        const oldLabel = this._nodes.get(actualNodeId);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('update_node_label', before, after, { node_id: nodeId, label }, oldLabel, undefined, line);
+        this._session.addStep('update_node_label', before, after, { node_id: actualNodeId, label: actualLabel }, oldLabel, undefined, line);
+    }
+
+    /**
+     * 清空图
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._edges.clear();
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -2955,17 +3314,21 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当节点已存在时抛出异常
      */
     addNode(nodeId, label) {
-        if (this._nodes.has(nodeId)) {
-            this._raiseError(`Node already exists: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node already exists: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._nodes.set(nodeId, label);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_node', before, after, { id: nodeId, label }, undefined, undefined, line);
+        this._session.addStep('add_node', before, after, { id: actualNodeId, label: actualLabel }, undefined, undefined, line);
     }
 
     /**
@@ -2978,24 +3341,29 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当节点不存在、边已存在或形成自环时抛出异常
      */
     addEdge(fromId, toId, weight) {
-        if (!this._nodes.has(fromId)) {
-            this._raiseError(`Node not found: ${fromId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+        const actualWeight = extracted.args.length >= 3 ? extracted.args[2] : weight;
+
+        if (!this._nodes.has(actualFromId)) {
+            this._raiseError(`Node not found: ${actualFromId}`, line);
         }
-        if (!this._nodes.has(toId)) {
-            this._raiseError(`Node not found: ${toId}`);
+        if (!this._nodes.has(actualToId)) {
+            this._raiseError(`Node not found: ${actualToId}`, line);
         }
-        if (fromId === toId) {
-            this._raiseError(`Self-loop not allowed: ${fromId}`);
+        if (actualFromId === actualToId) {
+            this._raiseError(`Self-loop not allowed: ${actualFromId}`, line);
         }
-        const edgeKey = this._normalizeEdge(fromId, toId);
+        const edgeKey = this._normalizeEdge(actualFromId, actualToId);
         if (this._edges.has(edgeKey)) {
-            this._raiseError(`Edge already exists: (${fromId}, ${toId})`);
+            this._raiseError(`Edge already exists: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        this._edges.set(edgeKey, weight);
+        this._edges.set(edgeKey, actualWeight);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('add_edge', before, after, { from: fromId, to: toId, weight }, undefined, undefined, line);
+        this._session.addStep('add_edge', before, after, { from: actualFromId, to: actualToId, weight: actualWeight }, undefined, undefined, line);
     }
 
     /**
@@ -3006,24 +3374,27 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     removeNode(nodeId) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length > 0 ? extracted.args[0] : nodeId;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const edgesToRemove = [];
         for (const edgeKey of this._edges.keys()) {
             const [from, to] = edgeKey.split(',').map(Number);
-            if (from === nodeId || to === nodeId) {
+            if (from === actualNodeId || to === actualNodeId) {
                 edgesToRemove.push(edgeKey);
             }
         }
         for (const edgeKey of edgesToRemove) {
             this._edges.delete(edgeKey);
         }
-        this._nodes.delete(nodeId);
+        this._nodes.delete(actualNodeId);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_node', before, after, { node_id: nodeId }, undefined, undefined, line);
+        this._session.addStep('remove_node', before, after, { node_id: actualNodeId }, undefined, undefined, line);
     }
 
     /**
@@ -3035,15 +3406,19 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当边不存在时抛出异常
      */
     removeEdge(fromId, toId) {
-        const edgeKey = this._normalizeEdge(fromId, toId);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+
+        const edgeKey = this._normalizeEdge(actualFromId, actualToId);
         if (!this._edges.has(edgeKey)) {
-            this._raiseError(`Edge not found: (${fromId}, ${toId})`);
+            this._raiseError(`Edge not found: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         this._edges.delete(edgeKey);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('remove_edge', before, after, { from: fromId, to: toId }, undefined, undefined, line);
+        this._session.addStep('remove_edge', before, after, { from: actualFromId, to: actualToId }, undefined, undefined, line);
     }
 
     /**
@@ -3056,16 +3431,21 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当边不存在时抛出异常
      */
     updateWeight(fromId, toId, weight) {
-        const edgeKey = this._normalizeEdge(fromId, toId);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualFromId = extracted.args.length >= 1 ? extracted.args[0] : fromId;
+        const actualToId = extracted.args.length >= 2 ? extracted.args[1] : toId;
+        const actualWeight = extracted.args.length >= 3 ? extracted.args[2] : weight;
+
+        const edgeKey = this._normalizeEdge(actualFromId, actualToId);
         if (!this._edges.has(edgeKey)) {
-            this._raiseError(`Edge not found: (${fromId}, ${toId})`);
+            this._raiseError(`Edge not found: (${actualFromId}, ${actualToId})`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
         const oldWeight = this._edges.get(edgeKey);
-        this._edges.set(edgeKey, weight);
+        this._edges.set(edgeKey, actualWeight);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('update_weight', before, after, { from: fromId, to: toId, weight }, oldWeight, undefined, line);
+        this._session.addStep('update_weight', before, after, { from: actualFromId, to: actualToId, weight: actualWeight }, oldWeight, undefined, line);
     }
 
     /**
@@ -3077,18 +3457,38 @@ class GraphWeighted extends ContextManager {
      * @throws {StructureError} 当节点不存在时抛出异常
      */
     updateNodeLabel(nodeId, label) {
-        if (!this._nodes.has(nodeId)) {
-            this._raiseError(`Node not found: ${nodeId}`);
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+        const actualNodeId = extracted.args.length >= 1 ? extracted.args[0] : nodeId;
+        const actualLabel = extracted.args.length >= 2 ? extracted.args[1] : label;
+
+        if (!this._nodes.has(actualNodeId)) {
+            this._raiseError(`Node not found: ${actualNodeId}`, line);
         }
-        if (label.length < 1 || label.length > 32) {
-            this._raiseError(`Label length must be 1-32, got ${label.length}`);
+        if (actualLabel.length < 1 || actualLabel.length > 32) {
+            this._raiseError(`Label length must be 1-32, got ${actualLabel.length}`, line);
         }
         const before = this._session.getLastStateId();
-        const line = getCallerLine(2);
-        const oldLabel = this._nodes.get(nodeId);
-        this._nodes.set(nodeId, label);
+        const oldLabel = this._nodes.get(actualNodeId);
+        this._nodes.set(actualNodeId, actualLabel);
         const after = this._session.addState(this._buildData());
-        this._session.addStep('update_node_label', before, after, { node_id: nodeId, label }, oldLabel, undefined, line);
+        this._session.addStep('update_node_label', before, after, { node_id: actualNodeId, label: actualLabel }, oldLabel, undefined, line);
+    }
+
+    /**
+     * 清空图
+     *
+     * @returns {void}
+     */
+    clear() {
+        const extracted = extractLineFromArgs(arguments);
+        const line = extracted.line ?? getCallerLine(2);
+
+        const before = this._session.getLastStateId();
+        this._nodes.clear();
+        this._edges.clear();
+        const after = this._session.addState(this._buildData());
+        this._session.addStep('clear', before, after, {}, undefined, undefined, line);
     }
 }
 
@@ -3289,6 +3689,7 @@ const AUTHOR = 'WaterRun <linzhuangrun49@gmail.com>';
 
         getJavaScriptVersion,
         getCallerLine,
+        extractLineFromArgs,
 
         VERSION,
         AUTHOR,
