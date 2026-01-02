@@ -1,8 +1,3 @@
-//! ```cargo
-//! [dependencies]
-//! ds4viz = "0.1.0"
-//! ```
-
 use ds4viz::prelude::*;
 use std::fs;
 

@@ -8,7 +8,7 @@ ds4viz Demo Server
 - Pegasus HTTP 框架
 - SQLite3 数据库
 - cjson JSON 解析库
-- cargo-script (Rust支持)
+- rust-script (Rust支持)
 
 支持语言：
 - Lua, Python, Rust
@@ -20,7 +20,7 @@ File:
 Date:
     2025-12-26
 Updated:
-    2025-12-30
+    2026-01-02
 ]]
 
 local Pegasus = require("pegasus")
@@ -62,43 +62,24 @@ local CONFIG = {
             extension = ".py"
         },
         rust = {
-            version_cmd = "cargo --version 2>&1",
-            prepare = true, -- 需要预处理代码
+            version_cmd = "rustc --version 2>&1",
+            prepare = true,
             prepare_cmd = function(src_path, work_dir, ds4viz_path)
-                return string.format([[
-cd '%s' && cat > _prepared.rs <<'RUST_EOF'
-#!/usr/bin/env cargo
+                return string.format([[cd '%s' && cat > _prepared.rs <<'RUST_EOF'
 //! ```cargo
 //! [dependencies]
 //! ds4viz = { path = "%s" }
 //! ```
 
-use ds4viz::prelude::*;
-
 RUST_EOF
-cat '%s' >> _prepared.rs
-]], work_dir, ds4viz_path, src_path)
+cat '%s' >> _prepared.rs]], work_dir, ds4viz_path, src_path)
             end,
             run_cmd = function(filepath, timeout_sec, work_dir)
-                -- 使用 cargo-eval 或 cargo-script
-                -- 优先尝试 cargo-eval (Rust 1.74+)，回退到 cargo-script
-                return string.format([[
-cd '%s' && timeout %d bash -c '
-if cargo eval --help >/dev/null 2>&1; then
-    cargo eval _prepared.rs 2>&1
-elif cargo script --help >/dev/null 2>&1; then
-    cargo script _prepared.rs 2>&1
-else
-    echo "错误: 需要安装 cargo-script 或使用 Rust 1.74+ 的 cargo-eval"
-    echo "安装命令: cargo install cargo-script"
-    echo "或升级到 Rust 1.74+: rustup update"
-    exit 127
-fi
-' 2>&1
-]], work_dir, timeout_sec)
+                return string.format("cd '%s' && timeout %d rust-script _prepared.rs 2>&1",
+                    work_dir, timeout_sec)
             end,
             extension = ".rs"
-        }
+        },
     }
 }
 
