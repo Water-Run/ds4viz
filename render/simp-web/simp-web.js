@@ -201,7 +201,8 @@ fn main() -> ds4viz::Result<()> {
         ds4vizModule: null,
         editor: {
             cursorLine: 0,
-            cursorCol: 0
+            cursorCol: 0,
+            executingLine: -1
         },
         autocomplete: {
             visible: false,
@@ -661,29 +662,7 @@ fn main() -> ds4viz::Result<()> {
     }
 
     function updateLineNumbers() {
-        const code = elements.codeEditor.value;
-        const lines = code.split('\n');
-        const cursorPos = elements.codeEditor.selectionStart;
-
-        // 计算当前行
-        let currentLine = 0;
-        let charCount = 0;
-        for (let i = 0; i < lines.length; i++) {
-            charCount += lines[i].length + 1;
-            if (charCount > cursorPos) {
-                currentLine = i;
-                break;
-            }
-        }
-
-        state.editor.cursorLine = currentLine;
-
-        let html = '';
-        for (let i = 0; i < lines.length; i++) {
-            const isActive = i === currentLine;
-            html += `<div class="line-number${isActive ? ' active' : ''}">${i + 1}</div>`;
-        }
-        elements.lineNumbers.innerHTML = html;
+        updateLineNumbersWithExecuting();
     }
 
     function syncScroll() {
@@ -1593,7 +1572,9 @@ fn main() -> ds4viz::Result<()> {
         if (currentStepData) {
             elements.stepInfo.style.display = 'block';
             elements.stepOp.textContent = currentStepData.op || '';
-            elements.stepLine.textContent = currentStepData.code?.line ? `Line ${currentStepData.code.line}` : '';
+
+            const lineNumber = currentStepData.code?.line;
+            elements.stepLine.textContent = lineNumber ? `Line ${lineNumber}` : '';
 
             const args = currentStepData.args || {};
             const argsStr = Object.entries(args)
@@ -1602,8 +1583,87 @@ fn main() -> ds4viz::Result<()> {
             elements.stepArgs.textContent = argsStr || '';
             elements.stepNote.textContent = currentStepData.note || '';
             elements.stepNote.style.display = currentStepData.note ? 'block' : 'none';
+
+            // 高亮对应的代码行
+            highlightExecutingLine(lineNumber);
         } else {
             elements.stepInfo.style.display = 'none';
+            highlightExecutingLine(-1);
+        }
+    }
+
+    function highlightExecutingLine(lineNumber) {
+        state.editor.executingLine = lineNumber || -1;
+
+        // 更新行号高亮
+        updateLineNumbersWithExecuting();
+
+        // 更新代码区域高亮
+        updateCodeLineHighlight();
+    }
+
+    function updateLineNumbersWithExecuting() {
+        const code = elements.codeEditor.value;
+        const lines = code.split('\n');
+        const cursorPos = elements.codeEditor.selectionStart;
+
+        // 计算当前光标行
+        let currentLine = 0;
+        let charCount = 0;
+        for (let i = 0; i < lines.length; i++) {
+            charCount += lines[i].length + 1;
+            if (charCount > cursorPos) {
+                currentLine = i;
+                break;
+            }
+        }
+
+        state.editor.cursorLine = currentLine;
+
+        let html = '';
+        for (let i = 0; i < lines.length; i++) {
+            const isActive = i === currentLine;
+            const isExecuting = (i + 1) === state.editor.executingLine;  // 行号从1开始
+
+            let classes = 'line-number';
+            if (isActive) classes += ' active';
+            if (isExecuting) classes += ' executing';
+
+            html += `<div class="${classes}">${i + 1}</div>`;
+        }
+        elements.lineNumbers.innerHTML = html;
+    }
+
+    function updateCodeLineHighlight() {
+        // 移除旧的高亮
+        const oldHighlight = elements.editorArea.querySelector('.code-line-highlight');
+        if (oldHighlight) {
+            oldHighlight.remove();
+        }
+
+        const lineNumber = state.editor.executingLine;
+        if (lineNumber <= 0) return;
+
+        // 计算行的位置
+        const lineHeight = parseFloat(getComputedStyle(elements.codeEditor).lineHeight) || 21;
+        const padding = 12; // var(--space-3)
+        const top = padding + (lineNumber - 1) * lineHeight;
+
+        // 创建高亮元素
+        const highlight = document.createElement('div');
+        highlight.className = 'code-line-highlight';
+        highlight.style.top = `${top}px`;
+
+        // 插入到编辑器区域最前面
+        elements.editorArea.insertBefore(highlight, elements.editorArea.firstChild);
+
+        // 滚动到可见区域
+        const editorHeight = elements.codeEditor.clientHeight;
+        const scrollTop = elements.codeEditor.scrollTop;
+
+        if (top < scrollTop || top > scrollTop + editorHeight - lineHeight) {
+            elements.codeEditor.scrollTop = top - editorHeight / 2;
+            syncScroll();
         }
     }
 
@@ -1652,12 +1712,14 @@ fn main() -> ds4viz::Result<()> {
     }
 
     function renderPlaceholder() {
+        highlightExecutingLine(-1);  // 清除执行行高亮
+
         elements.vizContainer.innerHTML = `
-            <div class="viz-placeholder">
-                <img src="images/flowsheet_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="可视化" class="placeholder-icon">
-                <p class="placeholder-text">运行代码或上传 TOML 查看可视化</p>
-            </div>
-        `;
+        <div class="viz-placeholder">
+            <img src="images/flowsheet_100dp_1F1F1F_FILL0_wght400_GRAD0_opsz48.png" alt="可视化" class="placeholder-icon">
+            <p class="placeholder-text">运行代码或上传 TOML 查看可视化</p>
+        </div>
+    `;
     }
 
     function renderUnsupported(kind) {
@@ -1860,33 +1922,62 @@ fn main() -> ds4viz::Result<()> {
 
         // 计算树的布局
         const layout = calculateTreeLayout(root, nodeMap);
-        const { width, height, positions } = layout;
+        const { positions } = layout;
 
-        const svgWidth = Math.max(400, width * 80 + 100);
-        const svgHeight = Math.max(200, height * 80 + 60);
+        // 计算节点的实际边界
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        for (const pos of Object.values(positions)) {
+            minX = Math.min(minX, pos.x);
+            maxX = Math.max(maxX, pos.x);
+            minY = Math.min(minY, pos.y);
+            maxY = Math.max(maxY, pos.y);
+        }
+
         const nodeRadius = 24;
+        const padding = 40;
+
+        // 计算实际需要的宽高
+        const treeWidth = maxX - minX;
+        const treeHeight = maxY - minY;
+
+        const svgWidth = Math.max(400, treeWidth + nodeRadius * 2 + padding * 2);
+        const svgHeight = Math.max(200, treeHeight + nodeRadius * 2 + padding * 2);
+
+        // 计算偏移量，使树居中
+        const offsetX = (svgWidth - treeWidth) / 2 - minX;
+        const offsetY = padding + nodeRadius - minY;
+
+        // 应用偏移
+        const centeredPositions = {};
+        for (const [id, pos] of Object.entries(positions)) {
+            centeredPositions[id] = {
+                x: pos.x + offsetX,
+                y: pos.y + offsetY
+            };
+        }
 
         let svg = `<div class="viz-wrapper">
             <div class="viz-label">${escapeHtml(label)} (${kind === 'bst' ? 'BST' : 'Binary Tree'})</div>
             <svg class="viz-tree-svg" viewBox="0 0 ${svgWidth} ${svgHeight}">`;
 
-        // 绘制边
-        for (const [id, pos] of Object.entries(positions)) {
+        // 绘制边（使用居中后的位置）
+        for (const [id, pos] of Object.entries(centeredPositions)) {
             const node = nodeMap[parseInt(id)];
             if (!node) continue;
 
-            if (node.left !== -1 && positions[node.left]) {
-                const childPos = positions[node.left];
+            if (node.left !== -1 && centeredPositions[node.left]) {
+                const childPos = centeredPositions[node.left];
                 svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}"/>`;
             }
-            if (node.right !== -1 && positions[node.right]) {
-                const childPos = positions[node.right];
+            if (node.right !== -1 && centeredPositions[node.right]) {
+                const childPos = centeredPositions[node.right];
                 svg += `<line x1="${pos.x}" y1="${pos.y}" x2="${childPos.x}" y2="${childPos.y}"/>`;
             }
         }
 
-        // 绘制节点
-        for (const [id, pos] of Object.entries(positions)) {
+        // 绘制节点（使用居中后的位置）
+        for (const [id, pos] of Object.entries(centeredPositions)) {
             const node = nodeMap[parseInt(id)];
             if (!node) continue;
 

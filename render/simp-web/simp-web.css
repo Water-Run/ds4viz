@@ -1583,6 +1583,24 @@ body {
     color: var(--text-primary);
 }
 
+/* 代码行高亮 - 执行时 */
+.line-number.executing {
+    color: var(--editor-line-number-active);
+    background: #fff3cd;
+    font-weight: 600;
+}
+
+/* 代码区域行高亮 */
+.code-line-highlight {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: calc(var(--editor-font-size) * var(--line-height-code));
+    background: #fff3cd;
+    pointer-events: none;
+    z-index: 0;
+}
+
 /* ============================================
    Responsive
    ============================================ */
