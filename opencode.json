@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "provider": {
+    "poe": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Poe",
+      "options": {
+        "baseURL": "https://api.poe.com/v1"
+      },
+      "models": {
+        "claude-opus-4.5": { "name": "Claude 4.5 Opus" },
+        "claude-sonnet-4.5": { "name": "Claude 4.5 Sonnet" },
+        "gpt-5.2-codex": { "name": "CodeX-5.2" },
+        "gpt-5.1-codex-max": { "name": "CodeX-5.1 Max" },
+        "gpt-5": { "name": "GPT5" }
+      }
+    }
+  },
+
+  "model": "poe/claude-sonnet-4.5",
+  "small_model": "poe/gpt-5",
+
+  "permission": {
+    "bash": "ask",
+    "edit": "ask"
+  }
+}
