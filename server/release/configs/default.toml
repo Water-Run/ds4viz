@@ -1,0 +1,21 @@
+[database]
+url = "postgres://ds4viz:password@localhost:5432/ds4viz"
+max_connections = 10
+min_connections = 2
+
+[server]
+listen = "127.0.0.1:3000"
+
+[jwt]
+secret = "your-super-secret-jwt-key-at-least-32-chars-long"
+access_token_expires_secs = 3600
+refresh_token_expires_secs = 604800
+
+[quota]
+period_minutes = 60
+cpu_time_ms = 10000
+max_code_size_bytes = 16384
+
+[execution]
+max_concurrent = 10
+temp_dir = "/tmp/ds4viz"
