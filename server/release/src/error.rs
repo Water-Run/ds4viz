@@ -1,206 +1,494 @@
-//! 错误类型定义
+//! 统一错误类型定义模块
 //!
-//! 定义服务器所有错误类型，支持结构化错误响应。
+//! 本模块定义应用的所有错误类型，并提供到 HTTP 响应的转换。
+//!
+//! # 错误分类
+//!
+//! - 认证错误 (401): 未认证或认证过期
+//! - 权限错误 (403): 无权限访问、账户被封禁、配额超限等
+//! - 请求错误 (400): 请求参数无效
+//! - 资源不存在 (404): 请求的资源不存在
+//! - 资源冲突 (409): 资源已存在（如用户名重复）
+//! - 限流错误 (429): 请求频率超限
+//! - 配置错误: 配置加载或解析失败
+//! - 数据库错误: 数据库操作失败
+//! - 内部错误 (500): 服务器内部错误
+//!
+//! 作者: WaterRun
+//! 日期: 2026-01-16
 
-use poem::http::StatusCode;
-use poem::{IntoResponse, Response};
+use chrono::{DateTime, Utc};
+use poem::{IntoResponse, Response, error::ResponseError, http::StatusCode};
 use serde::Serialize;
-use thiserror::Error;
 
-/// 配置加载错误
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("无法读取配置文件 '{path}': {source}")]
-    FileRead {
-        path: String,
-        source: std::io::Error,
-    },
+/// 应用统一错误类型
+///
+/// 所有业务逻辑错误都通过此类型表达，并可转换为 HTTP 响应。
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::{AppError, AuthErrorKind};
+///
+/// let error = AppError::Unauthorized(AuthErrorKind::InvalidCredentials);
+/// assert_eq!(error.http_status_code(), 401);
+/// assert_eq!(error.error_code(), "INVALID_CREDENTIALS");
+/// ```
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    /// 认证错误 (HTTP 401)
+    #[error("认证失败: {0}")]
+    Unauthorized(AuthErrorKind),
 
-    #[error("配置文件解析失败: {source}")]
-    Parse { source: toml::de::Error },
+    /// 权限错误 (HTTP 403)
+    #[error("权限不足: {0}")]
+    Forbidden(ForbiddenKind),
 
-    #[error("配置缺少必需字段: {field}")]
-    MissingField { field: String },
+    /// 请求参数错误 (HTTP 400)
+    #[error("请求参数错误: {0}")]
+    InvalidRequest(InvalidRequestKind),
 
-    #[error("配置字段 '{field}' 值无效 ('{value}'): {reason}")]
-    InvalidValue {
-        field: String,
-        value: String,
-        reason: String,
-    },
+    /// 资源不存在 (HTTP 404)
+    #[error("资源不存在: {0}")]
+    NotFound(NotFoundKind),
+
+    /// 资源冲突 (HTTP 409)
+    #[error("资源冲突: {0}")]
+    Conflict(ConflictKind),
+
+    /// 请求频率超限 (HTTP 429)
+    #[error("请求频率超限")]
+    RateLimitExceeded,
+
+    /// 配置错误
+    #[error("配置错误: {0}")]
+    Config(ConfigErrorKind),
+
+    /// 数据库错误 (HTTP 500)
+    #[error("数据库错误: {0}")]
+    Database(String),
+
+    /// 内部服务器错误 (HTTP 500)
+    #[error("服务器内部错误: {0}")]
+    Internal(String),
 }
 
-/// API 错误码
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ErrorCode {
-    // 通用错误
-    InvalidRequest,
-    Unauthorized,
-    Forbidden,
-    NotFound,
-    Conflict,
-    RateLimitExceeded,
-    InternalError,
-
-    // 认证相关
+/// 认证错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::AuthErrorKind;
+///
+/// let kind = AuthErrorKind::TokenExpired;
+/// assert_eq!(kind.to_string(), "令牌已过期");
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum AuthErrorKind {
+    /// 用户名或密码错误
+    #[error("用户名或密码错误")]
     InvalidCredentials,
+
+    /// 无效的令牌
+    #[error("无效的令牌")]
     InvalidToken,
+
+    /// 令牌已过期
+    #[error("令牌已过期")]
     TokenExpired,
-    AccountBanned,
+}
+
+/// 权限错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::ForbiddenKind;
+/// use chrono::Utc;
+///
+/// let kind = ForbiddenKind::AccountBanned {
+///     reason: "违规操作".to_string(),
+///     until: Some(Utc::now()),
+/// };
+/// assert!(kind.to_string().contains("账户已被封禁"));
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ForbiddenKind {
+    /// 账户被封禁
+    #[error("账户已被封禁: {reason}")]
+    AccountBanned {
+        /// 封禁原因
+        reason: String,
+        /// 封禁截止时间，None 表示永久封禁
+        until: Option<DateTime<Utc>>,
+    },
+
+    /// 账户被暂停
+    #[error("账户已被暂停")]
     AccountSuspended,
 
-    // 用户相关
-    UsernameExists,
-    EmailExists,
-    UserNotFound,
-    InvalidUsername,
-    InvalidEmail,
-    WeakPassword,
-    InvalidFileType,
-    FileTooLarge,
+    /// 配额超限
+    #[error("配额超限")]
+    QuotaExceeded {
+        /// 周期开始时间
+        period_start: DateTime<Utc>,
+        /// 周期结束时间
+        period_end: DateTime<Utc>,
+        /// 配额限制（毫秒）
+        quota_limit_ms: u64,
+        /// 已使用配额（毫秒）
+        quota_used_ms: u64,
+    },
 
-    // 执行相关
-    InvalidLanguage,
-    CodeTooLarge,
-    QuotaExceeded,
+    /// 语言不允许（Standard 用户使用编译型语言）
+    #[error("当前等级不允许使用此语言")]
     LanguageNotAllowed,
-    ExecutionNotFound,
 
-    // 模板相关
-    TemplateNotFound,
-    LanguageNotAvailable,
-    AlreadyLiked,
+    /// 通用访问拒绝
+    #[error("访问被拒绝")]
+    AccessDenied,
+}
+
+/// 请求参数错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::InvalidRequestKind;
+///
+/// let kind = InvalidRequestKind::InvalidUsername {
+///     reason: "用户名太短".to_string(),
+/// };
+/// assert!(kind.to_string().contains("无效的用户名"));
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum InvalidRequestKind {
+    /// 无效的用户名
+    #[error("无效的用户名: {reason}")]
+    InvalidUsername {
+        /// 具体原因
+        reason: String,
+    },
+
+    /// 无效的邮箱
+    #[error("无效的邮箱: {reason}")]
+    InvalidEmail {
+        /// 具体原因
+        reason: String,
+    },
+
+    /// 密码强度不足
+    #[error("密码强度不足: {reason}")]
+    WeakPassword {
+        /// 具体原因
+        reason: String,
+    },
+
+    /// 无效的语言标识
+    #[error("无效的语言: {language_id}")]
+    InvalidLanguage {
+        /// 语言标识
+        language_id: String,
+    },
+
+    /// 代码过大
+    #[error("代码过大: 最大 {max_bytes} 字节，实际 {actual_bytes} 字节")]
+    CodeTooLarge {
+        /// 最大字节数
+        max_bytes: usize,
+        /// 实际字节数
+        actual_bytes: usize,
+    },
+
+    /// 无效的文件类型
+    #[error("无效的文件类型: {mime_type}")]
+    InvalidFileType {
+        /// 文件 MIME 类型
+        mime_type: String,
+    },
+
+    /// 文件过大
+    #[error("文件过大: 最大 {max_bytes} 字节")]
+    FileTooLarge {
+        /// 最大字节数
+        max_bytes: usize,
+    },
+
+    /// 通用验证失败
+    #[error("验证失败: {message}")]
+    ValidationFailed {
+        /// 错误消息
+        message: String,
+    },
+}
+
+/// 资源不存在错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::NotFoundKind;
+/// use uuid::Uuid;
+///
+/// let kind = NotFoundKind::UserNotFound { id: Uuid::new_v4() };
+/// assert!(kind.to_string().contains("用户不存在"));
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum NotFoundKind {
+    /// 用户不存在
+    #[error("用户不存在: {id}")]
+    UserNotFound {
+        /// 用户 ID
+        id: uuid::Uuid,
+    },
+
+    /// 执行记录不存在
+    #[error("执行记录不存在: {id}")]
+    ExecutionNotFound {
+        /// 执行 ID
+        id: uuid::Uuid,
+    },
+
+    /// 模板不存在
+    #[error("模板不存在: {slug}")]
+    TemplateNotFound {
+        /// 模板 slug
+        slug: String,
+    },
+
+    /// 语言版本不存在
+    #[error("模板不支持此语言: {language_id}")]
+    LanguageNotAvailable {
+        /// 语言标识
+        language_id: String,
+    },
+
+    /// 未点赞（取消点赞时）
+    #[error("未点赞此模板")]
     NotLiked,
-    AlreadyFavorited,
+}
 
-    // 升级申请
+/// 资源冲突错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::ConflictKind;
+///
+/// let kind = ConflictKind::UsernameExists {
+///     username: "test".to_string(),
+/// };
+/// assert!(kind.to_string().contains("用户名已存在"));
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ConflictKind {
+    /// 用户名已存在
+    #[error("用户名已存在: {username}")]
+    UsernameExists {
+        /// 用户名
+        username: String,
+    },
+
+    /// 邮箱已存在
+    #[error("邮箱已存在: {email}")]
+    EmailExists {
+        /// 邮箱
+        email: String,
+    },
+
+    /// 已有待审核的升级申请
+    #[error("已有待审核的升级申请")]
     PendingRequestExists,
+
+    /// 已是 Enhanced 级别
+    #[error("已是 Enhanced 级别")]
     AlreadyEnhanced,
+
+    /// 已点赞
+    #[error("已点赞此模板")]
+    AlreadyLiked,
+
+    /// 已收藏
+    #[error("已收藏此模板")]
+    AlreadyFavorited,
 }
 
-impl ErrorCode {
-    #[must_use]
-    pub const fn status_code(self) -> StatusCode {
-        match self {
-            Self::InvalidRequest
-            | Self::InvalidUsername
-            | Self::InvalidEmail
-            | Self::WeakPassword
-            | Self::InvalidLanguage
-            | Self::CodeTooLarge
-            | Self::InvalidFileType
-            | Self::FileTooLarge => StatusCode::BAD_REQUEST,
+/// 配置错误详情
+///
+/// # 示例
+///
+/// ```
+/// use ds4viz_server::error::ConfigErrorKind;
+///
+/// let kind = ConfigErrorKind::FileNotFound {
+///     path: "/etc/config.toml".to_string(),
+///     source: "file not found".to_string(),
+/// };
+/// assert!(kind.to_string().contains("配置文件未找到"));
+/// ```
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ConfigErrorKind {
+    /// 配置文件未找到
+    #[error("配置文件未找到: {path}")]
+    FileNotFound {
+        /// 文件路径
+        path: String,
+    },
 
-            Self::Unauthorized
-            | Self::InvalidCredentials
-            | Self::InvalidToken
-            | Self::TokenExpired => StatusCode::UNAUTHORIZED,
-
-            Self::Forbidden
-            | Self::AccountBanned
-            | Self::AccountSuspended
-            | Self::QuotaExceeded
-            | Self::LanguageNotAllowed => StatusCode::FORBIDDEN,
-
-            Self::NotFound
-            | Self::UserNotFound
-            | Self::ExecutionNotFound
-            | Self::TemplateNotFound
-            | Self::LanguageNotAvailable
-            | Self::NotLiked => StatusCode::NOT_FOUND,
-
-            Self::Conflict
-            | Self::UsernameExists
-            | Self::EmailExists
-            | Self::AlreadyLiked
-            | Self::AlreadyFavorited
-            | Self::PendingRequestExists
-            | Self::AlreadyEnhanced => StatusCode::CONFLICT,
-
-            Self::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
-
-            Self::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
+    /// 配置解析错误
+    #[error("配置解析错误: {message}")]
+    ParseError {
+        /// 错误信息
+        message: String,
+    },
 }
 
-/// API 错误响应体
+/// API 错误响应结构
 #[derive(Debug, Serialize)]
-pub struct ApiErrorResponse {
-    pub error: ApiErrorBody,
+struct ErrorResponse {
+    error: ErrorBody,
 }
 
-/// API 错误详情
+/// 错误响应体
 #[derive(Debug, Serialize)]
-pub struct ApiErrorBody {
-    pub code: ErrorCode,
-    pub message: String,
+struct ErrorBody {
+    code: String,
+    message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
+    details: Option<serde_json::Value>,
 }
 
-/// API 错误
-#[derive(Debug)]
-pub struct ApiError {
-    pub code: ErrorCode,
-    pub message: String,
-    pub details: Option<serde_json::Value>,
-}
-
-impl ApiError {
+impl AppError {
+    /// 获取 HTTP 状态码
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// use ds4viz_server::error::{AppError, AuthErrorKind};
+    ///
+    /// let error = AppError::Unauthorized(AuthErrorKind::InvalidCredentials);
+    /// assert_eq!(error.http_status_code(), 401);
+    /// ```
     #[must_use]
-    pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            message: message.into(),
-            details: None,
+    pub fn http_status_code(&self) -> u16 {
+        match self {
+            Self::Unauthorized(_) => 401,
+            Self::Forbidden(_) => 403,
+            Self::InvalidRequest(_) => 400,
+            Self::NotFound(_) => 404,
+            Self::Conflict(_) => 409,
+            Self::RateLimitExceeded => 429,
+            Self::Config(_) | Self::Database(_) | Self::Internal(_) => 500,
         }
     }
 
+    /// 获取错误码
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// use ds4viz_server::error::{AppError, ConflictKind};
+    ///
+    /// let error = AppError::Conflict(ConflictKind::UsernameExists {
+    ///     username: "test".to_string(),
+    /// });
+    /// assert_eq!(error.error_code(), "USERNAME_EXISTS");
+    /// ```
     #[must_use]
-    pub fn with_details(mut self, details: serde_json::Value) -> Self {
-        self.details = Some(details);
-        self
+    pub fn error_code(&self) -> &'static str {
+        match self {
+            Self::Unauthorized(kind) => match kind {
+                AuthErrorKind::InvalidCredentials => "INVALID_CREDENTIALS",
+                AuthErrorKind::InvalidToken => "INVALID_TOKEN",
+                AuthErrorKind::TokenExpired => "TOKEN_EXPIRED",
+            },
+            Self::Forbidden(kind) => match kind {
+                ForbiddenKind::AccountBanned { .. } => "ACCOUNT_BANNED",
+                ForbiddenKind::AccountSuspended => "ACCOUNT_SUSPENDED",
+                ForbiddenKind::QuotaExceeded { .. } => "QUOTA_EXCEEDED",
+                ForbiddenKind::LanguageNotAllowed => "LANGUAGE_NOT_ALLOWED",
+                ForbiddenKind::AccessDenied => "ACCESS_DENIED",
+            },
+            Self::InvalidRequest(kind) => match kind {
+                InvalidRequestKind::InvalidUsername { .. } => "INVALID_USERNAME",
+                InvalidRequestKind::InvalidEmail { .. } => "INVALID_EMAIL",
+                InvalidRequestKind::WeakPassword { .. } => "WEAK_PASSWORD",
+                InvalidRequestKind::InvalidLanguage { .. } => "INVALID_LANGUAGE",
+                InvalidRequestKind::CodeTooLarge { .. } => "CODE_TOO_LARGE",
+                InvalidRequestKind::InvalidFileType { .. } => "INVALID_FILE_TYPE",
+                InvalidRequestKind::FileTooLarge { .. } => "FILE_TOO_LARGE",
+                InvalidRequestKind::ValidationFailed { .. } => "VALIDATION_FAILED",
+            },
+            Self::NotFound(kind) => match kind {
+                NotFoundKind::UserNotFound { .. } => "USER_NOT_FOUND",
+                NotFoundKind::ExecutionNotFound { .. } => "EXECUTION_NOT_FOUND",
+                NotFoundKind::TemplateNotFound { .. } => "TEMPLATE_NOT_FOUND",
+                NotFoundKind::LanguageNotAvailable { .. } => "LANGUAGE_NOT_AVAILABLE",
+                NotFoundKind::NotLiked => "NOT_LIKED",
+            },
+            Self::Conflict(kind) => match kind {
+                ConflictKind::UsernameExists { .. } => "USERNAME_EXISTS",
+                ConflictKind::EmailExists { .. } => "EMAIL_EXISTS",
+                ConflictKind::PendingRequestExists => "PENDING_REQUEST_EXISTS",
+                ConflictKind::AlreadyEnhanced => "ALREADY_ENHANCED",
+                ConflictKind::AlreadyLiked => "ALREADY_LIKED",
+                ConflictKind::AlreadyFavorited => "ALREADY_FAVORITED",
+            },
+            Self::RateLimitExceeded => "RATE_LIMIT_EXCEEDED",
+            Self::Config(_) => "CONFIG_ERROR",
+            Self::Database(_) => "DATABASE_ERROR",
+            Self::Internal(_) => "INTERNAL_ERROR",
+        }
     }
 
-    #[must_use]
-    pub fn internal(message: impl Into<String>) -> Self {
-        Self::new(ErrorCode::InternalError, message)
-    }
-
-    #[must_use]
-    pub fn unauthorized(message: impl Into<String>) -> Self {
-        Self::new(ErrorCode::Unauthorized, message)
-    }
-
-    #[must_use]
-    pub fn not_found(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self::new(code, message)
+    /// 获取错误详情（可选）
+    fn details(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::Forbidden(ForbiddenKind::AccountBanned { reason, until }) => {
+                Some(serde_json::json!({
+                    "reason": reason,
+                    "banned_until": until,
+                }))
+            }
+            Self::Forbidden(ForbiddenKind::QuotaExceeded {
+                period_start,
+                period_end,
+                quota_limit_ms,
+                quota_used_ms,
+            }) => Some(serde_json::json!({
+                "period_start": period_start,
+                "period_end": period_end,
+                "quota_limit_ms": quota_limit_ms,
+                "quota_used_ms": quota_used_ms,
+                "reset_at": period_end,
+            })),
+            Self::InvalidRequest(InvalidRequestKind::CodeTooLarge {
+                max_bytes,
+                actual_bytes,
+            }) => Some(serde_json::json!({
+                "max_bytes": max_bytes,
+                "actual_bytes": actual_bytes,
+            })),
+            _ => None,
+        }
     }
 }
 
-impl std::fmt::Display for ApiError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for ApiError {}
-
-impl IntoResponse for ApiError {
+impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = self.code.status_code();
-        let body = ApiErrorResponse {
-            error: ApiErrorBody {
-                code: self.code,
-                message: self.message,
-                details: self.details,
+        let status = StatusCode::from_u16(self.http_status_code())
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = ErrorResponse {
+            error: ErrorBody {
+                code: self.error_code().to_string(),
+                message: self.to_string(),
+                details: self.details(),
             },
         };
 
         let json = serde_json::to_string(&body).unwrap_or_else(|_| {
-            r#"{"error":{"code":"INTERNAL_ERROR","message":"序列化错误响应失败"}}"#.to_owned()
+            r#"{"error":{"code":"INTERNAL_ERROR","message":"序列化错误"}}"#.to_string()
         });
 
         Response::builder()
@@ -210,26 +498,37 @@ impl IntoResponse for ApiError {
     }
 }
 
-impl From<sqlx::Error> for ApiError {
+impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
-        tracing::error!(error = %err, "数据库错误");
+        Self::Database(err.to_string())
+    }
+}
 
-        match &err {
-            sqlx::Error::RowNotFound => Self::new(ErrorCode::NotFound, "请求的资源不存在"),
-            sqlx::Error::Database(db_err) => {
-                if db_err.code().map_or(false, |c| c == "23505") {
-                    let message = db_err.message();
-                    if message.contains("username") {
-                        return Self::new(ErrorCode::UsernameExists, "用户名已存在");
-                    }
-                    if message.contains("email") {
-                        return Self::new(ErrorCode::EmailExists, "邮箱已存在");
-                    }
-                    return Self::new(ErrorCode::Conflict, "资源冲突");
-                }
-                Self::internal("数据库操作失败")
-            }
-            _ => Self::internal("数据库操作失败"),
+impl ResponseError for AppError {
+    fn status(&self) -> StatusCode {
+        StatusCode::from_u16(self.http_status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+    }
+
+    fn as_response(&self) -> Response
+    where
+        Self: std::error::Error + Send + Sync + 'static,
+    {
+        self.clone().into_response()
+    }
+}
+
+impl Clone for AppError {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Unauthorized(kind) => Self::Unauthorized(kind.clone()),
+            Self::Forbidden(kind) => Self::Forbidden(kind.clone()),
+            Self::InvalidRequest(kind) => Self::InvalidRequest(kind.clone()),
+            Self::NotFound(kind) => Self::NotFound(kind.clone()),
+            Self::Conflict(kind) => Self::Conflict(kind.clone()),
+            Self::RateLimitExceeded => Self::RateLimitExceeded,
+            Self::Config(kind) => Self::Config(kind.clone()),
+            Self::Database(msg) => Self::Database(msg.clone()),
+            Self::Internal(msg) => Self::Internal(msg.clone()),
         }
     }
 }
@@ -239,58 +538,235 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_error_code_status_mapping() {
+    fn test_unauthorized_error_code_and_status() {
+        let error = AppError::Unauthorized(AuthErrorKind::InvalidCredentials);
+        assert_eq!(error.http_status_code(), 401, "认证错误应返回 401");
         assert_eq!(
-            ErrorCode::InvalidRequest.status_code(),
-            StatusCode::BAD_REQUEST
+            error.error_code(),
+            "INVALID_CREDENTIALS",
+            "错误码应为 INVALID_CREDENTIALS"
         );
+
+        let error = AppError::Unauthorized(AuthErrorKind::TokenExpired);
         assert_eq!(
-            ErrorCode::Unauthorized.status_code(),
-            StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(ErrorCode::Forbidden.status_code(), StatusCode::FORBIDDEN);
-        assert_eq!(ErrorCode::NotFound.status_code(), StatusCode::NOT_FOUND);
-        assert_eq!(ErrorCode::Conflict.status_code(), StatusCode::CONFLICT);
-        assert_eq!(
-            ErrorCode::InternalError.status_code(),
-            StatusCode::INTERNAL_SERVER_ERROR
+            error.error_code(),
+            "TOKEN_EXPIRED",
+            "错误码应为 TOKEN_EXPIRED"
         );
     }
 
     #[test]
-    fn test_api_error_into_response() {
-        let error = ApiError::new(ErrorCode::UserNotFound, "用户不存在");
+    fn test_forbidden_error_code_and_status() {
+        let error = AppError::Forbidden(ForbiddenKind::AccountBanned {
+            reason: "违规".to_string(),
+            until: None,
+        });
+        assert_eq!(error.http_status_code(), 403, "权限错误应返回 403");
+        assert_eq!(
+            error.error_code(),
+            "ACCOUNT_BANNED",
+            "错误码应为 ACCOUNT_BANNED"
+        );
+
+        let error = AppError::Forbidden(ForbiddenKind::QuotaExceeded {
+            period_start: Utc::now(),
+            period_end: Utc::now(),
+            quota_limit_ms: 10000,
+            quota_used_ms: 12000,
+        });
+        assert_eq!(
+            error.error_code(),
+            "QUOTA_EXCEEDED",
+            "错误码应为 QUOTA_EXCEEDED"
+        );
+    }
+
+    #[test]
+    fn test_invalid_request_error_code_and_status() {
+        let error = AppError::InvalidRequest(InvalidRequestKind::InvalidUsername {
+            reason: "太短".to_string(),
+        });
+        assert_eq!(error.http_status_code(), 400, "请求错误应返回 400");
+        assert_eq!(
+            error.error_code(),
+            "INVALID_USERNAME",
+            "错误码应为 INVALID_USERNAME"
+        );
+
+        let error = AppError::InvalidRequest(InvalidRequestKind::CodeTooLarge {
+            max_bytes: 16384,
+            actual_bytes: 20000,
+        });
+        assert_eq!(
+            error.error_code(),
+            "CODE_TOO_LARGE",
+            "错误码应为 CODE_TOO_LARGE"
+        );
+    }
+
+    #[test]
+    fn test_not_found_error_code_and_status() {
+        let error = AppError::NotFound(NotFoundKind::UserNotFound {
+            id: uuid::Uuid::new_v4(),
+        });
+        assert_eq!(error.http_status_code(), 404, "不存在错误应返回 404");
+        assert_eq!(
+            error.error_code(),
+            "USER_NOT_FOUND",
+            "错误码应为 USER_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn test_conflict_error_code_and_status() {
+        let error = AppError::Conflict(ConflictKind::UsernameExists {
+            username: "test".to_string(),
+        });
+        assert_eq!(error.http_status_code(), 409, "冲突错误应返回 409");
+        assert_eq!(
+            error.error_code(),
+            "USERNAME_EXISTS",
+            "错误码应为 USERNAME_EXISTS"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_error_code_and_status() {
+        let error = AppError::RateLimitExceeded;
+        assert_eq!(error.http_status_code(), 429, "限流错误应返回 429");
+        assert_eq!(
+            error.error_code(),
+            "RATE_LIMIT_EXCEEDED",
+            "错误码应为 RATE_LIMIT_EXCEEDED"
+        );
+    }
+
+    #[test]
+    fn test_internal_error_code_and_status() {
+        let error = AppError::Internal("意外错误".to_string());
+        assert_eq!(error.http_status_code(), 500, "内部错误应返回 500");
+        assert_eq!(
+            error.error_code(),
+            "INTERNAL_ERROR",
+            "错误码应为 INTERNAL_ERROR"
+        );
+
+        let error = AppError::Database("连接失败".to_string());
+        assert_eq!(error.http_status_code(), 500, "数据库错误应返回 500");
+        assert_eq!(
+            error.error_code(),
+            "DATABASE_ERROR",
+            "错误码应为 DATABASE_ERROR"
+        );
+    }
+
+    #[test]
+    fn test_config_error_code_and_status() {
+        let error = AppError::Config(ConfigErrorKind::FileNotFound {
+            path: "/nonexistent: not found".to_string(),
+        });
+        assert_eq!(error.http_status_code(), 500, "配置错误应返回 500");
+        assert_eq!(
+            error.error_code(),
+            "CONFIG_ERROR",
+            "错误码应为 CONFIG_ERROR"
+        );
+    }
+
+    #[test]
+    fn test_error_details_for_account_banned() {
+        let error = AppError::Forbidden(ForbiddenKind::AccountBanned {
+            reason: "违规操作".to_string(),
+            until: Some(Utc::now()),
+        });
+
+        let details = error.details();
+        assert!(details.is_some(), "AccountBanned 应有详情");
+
+        let details = details.expect("已验证存在");
+        assert!(details.get("reason").is_some(), "详情应包含 reason 字段");
+        assert!(
+            details.get("banned_until").is_some(),
+            "详情应包含 banned_until 字段"
+        );
+    }
+
+    #[test]
+    fn test_error_details_for_quota_exceeded() {
+        let now = Utc::now();
+        let error = AppError::Forbidden(ForbiddenKind::QuotaExceeded {
+            period_start: now,
+            period_end: now,
+            quota_limit_ms: 10000,
+            quota_used_ms: 12000,
+        });
+
+        let details = error.details();
+        assert!(details.is_some(), "QuotaExceeded 应有详情");
+
+        let details = details.expect("已验证存在");
+        assert_eq!(
+            details.get("quota_limit_ms"),
+            Some(&serde_json::json!(10000)),
+            "详情应包含正确的 quota_limit_ms"
+        );
+        assert_eq!(
+            details.get("quota_used_ms"),
+            Some(&serde_json::json!(12000)),
+            "详情应包含正确的 quota_used_ms"
+        );
+    }
+
+    #[test]
+    fn test_error_details_for_code_too_large() {
+        let error = AppError::InvalidRequest(InvalidRequestKind::CodeTooLarge {
+            max_bytes: 16384,
+            actual_bytes: 20000,
+        });
+
+        let details = error.details();
+        assert!(details.is_some(), "CodeTooLarge 应有详情");
+
+        let details = details.expect("已验证存在");
+        assert_eq!(
+            details.get("max_bytes"),
+            Some(&serde_json::json!(16384)),
+            "详情应包含正确的 max_bytes"
+        );
+        assert_eq!(
+            details.get("actual_bytes"),
+            Some(&serde_json::json!(20000)),
+            "详情应包含正确的 actual_bytes"
+        );
+    }
+
+    #[test]
+    fn test_error_display_messages() {
+        let error = AppError::Unauthorized(AuthErrorKind::InvalidCredentials);
+        assert!(
+            error.to_string().contains("用户名或密码错误"),
+            "错误消息应包含具体描述"
+        );
+
+        let error = AppError::Forbidden(ForbiddenKind::AccountBanned {
+            reason: "测试原因".to_string(),
+            until: None,
+        });
+        assert!(
+            error.to_string().contains("测试原因"),
+            "错误消息应包含封禁原因"
+        );
+    }
+
+    #[test]
+    fn test_error_into_response() {
+        let error = AppError::Unauthorized(AuthErrorKind::InvalidCredentials);
         let response = error.into_response();
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    }
-
-    #[test]
-    fn test_api_error_with_details() {
-        let error = ApiError::new(ErrorCode::QuotaExceeded, "配额已用完")
-            .with_details(serde_json::json!({"remaining_ms": 0}));
-
-        assert!(error.details.is_some());
-    }
-
-    #[test]
-    fn test_api_error_new() {
-        let error = ApiError::new(ErrorCode::InvalidCredentials, "凭证无效");
-
-        assert_eq!(error.code, ErrorCode::InvalidCredentials);
-        assert_eq!(error.message, "凭证无效");
-        assert!(error.details.is_none());
-    }
-
-    #[test]
-    fn test_api_error_internal() {
-        let error = ApiError::internal("系统错误");
-        assert_eq!(error.code, ErrorCode::InternalError);
-    }
-
-    #[test]
-    fn test_api_error_unauthorized() {
-        let error = ApiError::unauthorized("未登录");
-        assert_eq!(error.code, ErrorCode::Unauthorized);
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "HTTP 状态码应为 401"
+        );
     }
 }

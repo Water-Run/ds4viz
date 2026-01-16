@@ -1,65 +1,67 @@
 [package]
 name = "ds4viz-server"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["WaterRun"]
-description = "ds4viz 在线代码执行服务"
-repository = "https://github.com/waterrun/ds4viz"
+description = "ds4viz 数据结构可视化平台后端服务"
 license = "MIT"
-rust-version = "1.75"
+repository = "https://github.com/WaterRun/ds4viz"
 
 [dependencies]
-# Web 框架
-poem = { version = "3", features = ["cookie", "multipart"] }
-
-# 异步运行时
-tokio = { version = "1", features = ["full"] }
+# Web框架
+poem = { version = "3", features = ["cookie", "session"] }
 
 # 数据库
 sqlx = { version = "0.8", features = [
     "runtime-tokio",
-    "tls-rustls",
     "postgres",
     "uuid",
     "chrono",
-    "json",
 ] }
 
 # 序列化
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# 配置
+# 配置加载
+config = "0.14"
 toml = "0.8"
-
-# 认证
-jsonwebtoken = "9"
 
 # 密码哈希
 argon2 = "0.5"
+rand = "0.8"
 
-# 时间处理
-chrono = { version = "0.4", features = ["serde"] }
+# JWT
+jsonwebtoken = "9"
 
-# UUID
-uuid = { version = "1", features = ["v4", "serde"] }
-
-# 哈希计算
-sha2 = "0.10"
-hex = "0.4"
-
-# 错误处理
-thiserror = "2"
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
 
 # 日志
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-[dev-dependencies]
-reqwest = { version = "0.12", features = ["json", "cookies"] }
-tempfile = "3"
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
 
-[profile.release]
-lto = true
-codegen-units = 1
-strip = true
+# 时间
+chrono = { version = "0.4", features = ["serde"] }
+time = "0.3"
+
+# SHA256
+sha2 = "0.10"
+
+# 输入验证
+validator = { version = "0.20", features = ["derive"] }
+
+# 错误处理
+thiserror = "2"
+
+# Hex编码
+hex = "0.4"
+
+# LRU缓存
+lru = "0.12"
+
+# URL编码
+urlencoding = "2"
