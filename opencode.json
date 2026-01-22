@@ -18,7 +18,7 @@
     }
   },
 
-  "model": "poe/claude-sonnet-4.5",
+  "model": "poe/gpt-5.2-codex",
   "small_model": "poe/gpt-5",
 
   "permission": {

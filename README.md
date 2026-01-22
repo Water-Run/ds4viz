@@ -77,7 +77,7 @@
 **部署架构**
 
 ```plaintext
-前端(Vue3+TS) <-> 后端(Rust+Poem+PostgreSQL)
+前端(Vue3+TS) <-> 后端(Python+FastAPI+PostgreSQL)
     |                    |
   编辑器              沙箱执行引擎
   渲染器              TOML验证器
