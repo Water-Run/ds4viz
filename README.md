@@ -42,6 +42,7 @@
 | `Python` | `pip install ds4viz` | [py-ds4viz](./library/python/README.md) | 已编写  |
 | `C` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`| [c-ds4viz](./library/c/README.md)                                           | 已编写 |
 | `C#` | - | -                                           | 规划中 |
+| `F#` | - | -                                           | 规划中 |
 | `Java` | - | -                                           | 规划中 |
 | `JavaScript` | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js`| [js-ds4viz](./library/javascript/README.md)                                           | 已编写 |
 | `TypeScript` | `pnpm install ds4viz` | [ts-ds4viz](./library/typescript/README.md)                                           | 已编写 |
@@ -97,5 +98,3 @@
 | 文档                       |
 |--------------------------|
 | [IR定义](./prompt/IR定义.md) |
-| [需求文档](./prompt/需求文档.md) |
-| [服务系统](./prompt/服务系统.md) |
