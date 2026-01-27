@@ -1,0 +1,26 @@
+# ds4viz 测试环境配置
+# 用于开发和自动化测试
+
+server:
+  host: "127.0.0.1"
+  port: 20000
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "ds4viz_test"
+  username: "ds4viz_test"
+  password: "test_pwd_123"
+
+security:
+  jwt_secret: "test_secret_key_not_for_production"
+  jwt_algorithm: "HS256"
+  access_token_expire_minutes: 60
+  refresh_token_expire_days: 7
+  password_min_length: 4
+  bcrypt_rounds: 4
+
+sandbox:
+  timeout_seconds: 10
+  max_memory_mb: 256
+  temp_dir: "/tmp/ds4viz_test/exec"

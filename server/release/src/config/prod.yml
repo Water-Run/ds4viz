@@ -1,0 +1,26 @@
+# ds4viz 默认生产配置
+# 用于正式部署环境
+
+server:
+  host: "0.0.0.0"
+  port: 10000
+
+database:
+  host: "localhost"
+  port: 5432
+  database: "ds4viz_prod"
+  username: "ds4viz"
+  password: "PWD4ds4viz"
+
+security:
+  jwt_secret: "${JWT_SECRET}"
+  jwt_algorithm: "HS256"
+  access_token_expire_minutes: 1440
+  refresh_token_expire_days: 30
+  password_min_length: 8
+  bcrypt_rounds: 12
+
+sandbox:
+  timeout_seconds: 30
+  max_memory_mb: 512
+  temp_dir: "/tmp/ds4viz/exec"
