@@ -72,3 +72,9 @@ python src/main.py --test
 ```bash
 python admin-tui.py
 ```
+
+## 文档  
+
+- [表定义](./docs/表定义.md)  
+- [数据库环境准备](./docs/数据库环境准备.md)  
+- [API参考](./docs/API参考.md)  
