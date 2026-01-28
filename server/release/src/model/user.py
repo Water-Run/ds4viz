@@ -8,7 +8,7 @@ r"""
 
 from datetime import datetime
 from enum import StrEnum
-
+from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 
@@ -88,3 +88,35 @@ class FavoriteListResponse(BaseModel):
     """
 
     favorites: list[FavoriteItem] = Field(description="收藏列表")
+
+@dataclass
+class FavoriteItem:
+    r"""
+    收藏项
+    """
+    template_id: int
+    title: str
+    category: str
+    description: str
+    favorite_count: int
+    favorited_at: datetime
+
+
+@dataclass
+class FavoriteListResponse:
+    r"""
+    收藏列表响应
+    """
+    items: list[FavoriteItem]
+    total: int
+    page: int
+    limit: int
+
+
+@dataclass
+class PasswordChange:
+    r"""
+    密码修改请求
+    """
+    old_password: str
+    new_password: str

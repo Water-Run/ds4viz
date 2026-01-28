@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
+import uuid
 from fastapi import Request
 
 
@@ -94,3 +95,54 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def get_timestamp() -> datetime:
+    r"""
+    获取当前时间戳
+
+    :return datetime: 当前时间
+    """
+    return datetime.now()
+
+
+def generate_uuid() -> str:
+    r"""
+    生成唯一标识符
+
+    :return str: UUID十六进制字符串
+    """
+    return uuid.uuid4().hex
+
+
+def hash_password(password: str) -> str:
+    r"""
+    对密码进行哈希处理
+
+    :param password: 明文密码
+    :return str: 哈希后的密码
+    """
+    salt: bytes = bcrypt.gensalt()
+    hashed: bytes = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    r"""
+    验证密码是否匹配
+
+    :param password: 明文密码
+    :param hashed: 哈希后的密码
+    :return bool: 是否匹配
+    """
+    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def compute_hash(content: str) -> str:
+    r"""
+    计算内容的SHA256哈希值
+
+    :param content: 待哈希内容
+    :return str: 64位十六进制哈希字符串
+    """
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()

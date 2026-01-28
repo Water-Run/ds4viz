@@ -8,6 +8,7 @@ r"""
 
 from datetime import datetime
 from enum import StrEnum
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
@@ -91,3 +92,40 @@ class ExecutionListResponse(BaseModel):
     total: int = Field(description="总数")
     page: int = Field(description="当前页码")
     limit: int = Field(description="每页数量")
+    
+@dataclass
+class ExecutionDetail:
+    r"""
+    执行详情
+    """
+    id: int
+    language: SupportedLanguage
+    code: str
+    toml_output: str | None
+    status: ExecutionStatus
+    error_message: str | None
+    execution_time: int | None
+    created_at: datetime
+
+
+@dataclass
+class ExecutionListItem:
+    r"""
+    执行列表项
+    """
+    id: int
+    language: SupportedLanguage
+    status: ExecutionStatus
+    execution_time: int | None
+    created_at: datetime
+
+
+@dataclass
+class ExecutionListResponse:
+    r"""
+    执行历史列表响应
+    """
+    items: list[ExecutionListItem]
+    total: int
+    page: int
+    limit: int
