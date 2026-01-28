@@ -76,7 +76,8 @@ def _create_app() -> FastAPI:
     创建FastAPI应用实例
     :return FastAPI: 应用实例
     """
-    app = FastAPI(title="ds4viz", version="0.1.0", docs_url="/docs", redoc_url=None)
+    app = FastAPI(title="ds4viz", version="0.1.0",
+                  docs_url="/docs", redoc_url=None)
 
     @app.exception_handler(Ds4VizException)
     async def handle_ds4viz_exception(_: Request, exc: Ds4VizException) -> JSONResponse:
@@ -137,8 +138,8 @@ def main() -> None:
         logger.info(f"服务启动: {server_conf['host']}:{server_conf['port']}")
         uvicorn.run(app, host=server_conf["host"], port=server_conf["port"])
     finally:
-        close_pool()
         logger.info("服务已停止")
+        close_pool()
 
 
 if __name__ == "__main__":

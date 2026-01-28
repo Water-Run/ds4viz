@@ -83,7 +83,7 @@ class Logger:
             with get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO logs (timestamp, level, module, message) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO logs (created_at, level, module, message) VALUES (%s, %s, %s, %s)",
                         (timestamp, level_name, self._module, message),
                     )
                 conn.commit()
@@ -118,6 +118,7 @@ class Logger:
         :param exc: 可选的异常对象，会附加堆栈信息
         """
         if exc:
-            tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            tb = "".join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__))
             message = f"{message}\n{tb}"
         self._log(LogLevel.ERROR, message)
