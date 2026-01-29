@@ -13,11 +13,16 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from api.auth import router as auth_router
+from api.user import router as user_router
+from api.template import router as template_router
+from api.execution import execute_router, favorites_router, executions_router
 from config import AppConfig, init_config, get_config
 from database import close_pool, init_pool
 from exceptions import Ds4VizException
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from log import LogLevel, get_logger, init_logger
 from service.auth_service import cleanup_expired_sessions
 
@@ -121,6 +126,13 @@ def _create_app() -> FastAPI:
             status_code=exc.status_code,
             content={"error": exc.message},
         )
+
+    app.include_router(auth_router)
+    app.include_router(user_router)
+    app.include_router(template_router)
+    app.include_router(execute_router)
+    app.include_router(favorites_router)
+    app.include_router(executions_router)
 
     @app.get("/health")
     async def health_check() -> dict[str, str]:

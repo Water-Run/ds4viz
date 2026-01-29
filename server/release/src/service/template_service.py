@@ -9,7 +9,7 @@ r"""
 from psycopg import sql
 
 from database import get_connection
-from exceptions import TemplateNotFoundError
+from exceptions import TemplateNotFoundError, TemplateCodeNotFoundError
 from model import (
     TemplateDetail,
     TemplateListResponse,
@@ -83,6 +83,49 @@ def get_template_by_id(template_id: int, user_id: int | None = None) -> Template
         created_at=created_at,
         updated_at=updated_at,
     )
+
+
+def get_template_code(template_id: int, language: str) -> TemplateCodeResponse:
+    r"""
+    获取指定模板的指定语言代码
+
+    :param template_id: 模板ID
+    :param language: 编程语言
+    :return TemplateCodeResponse: 模板代码响应
+    :raise TemplateNotFoundError: 模板不存在
+    :raise TemplateCodeNotFoundError: 模板语言实现不存在
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id FROM templates WHERE id = %s
+                """,
+                (template_id,),
+            )
+            if cur.fetchone() is None:
+                raise TemplateNotFoundError(f"模板不存在: {template_id}")
+
+            cur.execute(
+                """
+                SELECT language, code, explanation
+                FROM template_codes
+                WHERE template_id = %s AND language = %s
+                """,
+                (template_id, language),
+            )
+            row: tuple | None = cur.fetchone()
+
+            if row is None:
+                raise TemplateCodeNotFoundError(
+                    f"模板语言实现不存在: template_id={template_id}, language={language}"
+                )
+
+            return TemplateCodeResponse(
+                language=row[0],
+                code=row[1],
+                explanation=row[2],
+            )
 
 
 def _build_in_clause(column: str, values: list[int]) -> tuple[sql.Composed, list[int]]:

@@ -141,6 +141,14 @@ class TemplateNotFoundError(NotFoundError):
     message = "模板不存在"
 
 
+class TemplateCodeNotFoundError(NotFoundError):
+    r"""
+    模板语言实现不存在
+    """
+
+    message = "模板语言实现不存在"
+
+
 # ============================================
 # 收藏相关异常
 # ============================================

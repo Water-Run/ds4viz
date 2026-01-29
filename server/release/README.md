@@ -54,7 +54,7 @@
 环境准备:  
 
 ```bash
-pip install bcrypt pyjwt psycopg[pool] pyyaml fastapi uvicorn
+pip install bcrypt pyjwt psycopg[pool] pyyaml fastapi uvicorn python-multipart
 ```
 
 ```bash

@@ -29,6 +29,7 @@ from service.user_service import (
 )
 from service.template_service import (
     get_template_by_id,
+    get_template_code,
     list_templates,
     get_categories,
     search_templates,
@@ -67,6 +68,7 @@ __all__: list[str] = [
     "UserSuspendedError",
     # template
     "get_template_by_id",
+    "get_template_code",
     "list_templates",
     "get_categories",
     "search_templates",
