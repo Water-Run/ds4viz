@@ -3,55 +3,56 @@ r"""
 
 :file: src/model/__init__.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
-from model.common import SupportedLanguage
 from model.user import (
     UserStatus,
     UserCreate,
     UserLogin,
     UserResponse,
+    UserWithToken,
     PasswordChange,
     FavoriteItem,
     FavoriteListResponse,
 )
 from model.template import (
-    TemplateCode,
+    TemplateCodeResponse,
     TemplateDetail,
     TemplateListItem,
     TemplateListResponse,
 )
 from model.execution import (
+    SupportedLanguage,
     ExecutionStatus,
     ExecuteRequest,
     ExecuteResponse,
     ExecutionDetail,
-    ExecutionListItem,
+    ExecutionHistoryItem,
     ExecutionListResponse,
 )
 
 __all__: list[str] = [
-    # common
-    "SupportedLanguage",
     # user
     "UserStatus",
     "UserCreate",
     "UserLogin",
     "UserResponse",
+    "UserWithToken",
     "PasswordChange",
     "FavoriteItem",
     "FavoriteListResponse",
     # template
-    "TemplateCode",
+    "TemplateCodeResponse",
     "TemplateDetail",
     "TemplateListItem",
     "TemplateListResponse",
     # execution
+    "SupportedLanguage",
     "ExecutionStatus",
     "ExecuteRequest",
     "ExecuteResponse",
     "ExecutionDetail",
-    "ExecutionListItem",
+    "ExecutionHistoryItem",
     "ExecutionListResponse",
 ]

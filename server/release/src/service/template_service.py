@@ -3,31 +3,19 @@ r"""
 
 :file: src/service/template_service.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
-from database import Database
+from psycopg import sql
+
+from database import get_connection
+from exceptions import TemplateNotFoundError
 from model import (
     TemplateDetail,
     TemplateListResponse,
     TemplateListItem,
-    TemplateCode,
-    SupportedLanguage,
+    TemplateCodeResponse,
 )
-
-
-class TemplateServiceError(Exception):
-    r"""
-    模板服务异常基类
-    """
-    ...
-
-
-class TemplateNotFoundError(TemplateServiceError):
-    r"""
-    模板不存在异常
-    """
-    ...
 
 
 def get_template_by_id(template_id: int, user_id: int | None = None) -> TemplateDetail:
@@ -39,7 +27,7 @@ def get_template_by_id(template_id: int, user_id: int | None = None) -> Template
     :return TemplateDetail: 模板详情
     :raise TemplateNotFoundError: 模板不存在
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -64,9 +52,9 @@ def get_template_by_id(template_id: int, user_id: int | None = None) -> Template
             )
             code_rows: list[tuple] = cur.fetchall()
 
-            codes: list[TemplateCode] = [
-                TemplateCode(
-                    language=SupportedLanguage(code_row[0]),
+            codes: list[TemplateCodeResponse] = [
+                TemplateCodeResponse(
+                    language=code_row[0],
                     code=code_row[1],
                     explanation=code_row[2],
                 )
@@ -97,6 +85,19 @@ def get_template_by_id(template_id: int, user_id: int | None = None) -> Template
     )
 
 
+def _build_in_clause(column: str, values: list[int]) -> tuple[sql.Composed, list[int]]:
+    r"""
+    构建安全的IN子句
+
+    :param column: 列名
+    :param values: 值列表
+    :return tuple[sql.Composed, list[int]]: (SQL片段, 参数列表)
+    """
+    placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in values)
+    clause = sql.SQL("{} IN ({})").format(sql.Identifier(column), placeholders)
+    return clause, values
+
+
 def list_templates(
     page: int = 1,
     limit: int = 20,
@@ -114,7 +115,7 @@ def list_templates(
     """
     offset: int = (page - 1) * limit
 
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             if category is not None:
                 cur.execute(
@@ -155,14 +156,12 @@ def list_templates(
 
             favorited_ids: set[int] = set()
             if user_id is not None and template_ids:
-                placeholders: str = ",".join(["%s"] * len(template_ids))
-                cur.execute(
-                    f"""
-                    SELECT template_id FROM user_favorites
-                    WHERE user_id = %s AND template_id IN ({placeholders})
-                    """,
-                    (user_id, *template_ids),
-                )
+                in_clause, in_params = _build_in_clause(
+                    "template_id", template_ids)
+                query = sql.SQL(
+                    "SELECT template_id FROM user_favorites WHERE user_id = %s AND {}"
+                ).format(in_clause)
+                cur.execute(query, [user_id, *in_params])
                 favorited_ids = {r[0] for r in cur.fetchall()}
 
             items: list[TemplateListItem] = [
@@ -192,7 +191,7 @@ def get_categories() -> list[str]:
 
     :return list[str]: 分类列表
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -222,7 +221,7 @@ def search_templates(
     offset: int = (page - 1) * limit
     search_pattern: str = f"%{keyword}%"
 
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -248,14 +247,12 @@ def search_templates(
 
             favorited_ids: set[int] = set()
             if user_id is not None and template_ids:
-                placeholders: str = ",".join(["%s"] * len(template_ids))
-                cur.execute(
-                    f"""
-                    SELECT template_id FROM user_favorites
-                    WHERE user_id = %s AND template_id IN ({placeholders})
-                    """,
-                    (user_id, *template_ids),
-                )
+                in_clause, in_params = _build_in_clause(
+                    "template_id", template_ids)
+                query = sql.SQL(
+                    "SELECT template_id FROM user_favorites WHERE user_id = %s AND {}"
+                ).format(in_clause)
+                cur.execute(query, [user_id, *in_params])
                 favorited_ids = {r[0] for r in cur.fetchall()}
 
             items: list[TemplateListItem] = [

@@ -3,42 +3,24 @@ r"""
 
 :file: src/service/execution_service.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
-from database import Database
+from config import get_config, SandboxConfig as ConfigSandboxConfig
+from database import get_connection
+from exceptions import ExecutionNotFoundError, ExecutionPermissionError
 from model import (
     ExecuteRequest,
     ExecuteResponse,
     ExecutionStatus,
     ExecutionDetail,
     ExecutionListResponse,
-    ExecutionListItem,
+    ExecutionHistoryItem,
     SupportedLanguage,
 )
 from service.sandbox_service import SandboxResult, SandboxConfig, run_code
-from utils import get_timestamp, compute_hash
-
-
-class ExecutionServiceError(Exception):
-    r"""
-    执行服务异常基类
-    """
-    ...
-
-
-class ExecutionNotFoundError(ExecutionServiceError):
-    r"""
-    执行记录不存在异常
-    """
-    ...
-
-
-class ExecutionPermissionError(ExecutionServiceError):
-    r"""
-    执行记录访问权限异常
-    """
-    ...
+from service.user_service import require_active_status
+from utils import get_utc_now, compute_hash
 
 
 def _check_cache(code_hash: str, language: str) -> tuple[bool, str | None]:
@@ -49,7 +31,7 @@ def _check_cache(code_hash: str, language: str) -> tuple[bool, str | None]:
     :param language: 语言类型
     :return tuple[bool, str | None]: (是否命中, TOML输出内容)
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -69,7 +51,7 @@ def _check_cache(code_hash: str, language: str) -> tuple[bool, str | None]:
                 SET hit_count = hit_count + 1, last_hit_at = %s
                 WHERE code_hash = %s AND language = %s
                 """,
-                (get_timestamp(), code_hash, language),
+                (get_utc_now(), code_hash, language),
             )
         conn.commit()
 
@@ -83,9 +65,8 @@ def _save_to_cache(code_hash: str, language: str, toml_output: str) -> None:
     :param code_hash: 代码哈希值
     :param language: 语言类型
     :param toml_output: TOML输出内容
-    :return None: 无返回值
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -96,7 +77,7 @@ def _save_to_cache(code_hash: str, language: str, toml_output: str) -> None:
                     hit_count = execution_cache.hit_count + 1,
                     last_hit_at = %s
                 """,
-                (code_hash, language, toml_output, get_timestamp()),
+                (code_hash, language, toml_output, get_utc_now()),
             )
         conn.commit()
 
@@ -126,7 +107,7 @@ def _save_execution(
     :param ip_address: IP地址
     :return int: 执行记录ID
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -155,6 +136,21 @@ def _save_execution(
     return execution_id
 
 
+def create_sandbox_config_from_app_config() -> SandboxConfig:
+    r"""
+    从应用配置创建沙箱配置
+
+    :return SandboxConfig: 沙箱配置对象
+    """
+    config = get_config()
+    sandbox_conf: ConfigSandboxConfig = config.sandbox
+    return SandboxConfig(
+        timeout_seconds=sandbox_conf.timeout_seconds,
+        memory_limit_mb=sandbox_conf.max_memory_mb,
+        workspace_base=sandbox_conf.temp_dir,
+    )
+
+
 def execute_code(
     user_id: int,
     data: ExecuteRequest,
@@ -167,9 +163,16 @@ def execute_code(
     :param user_id: 用户ID
     :param data: 执行请求数据
     :param ip_address: 客户端IP地址
-    :param sandbox_config: 沙箱配置（可选）
+    :param sandbox_config: 沙箱配置（可选，默认从应用配置读取）
     :return ExecuteResponse: 执行响应
+    :raise UserBannedError: 用户已被封禁
+    :raise UserSuspendedError: 用户已被暂停
     """
+    require_active_status(user_id)
+
+    if sandbox_config is None:
+        sandbox_config = create_sandbox_config_from_app_config()
+
     code_hash: str = compute_hash(data.code)
     language_str: str = data.language.value
 
@@ -194,7 +197,7 @@ def execute_code(
             toml_output=cached_output,
             error_message=None,
             execution_time=0,
-            cache_hit=True,
+            cached=True,
         )
 
     result: SandboxResult = run_code(
@@ -208,7 +211,7 @@ def execute_code(
     elif result.success:
         status = ExecutionStatus.SUCCESS
     else:
-        status = ExecutionStatus.FAILED
+        status = ExecutionStatus.ERROR
 
     if result.success and result.toml_output is not None:
         _save_to_cache(code_hash, language_str, result.toml_output)
@@ -231,7 +234,7 @@ def execute_code(
         toml_output=result.toml_output,
         error_message=result.error_message,
         execution_time=result.execution_time_ms,
-        cache_hit=False,
+        cached=False,
     )
 
 
@@ -245,7 +248,7 @@ def get_execution_by_id(execution_id: int, user_id: int) -> ExecutionDetail:
     :raise ExecutionNotFoundError: 执行记录不存在
     :raise ExecutionPermissionError: 无权访问该记录
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -291,7 +294,7 @@ def list_executions(
     """
     offset: int = (page - 1) * limit
 
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -303,7 +306,7 @@ def list_executions(
 
             cur.execute(
                 """
-                SELECT id, language, status, execution_time, created_at
+                SELECT id, language, code, status, execution_time, created_at
                 FROM executions
                 WHERE user_id = %s
                 ORDER BY created_at DESC
@@ -313,13 +316,14 @@ def list_executions(
             )
             rows: list[tuple] = cur.fetchall()
 
-            items: list[ExecutionListItem] = [
-                ExecutionListItem(
+            items: list[ExecutionHistoryItem] = [
+                ExecutionHistoryItem(
                     id=row[0],
                     language=SupportedLanguage(row[1]),
-                    status=ExecutionStatus(row[2]),
-                    execution_time=row[3],
-                    created_at=row[4],
+                    code=row[2],
+                    status=ExecutionStatus(row[3]),
+                    execution_time=row[4],
+                    created_at=row[5],
                 )
                 for row in rows
             ]

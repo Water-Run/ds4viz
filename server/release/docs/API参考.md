@@ -1,4 +1,50 @@
-# API 参考文档
+# ds4viz API 参考
+
+## 0. 通用说明
+
+### 0.1 认证方式（JWT + Session）
+- 登录成功后获得 JWT（`token`）
+- 需要认证的接口必须携带请求头：
+
+```
+Authorization: Bearer <token>
+```
+
+- 令牌默认有效期：由配置项 `security.access_token_expire_hours` 决定
+
+---
+
+### 0.2 统一错误响应格式
+
+当前后端自定义异常的响应格式为：
+
+```json
+{
+  "error": "错误信息"
+}
+```
+
+示例：
+
+```json
+{
+  "error": "用户名已存在"
+}
+```
+
+> 说明：错误信息为中文，来源于异常类的 `message` 字段。
+
+---
+
+### 0.3 时间格式
+
+所有时间字段为 ISO 8601 格式（UTC）：
+
+```
+2026-01-26T10:00:00Z
+```
+
+---
 
 ## 1. 认证相关 API
 
@@ -6,9 +52,7 @@
 
 **POST** `/api/auth/register`
 
-注册新用户账号。
-
-**请求体:**
+**请求体：**
 ```json
 {
   "username": "string",
@@ -16,18 +60,19 @@
 }
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
-  "user_id": 1,
+  "id": 1,
   "username": "string",
+  "avatar_url": null,
+  "status": "Active",
   "created_at": "2026-01-26T10:00:00Z"
 }
 ```
 
-**错误响应:**
-- 400: 用户名已存在
-- 400: 用户名或密码格式无效
+**可能错误：**
+- 409 `{"error": "用户名已存在"}`
 
 ---
 
@@ -35,9 +80,7 @@
 
 **POST** `/api/auth/login`
 
-用户登录并获取JWT令牌。
-
-**请求体:**
+**请求体：**
 ```json
 {
   "username": "string",
@@ -45,22 +88,26 @@
 }
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "user": {
     "id": 1,
     "username": "string",
-    "status": "Active"
+    "avatar_url": "/api/users/1/avatar",
+    "status": "Active",
+    "created_at": "2026-01-26T10:00:00Z"
   },
   "expires_at": "2026-01-27T10:00:00Z"
 }
 ```
 
-**错误响应:**
-- 401: 用户名或密码错误
-- 403: 账号已被封禁或暂停
+**可能错误：**
+- 401 `{"error": "用户名或密码错误"}`
+- 403 `{"error": "用户已被封禁"}`
+
+> 注：Suspended 用户允许登录，但部分操作会被限制。
 
 ---
 
@@ -68,19 +115,20 @@
 
 **POST** `/api/auth/logout`
 
-登出并销毁当前会话。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "message": "Logged out successfully"
 }
 ```
+
+**可能错误：**
+- 401 `{"error": "认证失败"}`
 
 ---
 
@@ -88,14 +136,12 @@ Authorization: Bearer <token>
 
 **GET** `/api/auth/me`
 
-获取当前登录用户的信息。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "id": 1,
@@ -106,43 +152,45 @@ Authorization: Bearer <token>
 }
 ```
 
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+
 ---
 
 ## 2. 用户相关 API
 
 ### 2.1 获取用户头像
 
-**GET** `/api/users/:id/avatar`
+**GET** `/api/users/{id}/avatar`
 
-获取指定用户的头像图片。
+**响应 (200)：**
+- Content-Type: `application/octet-stream`
+- 二进制数据（原样返回数据库中的 BYTEA）
 
-**响应 (200):**
-- Content-Type: image/png 或 image/jpeg
-- 二进制图片数据
+**可能错误：**
+- 404 `{"error": "用户不存在"}`
+- 404 `{"error": "头像不存在"}`（若 API 层选择区分）
 
-**错误响应:**
-- 404: 用户不存在或未设置头像
+> 说明：当前代码未存储图片类型，API 层可选择返回 `application/octet-stream` 或通过内容嗅探设置为 `image/*`。
 
 ---
 
-### 2.2 上传用户头像
+### 2.2 上传/更新用户头像
 
-**PUT** `/api/users/:id/avatar`
+**PUT** `/api/users/{id}/avatar`
 
-上传或更新用户头像。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 Content-Type: multipart/form-data
 ```
 
-**请求体:**
+**请求体：**
 ```
 avatar: <binary file>
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "message": "Avatar uploaded successfully",
@@ -150,25 +198,25 @@ avatar: <binary file>
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 403: 只能修改自己的头像
-- 400: 文件格式不支持或文件过大
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "权限不足"}`（只能修改自己的头像）
+- 404 `{"error": "用户不存在"}`
+
+> 说明：当前服务层不校验格式/大小，API 层如需限制请同步更新文档。
 
 ---
 
 ### 2.3 修改密码
 
-**PUT** `/api/users/:id/password`
+**PUT** `/api/users/{id}/password`
 
-修改用户密码。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**请求体:**
+**请求体：**
 ```json
 {
   "old_password": "string",
@@ -176,17 +224,18 @@ Authorization: Bearer <token>
 }
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "message": "Password updated successfully"
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 403: 只能修改自己的密码
-- 400: 原密码错误
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "权限不足"}`（只能修改自己的密码）
+- 400 `{"error": "原密码错误"}`
+- 404 `{"error": "用户不存在"}`
 
 ---
 
@@ -196,23 +245,26 @@ Authorization: Bearer <token>
 
 **GET** `/api/templates`
 
-获取所有模板列表，支持分类筛选。
+**查询参数：**
+- `category`（可选）: 分类名称
+- `page`（可选）: 页码，默认 1
+- `limit`（可选）: 每页数量，默认 20
 
-**查询参数:**
-- `category` (可选): 分类名称
-- `page` (可选): 页码，默认1
-- `limit` (可选): 每页数量，默认20
+**可选认证：**
+- 若携带 token，可返回 `is_favorited`
+- 未登录时 `is_favorited` 恒为 false
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
-  "templates": [
+  "items": [
     {
       "id": 1,
       "title": "冒泡排序",
       "category": "排序算法",
       "description": "经典的冒泡排序算法...",
       "favorite_count": 42,
+      "is_favorited": true,
       "created_at": "2026-01-20T10:00:00Z"
     }
   ],
@@ -226,11 +278,13 @@ Authorization: Bearer <token>
 
 ### 3.2 获取模板详情
 
-**GET** `/api/templates/:id`
+**GET** `/api/templates/{id}`
 
-获取指定模板的详细信息和所有语言实现。
+**可选认证：**
+- 若携带 token，可返回 `is_favorited`
+- 未登录时 `is_favorited` 恒为 false
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "id": 1,
@@ -243,40 +297,81 @@ Authorization: Bearer <token>
       "language": "python",
       "code": "def bubble_sort(arr):\n    ...",
       "explanation": "### Python实现\n..."
-    },
-    {
-      "language": "cpp",
-      "code": "void bubbleSort(int arr[], int n) {\n    ...",
-      "explanation": "### C++实现\n..."
     }
   ],
-  "created_at": "2026-01-20T10:00:00Z"
+  "is_favorited": false,
+  "created_at": "2026-01-20T10:00:00Z",
+  "updated_at": "2026-01-21T08:00:00Z"
 }
 ```
 
-**错误响应:**
-- 404: 模板不存在
+**可能错误：**
+- 404 `{"error": "模板不存在"}`
 
 ---
 
-### 3.3 获取模板代码
+### 3.3 获取模板代码（指定语言）
 
-**GET** `/api/templates/:id/code/:language`
+**GET** `/api/templates/{id}/code/{language}`
 
-获取指定模板在特定语言下的代码实现。
-
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
-  "template_id": 1,
   "language": "python",
   "code": "def bubble_sort(arr):\n    ...",
   "explanation": "### Python实现\n..."
 }
 ```
 
-**错误响应:**
-- 404: 模板或语言实现不存在
+**可能错误：**
+- 404 `{"error": "模板不存在"}`
+- 404 `{"error": "模板语言实现不存在"}`
+
+> 说明：当前服务层未提供专用方法，API 层可通过模板详情过滤得到。
+
+---
+
+### 3.4 获取模板分类列表
+
+**GET** `/api/templates/categories`
+
+**响应 (200)：**
+```json
+{
+  "items": ["排序算法", "图算法", "数据结构"]
+}
+```
+
+---
+
+### 3.5 搜索模板
+
+**GET** `/api/templates/search`
+
+**查询参数：**
+- `keyword`（必填）: 搜索关键词
+- `page`（可选）: 页码，默认 1
+- `limit`（可选）: 每页数量，默认 20
+
+**响应 (200)：**
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "title": "冒泡排序",
+      "category": "排序算法",
+      "description": "经典的冒泡排序算法...",
+      "favorite_count": 42,
+      "is_favorited": false,
+      "created_at": "2026-01-20T10:00:00Z"
+    }
+  ],
+  "total": 10,
+  "page": 1,
+  "limit": 20
+}
+```
 
 ---
 
@@ -284,32 +379,40 @@ Authorization: Bearer <token>
 
 ### 4.1 获取用户收藏列表
 
-**GET** `/api/users/:id/favorites`
+**GET** `/api/users/{id}/favorites`
 
-获取指定用户的收藏模板列表。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**响应 (200):**
+**查询参数：**
+- `page`（可选）: 页码，默认 1
+- `limit`（可选）: 每页数量，默认 20
+
+**响应 (200)：**
 ```json
 {
-  "favorites": [
+  "items": [
     {
-      "id": 1,
+      "template_id": 1,
       "title": "冒泡排序",
       "category": "排序算法",
+      "description": "经典的冒泡排序算法...",
+      "favorite_count": 42,
       "favorited_at": "2026-01-25T10:00:00Z"
     }
-  ]
+  ],
+  "total": 5,
+  "page": 1,
+  "limit": 20
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 403: 只能查看自己的收藏
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "权限不足"}`（只能查看自己的收藏）
+- 404 `{"error": "用户不存在"}`
 
 ---
 
@@ -317,56 +420,54 @@ Authorization: Bearer <token>
 
 **POST** `/api/favorites`
 
-收藏一个模板。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**请求体:**
+**请求体：**
 ```json
 {
   "template_id": 1
 }
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
-  "message": "Template favorited successfully",
-  "favorite_id": 123
+  "message": "Template favorited successfully"
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 404: 模板不存在
-- 400: 已收藏该模板
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "用户已被封禁"}`
+- 403 `{"error": "用户已被暂停，无法执行该操作"}`
+- 404 `{"error": "模板不存在"}`
+- 409 `{"error": "已收藏该模板"}`
 
 ---
 
 ### 4.3 取消收藏
 
-**DELETE** `/api/favorites/:template_id`
+**DELETE** `/api/favorites/{template_id}`
 
-取消收藏指定模板。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "message": "Favorite removed successfully"
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 404: 未收藏该模板
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 404 `{"error": "未收藏该模板"}`
+- 403 `{"error": "权限不足"}`（若 API 层限制只能操作自己）
 
 ---
 
@@ -376,14 +477,12 @@ Authorization: Bearer <token>
 
 **POST** `/api/execute`
 
-执行用户提交的代码并返回可视化数据。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**请求体:**
+**请求体：**
 ```json
 {
   "language": "python",
@@ -391,55 +490,73 @@ Authorization: Bearer <token>
 }
 ```
 
-**响应 (200):**
+**language 取值：**
+- `python`
+- `lua`
+- `rust`
+
+**响应 (200)：**
 ```json
 {
   "execution_id": 456,
   "status": "Success",
   "toml_output": "[visualization]\ntype = \"array\"\ndata = [1,2,3]",
+  "error_message": null,
   "execution_time": 150,
   "cached": false
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 400: 代码格式错误或语言不支持
-- 408: 执行超时
-- 500: 执行错误
+**执行失败时仍返回 200**（由执行状态区分）：
 
-**执行错误响应 (200):**
 ```json
 {
-  "execution_id": 456,
+  "execution_id": 457,
   "status": "Error",
+  "toml_output": null,
   "error_message": "SyntaxError: invalid syntax (line 5)",
-  "execution_time": 50
+  "execution_time": 50,
+  "cached": false
 }
 ```
+
+超时示例：
+
+```json
+{
+  "execution_id": 458,
+  "status": "Timeout",
+  "toml_output": null,
+  "error_message": "执行超时",
+  "execution_time": 10000,
+  "cached": false
+}
+```
+
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "用户已被封禁"}`
+- 403 `{"error": "用户已被暂停，无法执行该操作"}`
 
 ---
 
 ### 5.2 获取执行历史
 
-**GET** `/api/users/:id/executions`
+**GET** `/api/users/{id}/executions`
 
-获取用户的代码执行历史。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**查询参数:**
-- `page` (可选): 页码，默认1
-- `limit` (可选): 每页数量，默认20
-- `status` (可选): 筛选状态 (Success/Error/Timeout)
+**查询参数：**
+- `page`（可选）: 页码，默认 1
+- `limit`（可选）: 每页数量，默认 20
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
-  "executions": [
+  "items": [
     {
       "id": 456,
       "language": "python",
@@ -455,24 +572,22 @@ Authorization: Bearer <token>
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 403: 只能查看自己的执行历史
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "权限不足"}`（只能查看自己的执行历史）
 
 ---
 
 ### 5.3 获取执行详情
 
-**GET** `/api/executions/:id`
+**GET** `/api/executions/{id}`
 
-获取指定执行记录的详细信息。
-
-**请求头:**
+**请求头：**
 ```
 Authorization: Bearer <token>
 ```
 
-**响应 (200):**
+**响应 (200)：**
 ```json
 {
   "id": 456,
@@ -486,181 +601,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**错误响应:**
-- 401: 未登录
-- 403: 只能查看自己的执行记录
-- 404: 执行记录不存在
-
----
-
-## 6. 管理员 API
-
-### 6.1 封禁用户
-
-**PUT** `/api/admin/users/:id/ban`
-
-封禁或解封用户账号。
-
-**请求头:**
-```
-Authorization: Bearer <admin_token>
-```
-
-**请求体:**
-```json
-{
-  "status": "Banned"
-}
-```
-
-**响应 (200):**
-```json
-{
-  "message": "User status updated successfully",
-  "user_id": 1,
-  "status": "Banned"
-}
-```
-
-**错误响应:**
-- 401: 未登录
-- 403: 需要管理员权限
-
----
-
-### 6.2 创建模板
-
-**POST** `/api/admin/templates`
-
-创建新的算法模板。
-
-**请求头:**
-```
-Authorization: Bearer <admin_token>
-```
-
-**请求体:**
-```json
-{
-  "title": "快速排序",
-  "category": "排序算法",
-  "description": "## 算法说明\n快速排序...",
-  "codes": [
-    {
-      "language": "python",
-      "code": "def quick_sort(arr):\n    ...",
-      "explanation": "### Python实现\n..."
-    }
-  ]
-}
-```
-
-**响应 (200):**
-```json
-{
-  "template_id": 10,
-  "message": "Template created successfully"
-}
-```
-
-**错误响应:**
-- 401: 未登录
-- 403: 需要管理员权限
-
----
-
-### 6.3 更新模板
-
-**PUT** `/api/admin/templates/:id`
-
-更新已有模板信息。
-
-**请求头:**
-```
-Authorization: Bearer <admin_token>
-```
-
-**请求体:**
-```json
-{
-  "title": "快速排序（优化版）",
-  "description": "## 更新说明\n..."
-}
-```
-
-**响应 (200):**
-```json
-{
-  "message": "Template updated successfully"
-}
-```
-
----
-
-### 6.4 删除模板
-
-**DELETE** `/api/admin/templates/:id`
-
-删除指定模板。
-
-**请求头:**
-```
-Authorization: Bearer <admin_token>
-```
-
-**响应 (200):**
-```json
-{
-  "message": "Template deleted successfully"
-}
-```
-
----
-
-## 通用错误响应
-
-所有API可能返回以下通用错误：
-
-**401 Unauthorized:**
-```json
-{
-  "error": "Unauthorized",
-  "message": "Invalid or expired token"
-}
-```
-
-**403 Forbidden:**
-```json
-{
-  "error": "Forbidden",
-  "message": "Insufficient permissions"
-}
-```
-
-**404 Not Found:**
-```json
-{
-  "error": "Not Found",
-  "message": "Resource not found"
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "error": "Internal Server Error",
-  "message": "An unexpected error occurred"
-}
-```
-
----
-
-## 认证说明
-
-需要认证的API请求必须在请求头中包含JWT令牌：
-
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
-```
-
-令牌在登录时获取，默认有效期为24小时。
+**可能错误：**
+- 401 `{"error": "认证失败"}`
+- 403 `{"error": "无权访问该执行记录"}`
+- 404 `{"error": "执行记录不存在"}`

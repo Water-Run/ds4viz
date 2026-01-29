@@ -3,7 +3,7 @@ r"""
 
 :file: src/exceptions.py
 :author: WaterRun
-:time: 2026-01-27
+:time: 2026-01-29
 """
 
 
@@ -22,6 +22,20 @@ class Ds4VizException(Exception):
         """
         self.message = message or self.__class__.message
         super().__init__(self.message)
+
+
+# ============================================
+# 通用异常
+# ============================================
+
+
+class ValidationError(Ds4VizException):
+    r"""
+    请求参数校验失败
+    """
+
+    status_code = 400
+    message = "参数校验失败"
 
 
 class AuthenticationError(Ds4VizException):
@@ -51,13 +65,106 @@ class NotFoundError(Ds4VizException):
     message = "资源不存在"
 
 
-class ValidationError(Ds4VizException):
+class ConflictError(Ds4VizException):
     r"""
-    请求参数校验失败
+    资源冲突
     """
 
-    status_code = 400
-    message = "参数校验失败"
+    status_code = 409
+    message = "资源冲突"
+
+
+class RequestTimeoutError(Ds4VizException):
+    r"""
+    请求超时
+    """
+
+    status_code = 408
+    message = "请求超时"
+
+
+# ============================================
+# 用户相关异常
+# ============================================
+
+
+class UserNotFoundError(NotFoundError):
+    r"""
+    用户不存在
+    """
+
+    message = "用户不存在"
+
+
+class UserAlreadyExistsError(ConflictError):
+    r"""
+    用户已存在
+    """
+
+    message = "用户名已存在"
+
+
+class InvalidCredentialsError(AuthenticationError):
+    r"""
+    凭证无效，用户名或密码错误
+    """
+
+    message = "用户名或密码错误"
+
+
+class UserBannedError(AuthorizationError):
+    r"""
+    用户已被封禁
+    """
+
+    message = "用户已被封禁"
+
+
+class PasswordMismatchError(ValidationError):
+    r"""
+    密码不匹配
+    """
+
+    message = "原密码错误"
+
+
+# ============================================
+# 模板相关异常
+# ============================================
+
+
+class TemplateNotFoundError(NotFoundError):
+    r"""
+    模板不存在
+    """
+
+    message = "模板不存在"
+
+
+# ============================================
+# 收藏相关异常
+# ============================================
+
+
+class FavoriteAlreadyExistsError(ConflictError):
+    r"""
+    收藏已存在
+    """
+
+    message = "已收藏该模板"
+
+
+class FavoriteNotFoundError(NotFoundError):
+    r"""
+    收藏不存在
+    """
+
+    message = "未收藏该模板"
+
+
+# ============================================
+# 执行相关异常
+# ============================================
 
 
 class ExecutionError(Ds4VizException):
@@ -69,10 +176,25 @@ class ExecutionError(Ds4VizException):
     message = "代码执行失败"
 
 
-class TimeoutError(Ds4VizException):
+class ExecutionNotFoundError(NotFoundError):
     r"""
-    执行超时
+    执行记录不存在
     """
 
-    status_code = 408
-    message = "执行超时"
+    message = "执行记录不存在"
+
+
+class ExecutionPermissionError(AuthorizationError):
+    r"""
+    执行记录访问权限不足
+    """
+
+    message = "无权访问该执行记录"
+
+
+class ExecutionTimeoutError(RequestTimeoutError):
+    r"""
+    代码执行超时
+    """
+
+    message = "代码执行超时"

@@ -6,7 +6,6 @@
 ## 架构  
 
 ```bash
-├── admin-tui.py # 管理TUI
 ├── docs # 文档
 │   ├── 表定义.md
 │   └── API参考.md
@@ -30,6 +29,7 @@
 │   ├── exceptions.py # 异常
 │   ├── __init__.py
 │   ├── log.py # 日志
+│   ├── config.py # 配置
 │   ├── main.py # 命令行解析和入口
 │   ├── model
 │   │   ├── execution.py # 执行模型
@@ -69,8 +69,10 @@ python src/main.py --test
 
 ## 管理系统  
 
+独立的TUI, 直接写数据库, 无额外后端接口.  
+
 ```bash
-python admin-tui.py
+lua admin-tui/admin-tui.lua
 ```
 
 ## 文档  

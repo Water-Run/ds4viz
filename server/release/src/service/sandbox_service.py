@@ -3,17 +3,16 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
-import os
 import shutil
 import subprocess
-import tempfile
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from model import SupportedLanguage
 from utils import generate_uuid
@@ -24,11 +23,11 @@ class SandboxResult:
     r"""
     沙箱执行结果
     """
+
     success: bool
     toml_output: str | None
     error_message: str | None
     execution_time_ms: int
-    cache_hit: bool
     timed_out: bool
 
 
@@ -37,9 +36,21 @@ class SandboxConfig:
     r"""
     沙箱配置
     """
+
     timeout_seconds: int = 10
     memory_limit_mb: int = 128
     workspace_base: str = "/tmp/ds4viz_sandbox"
+
+
+class SubprocessResult(NamedTuple):
+    r"""
+    子进程执行结果
+    """
+
+    return_code: int
+    stdout: str
+    stderr: str
+    timed_out: bool
 
 
 class LanguageExecutor(ABC):
@@ -209,7 +220,7 @@ class RustExecutor(LanguageExecutor):
 
     def prepare_files(self, workspace: Path, code: str) -> str:
         r"""
-        准备Rust执行文件并编译
+        准备Rust执行文件
 
         :param workspace: 工作目录
         :param code: Rust源代码
@@ -222,7 +233,7 @@ class RustExecutor(LanguageExecutor):
 
     def get_run_command(self, workspace: Path, filename: str) -> list[str]:
         r"""
-        获取Rust编译并执行的命令（使用shell串联编译和运行）
+        获取Rust编译并执行的命令
 
         :param workspace: 工作目录
         :param filename: 主文件名
@@ -299,10 +310,25 @@ def _cleanup_workspace(workspace: Path) -> None:
     清理工作目录
 
     :param workspace: 工作目录
-    :return None: 无返回值
     """
     if workspace.exists():
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _build_minimal_env(workspace: Path) -> dict[str, str]:
+    r"""
+    构建最小化环境变量集合
+
+    :param workspace: 工作目录
+    :return dict[str, str]: 环境变量字典
+    """
+    return {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "HOME": str(workspace),
+        "TMPDIR": str(workspace),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
 
 
 def _run_in_sandbox(
@@ -310,7 +336,7 @@ def _run_in_sandbox(
     workspace: Path,
     filename: str,
     config: SandboxConfig,
-) -> tuple[int, str, str, bool]:
+) -> SubprocessResult:
     r"""
     在systemd-run沙箱中执行代码
 
@@ -318,7 +344,7 @@ def _run_in_sandbox(
     :param workspace: 工作目录
     :param filename: 主文件名
     :param config: 沙箱配置
-    :return tuple[int, str, str, bool]: (返回码, 标准输出, 标准错误, 是否超时)
+    :return SubprocessResult: 子进程执行结果
     """
     run_command: list[str] = executor.get_run_command(workspace, filename)
 
@@ -328,13 +354,21 @@ def _run_in_sandbox(
         "--scope",
         "--quiet",
         f"--property=MemoryMax={config.memory_limit_mb}M",
-        f"--property=CPUQuota=50%",
+        "--property=CPUQuota=50%",
         "--property=PrivateTmp=yes",
+        "--property=PrivateNetwork=yes",
+        "--property=ProtectSystem=strict",
+        "--property=ProtectHome=yes",
+        "--property=NoNewPrivileges=yes",
+        "--property=ProtectKernelTunables=yes",
+        "--property=ProtectKernelModules=yes",
+        "--property=ProtectControlGroups=yes",
+        f"--property=ReadWritePaths={workspace}",
         "--",
         *run_command,
     ]
 
-    timed_out: bool = False
+    minimal_env: dict[str, str] = _build_minimal_env(workspace)
 
     try:
         result: subprocess.CompletedProcess = subprocess.run(
@@ -343,16 +377,22 @@ def _run_in_sandbox(
             text=True,
             timeout=config.timeout_seconds,
             cwd=str(workspace),
-            env={
-                **os.environ,
-                "HOME": str(workspace),
-                "TMPDIR": str(workspace),
-            },
+            env=minimal_env,
         )
-        return result.returncode, result.stdout, result.stderr, False
+        return SubprocessResult(
+            return_code=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            timed_out=False,
+        )
 
     except subprocess.TimeoutExpired:
-        return -1, "", "执行超时", True
+        return SubprocessResult(
+            return_code=-1,
+            stdout="",
+            stderr="执行超时",
+            timed_out=True,
+        )
 
 
 def run_code(
@@ -383,31 +423,32 @@ def run_code(
         before_files: set[str] = {
             f.name for f in workspace.iterdir() if f.is_file()}
 
-        return_code, stdout, stderr, timed_out = _run_in_sandbox(
+        proc_result: SubprocessResult = _run_in_sandbox(
             executor, workspace, filename, config
         )
 
         execution_time_ms: int = int((time.perf_counter() - start_time) * 1000)
 
-        if timed_out:
+        if proc_result.timed_out:
             return SandboxResult(
                 success=False,
                 toml_output=None,
                 error_message="执行超时",
                 execution_time_ms=execution_time_ms,
-                cache_hit=False,
                 timed_out=True,
             )
 
-        if return_code != 0:
-            error_msg: str = stderr.strip(
-            ) if stderr else f"进程退出码: {return_code}"
+        if proc_result.return_code != 0:
+            error_msg: str = (
+                proc_result.stderr.strip()
+                if proc_result.stderr
+                else f"进程退出码: {proc_result.return_code}"
+            )
             return SandboxResult(
                 success=False,
                 toml_output=None,
                 error_message=error_msg,
                 execution_time_ms=execution_time_ms,
-                cache_hit=False,
                 timed_out=False,
             )
 
@@ -419,7 +460,6 @@ def run_code(
                 toml_output=None,
                 error_message="未生成TOML输出文件",
                 execution_time_ms=execution_time_ms,
-                cache_hit=False,
                 timed_out=False,
             )
 
@@ -428,18 +468,16 @@ def run_code(
             toml_output=toml_output,
             error_message=None,
             execution_time_ms=execution_time_ms,
-            cache_hit=False,
             timed_out=False,
         )
 
-    except Exception as e:
+    except Exception as err:
         execution_time_ms = int((time.perf_counter() - start_time) * 1000)
         return SandboxResult(
             success=False,
             toml_output=None,
-            error_message=f"执行异常: {str(e)}",
+            error_message=f"执行异常: {err!r}",
             execution_time_ms=execution_time_ms,
-            cache_hit=False,
             timed_out=False,
         )
 

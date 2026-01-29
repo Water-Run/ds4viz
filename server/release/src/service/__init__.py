@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/__init__.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
 from service.auth_service import (
@@ -21,9 +21,11 @@ from service.user_service import (
     get_avatar,
     change_password,
     check_user_status,
+    require_active_status,
     add_favorite,
     remove_favorite,
     get_favorites,
+    UserSuspendedError,
 )
 from service.template_service import (
     get_template_by_id,
@@ -35,9 +37,11 @@ from service.execution_service import (
     execute_code,
     get_execution_by_id,
     list_executions,
+    create_sandbox_config_from_app_config,
 )
 from service.sandbox_service import (
     SandboxResult,
+    SandboxConfig,
     run_code,
 )
 
@@ -56,9 +60,11 @@ __all__: list[str] = [
     "get_avatar",
     "change_password",
     "check_user_status",
+    "require_active_status",
     "add_favorite",
     "remove_favorite",
     "get_favorites",
+    "UserSuspendedError",
     # template
     "get_template_by_id",
     "list_templates",
@@ -68,7 +74,9 @@ __all__: list[str] = [
     "execute_code",
     "get_execution_by_id",
     "list_executions",
+    "create_sandbox_config_from_app_config",
     # sandbox
     "SandboxResult",
+    "SandboxConfig",
     "run_code",
 ]

@@ -3,84 +3,55 @@ r"""
 
 :file: src/service/user_service.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
-from database import Database
+from datetime import datetime
+
+from config import get_config
+from database import get_connection
+from exceptions import (
+    UserNotFoundError,
+    UserAlreadyExistsError,
+    InvalidCredentialsError,
+    UserBannedError,
+    PasswordMismatchError,
+    TemplateNotFoundError,
+    FavoriteAlreadyExistsError,
+    FavoriteNotFoundError,
+    AuthorizationError,
+)
 from model import (
     UserCreate,
     UserLogin,
     UserResponse,
     UserStatus,
+    UserWithToken,
     PasswordChange,
     FavoriteListResponse,
     FavoriteItem,
 )
 from service.auth_service import create_session
-from utils import hash_password, verify_password, get_timestamp
+from utils import hash_password, verify_password
 
 
-class UserServiceError(Exception):
+class UserSuspendedError(AuthorizationError):
     r"""
-    用户服务异常基类
+    用户已被暂停，无法执行该操作
     """
-    ...
+
+    message = "用户已被暂停，无法执行该操作"
 
 
-class UserNotFoundError(UserServiceError):
+def _build_avatar_url(user_id: int, has_avatar: bool) -> str | None:
     r"""
-    用户不存在异常
+    构建用户头像URL
+
+    :param user_id: 用户ID
+    :param has_avatar: 是否有头像
+    :return str | None: 头像URL，无头像返回None
     """
-    ...
-
-
-class UserAlreadyExistsError(UserServiceError):
-    r"""
-    用户已存在异常
-    """
-    ...
-
-
-class InvalidCredentialsError(UserServiceError):
-    r"""
-    凭证无效异常（用户名或密码错误）
-    """
-    ...
-
-
-class UserBannedError(UserServiceError):
-    r"""
-    用户已被封禁异常
-    """
-    ...
-
-
-class PasswordMismatchError(UserServiceError):
-    r"""
-    密码不匹配异常
-    """
-    ...
-
-
-class TemplateNotFoundError(UserServiceError):
-    r"""
-    模板不存在异常
-    """
-    ...
-
-
-class FavoriteAlreadyExistsError(UserServiceError):
-    r"""
-    收藏已存在异常
-    """
-    ...
-
-
-class FavoriteNotFoundError(UserServiceError):
-    r"""
-    收藏不存在异常
-    """
-    ...
+    return f"/api/users/{user_id}/avatar" if has_avatar else None
 
 
 def create_user(data: UserCreate) -> UserResponse:
@@ -91,9 +62,11 @@ def create_user(data: UserCreate) -> UserResponse:
     :return UserResponse: 创建的用户信息
     :raise UserAlreadyExistsError: 用户名已存在
     """
-    password_hashed: str = hash_password(data.password)
+    config = get_config()
+    password_hashed: str = hash_password(
+        data.password, rounds=config.security.bcrypt_rounds)
 
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -112,33 +85,39 @@ def create_user(data: UserCreate) -> UserResponse:
                 """,
                 (data.username, password_hashed),
             )
-            row: tuple[int, ...] = cur.fetchone()
+            row: tuple[int, datetime] = cur.fetchone()
             user_id, created_at = row[0], row[1]
         conn.commit()
 
     return UserResponse(
         id=user_id,
         username=data.username,
+        avatar_url=None,
         status=UserStatus.ACTIVE,
         created_at=created_at,
     )
 
 
-def authenticate_user(data: UserLogin, ip_address: str) -> tuple[UserResponse, str, str]:
+def authenticate_user(data: UserLogin, ip_address: str) -> UserWithToken:
     r"""
     用户登录认证
 
+    Suspended状态用户可以登录，但后续操作（执行代码、收藏）会被拦截
+
     :param data: 登录数据
     :param ip_address: 客户端IP地址
-    :return tuple[UserResponse, str, str]: (用户信息, 令牌, 过期时间ISO格式)
+    :return UserWithToken: 包含令牌和用户信息的响应
     :raise InvalidCredentialsError: 用户名或密码错误
     :raise UserBannedError: 用户已被封禁
     """
-    with Database.get_connection() as conn:
+    config = get_config()
+    expire_hours: int = config.security.access_token_expire_hours
+
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, username, password_hash, status, created_at
+                SELECT id, username, password_hash, avatar IS NOT NULL, status, created_at
                 FROM users WHERE username = %s
                 """,
                 (data.username,),
@@ -148,7 +127,7 @@ def authenticate_user(data: UserLogin, ip_address: str) -> tuple[UserResponse, s
             if row is None:
                 raise InvalidCredentialsError("用户名或密码错误")
 
-            user_id, username, password_hash, status, created_at = row
+            user_id, username, password_hash, has_avatar, status, created_at = row
 
             if not verify_password(data.password, password_hash):
                 raise InvalidCredentialsError("用户名或密码错误")
@@ -157,16 +136,21 @@ def authenticate_user(data: UserLogin, ip_address: str) -> tuple[UserResponse, s
             if user_status == UserStatus.BANNED:
                 raise UserBannedError(f"用户已被封禁: {username}")
 
-    token, expires_at = create_session(user_id, ip_address)
+    token, expires_at = create_session(user_id, ip_address, expire_hours)
 
     user_response: UserResponse = UserResponse(
         id=user_id,
         username=username,
+        avatar_url=_build_avatar_url(user_id, has_avatar),
         status=user_status,
         created_at=created_at,
     )
 
-    return user_response, token, expires_at.isoformat()
+    return UserWithToken(
+        token=token,
+        user=user_response,
+        expires_at=expires_at,
+    )
 
 
 def get_user_by_id(user_id: int) -> UserResponse:
@@ -177,11 +161,11 @@ def get_user_by_id(user_id: int) -> UserResponse:
     :return UserResponse: 用户信息
     :raise UserNotFoundError: 用户不存在
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, username, status, created_at
+                SELECT id, username, avatar IS NOT NULL, status, created_at
                 FROM users WHERE id = %s
                 """,
                 (user_id,),
@@ -194,8 +178,9 @@ def get_user_by_id(user_id: int) -> UserResponse:
             return UserResponse(
                 id=row[0],
                 username=row[1],
-                status=UserStatus(row[2]),
-                created_at=row[3],
+                avatar_url=_build_avatar_url(row[0], row[2]),
+                status=UserStatus(row[3]),
+                created_at=row[4],
             )
 
 
@@ -205,10 +190,9 @@ def update_avatar(user_id: int, avatar: bytes) -> None:
 
     :param user_id: 用户ID
     :param avatar: 头像二进制数据
-    :return None: 无返回值
     :raise UserNotFoundError: 用户不存在
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -229,7 +213,7 @@ def get_avatar(user_id: int) -> bytes | None:
     :return bytes | None: 头像二进制数据，无头像则返回None
     :raise UserNotFoundError: 用户不存在
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -252,11 +236,12 @@ def change_password(user_id: int, data: PasswordChange) -> None:
 
     :param user_id: 用户ID
     :param data: 密码修改数据
-    :return None: 无返回值
     :raise UserNotFoundError: 用户不存在
     :raise PasswordMismatchError: 原密码错误
     """
-    with Database.get_connection() as conn:
+    config = get_config()
+
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -273,7 +258,8 @@ def change_password(user_id: int, data: PasswordChange) -> None:
             if not verify_password(data.old_password, current_hash):
                 raise PasswordMismatchError("原密码错误")
 
-            new_hash: str = hash_password(data.new_password)
+            new_hash: str = hash_password(
+                data.new_password, rounds=config.security.bcrypt_rounds)
             cur.execute(
                 """
                 UPDATE users SET password_hash = %s WHERE id = %s
@@ -291,7 +277,7 @@ def check_user_status(user_id: int) -> UserStatus:
     :return UserStatus: 用户状态
     :raise UserNotFoundError: 用户不存在
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -307,23 +293,43 @@ def check_user_status(user_id: int) -> UserStatus:
             return UserStatus(row[0])
 
 
+def require_active_status(user_id: int) -> None:
+    r"""
+    要求用户状态为Active，否则抛出异常
+
+    用于需要Active状态的操作（如执行代码、收藏模板）
+
+    :param user_id: 用户ID
+    :raise UserNotFoundError: 用户不存在
+    :raise UserBannedError: 用户已被封禁
+    :raise UserSuspendedError: 用户已被暂停
+    """
+    status: UserStatus = check_user_status(user_id)
+    match status:
+        case UserStatus.BANNED:
+            raise UserBannedError("用户已被封禁")
+        case UserStatus.SUSPENDED:
+            raise UserSuspendedError("用户已被暂停，无法执行该操作")
+        case UserStatus.ACTIVE:
+            ...
+
+
 def add_favorite(user_id: int, template_id: int) -> None:
     r"""
     添加模板收藏
 
     :param user_id: 用户ID
     :param template_id: 模板ID
-    :return None: 无返回值
     :raise UserNotFoundError: 用户不存在
+    :raise UserBannedError: 用户已被封禁
+    :raise UserSuspendedError: 用户已被暂停
     :raise TemplateNotFoundError: 模板不存在
     :raise FavoriteAlreadyExistsError: 已收藏该模板
     """
-    with Database.get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
-            if cur.fetchone() is None:
-                raise UserNotFoundError(f"用户不存在: {user_id}")
+    require_active_status(user_id)
 
+    with get_connection() as conn:
+        with conn.cursor() as cur:
             cur.execute("SELECT id FROM templates WHERE id = %s",
                         (template_id,))
             if cur.fetchone() is None:
@@ -355,10 +361,9 @@ def remove_favorite(user_id: int, template_id: int) -> None:
 
     :param user_id: 用户ID
     :param template_id: 模板ID
-    :return None: 无返回值
     :raise FavoriteNotFoundError: 未收藏该模板
     """
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -384,7 +389,7 @@ def get_favorites(user_id: int, page: int = 1, limit: int = 20) -> FavoriteListR
     """
     offset: int = (page - 1) * limit
 
-    with Database.get_connection() as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if cur.fetchone() is None:

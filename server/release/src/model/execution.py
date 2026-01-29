@@ -3,12 +3,11 @@ r"""
 
 :file: src/model/execution.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
 from datetime import datetime
 from enum import StrEnum
-from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
@@ -64,7 +63,7 @@ class ExecutionHistoryItem(BaseModel):
     language: SupportedLanguage = Field(description="编程语言")
     code: str = Field(description="源代码")
     status: ExecutionStatus = Field(description="执行状态")
-    execution_time: int = Field(description="执行时间，单位毫秒")
+    execution_time: int | None = Field(default=None, description="执行时间，单位毫秒")
     created_at: datetime = Field(description="执行时间")
 
 
@@ -79,7 +78,7 @@ class ExecutionDetail(BaseModel):
     toml_output: str | None = Field(default=None, description="生成的TOML内容")
     status: ExecutionStatus = Field(description="执行状态")
     error_message: str | None = Field(default=None, description="错误信息")
-    execution_time: int = Field(description="执行时间，单位毫秒")
+    execution_time: int | None = Field(default=None, description="执行时间，单位毫秒")
     created_at: datetime = Field(description="执行时间")
 
 
@@ -88,44 +87,7 @@ class ExecutionListResponse(BaseModel):
     执行历史分页响应
     """
 
-    executions: list[ExecutionHistoryItem] = Field(description="执行历史列表")
+    items: list[ExecutionHistoryItem] = Field(description="执行历史列表")
     total: int = Field(description="总数")
     page: int = Field(description="当前页码")
     limit: int = Field(description="每页数量")
-    
-@dataclass
-class ExecutionDetail:
-    r"""
-    执行详情
-    """
-    id: int
-    language: SupportedLanguage
-    code: str
-    toml_output: str | None
-    status: ExecutionStatus
-    error_message: str | None
-    execution_time: int | None
-    created_at: datetime
-
-
-@dataclass
-class ExecutionListItem:
-    r"""
-    执行列表项
-    """
-    id: int
-    language: SupportedLanguage
-    status: ExecutionStatus
-    execution_time: int | None
-    created_at: datetime
-
-
-@dataclass
-class ExecutionListResponse:
-    r"""
-    执行历史列表响应
-    """
-    items: list[ExecutionListItem]
-    total: int
-    page: int
-    limit: int

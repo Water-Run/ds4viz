@@ -3,12 +3,12 @@ r"""
 
 :file: src/model/user.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
 from datetime import datetime
 from enum import StrEnum
-from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
 
@@ -28,7 +28,7 @@ class UserCreate(BaseModel):
     """
 
     username: str = Field(min_length=3, max_length=32, description="用户名")
-    password: str = Field(min_length=6, max_length=128, description="密码")
+    password: str = Field(min_length=1, max_length=128, description="密码")
 
 
 class UserLogin(BaseModel):
@@ -57,7 +57,7 @@ class UserWithToken(BaseModel):
     登录成功响应，包含令牌和用户信息
     """
 
-    token: str = Field(description="JWT令牌")
+    token: str = Field(description="会话令牌")
     user: UserResponse = Field(description="用户信息")
     expires_at: datetime = Field(description="令牌过期时间")
 
@@ -68,7 +68,7 @@ class PasswordChange(BaseModel):
     """
 
     old_password: str = Field(description="原密码")
-    new_password: str = Field(min_length=6, max_length=128, description="新密码")
+    new_password: str = Field(min_length=1, max_length=128, description="新密码")
 
 
 class FavoriteItem(BaseModel):
@@ -76,9 +76,11 @@ class FavoriteItem(BaseModel):
     收藏项响应
     """
 
-    id: int = Field(description="模板ID")
+    template_id: int = Field(description="模板ID")
     title: str = Field(description="模板标题")
     category: str = Field(description="模板分类")
+    description: str = Field(description="模板描述")
+    favorite_count: int = Field(description="收藏数")
     favorited_at: datetime = Field(description="收藏时间")
 
 
@@ -87,36 +89,7 @@ class FavoriteListResponse(BaseModel):
     用户收藏列表响应
     """
 
-    favorites: list[FavoriteItem] = Field(description="收藏列表")
-
-@dataclass
-class FavoriteItem:
-    r"""
-    收藏项
-    """
-    template_id: int
-    title: str
-    category: str
-    description: str
-    favorite_count: int
-    favorited_at: datetime
-
-
-@dataclass
-class FavoriteListResponse:
-    r"""
-    收藏列表响应
-    """
-    items: list[FavoriteItem]
-    total: int
-    page: int
-    limit: int
-
-
-@dataclass
-class PasswordChange:
-    r"""
-    密码修改请求
-    """
-    old_password: str
-    new_password: str
+    items: list[FavoriteItem] = Field(description="收藏列表")
+    total: int = Field(description="总数")
+    page: int = Field(description="当前页码")
+    limit: int = Field(description="每页数量")

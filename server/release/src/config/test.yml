@@ -13,12 +13,10 @@ database:
   password: "test_pwd_123"
 
 security:
-  jwt_secret: "test_secret_key_not_for_production"
-  jwt_algorithm: "HS256"
-  access_token_expire_minutes: 60
-  refresh_token_expire_days: 7
-  password_min_length: 4
+  access_token_expire_hours: 1
   bcrypt_rounds: 4
+  jwt_secret: "test-jwt-secret-do-not-use-in-production"
+  jwt_algorithm: "HS256"
 
 sandbox:
   timeout_seconds: 10

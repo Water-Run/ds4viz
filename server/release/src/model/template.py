@@ -3,7 +3,7 @@ r"""
 
 :file: src/model/template.py
 :author: WaterRun
-:time: 2026-01-28
+:time: 2026-01-29
 """
 
 from datetime import datetime
@@ -66,6 +66,7 @@ class TemplateListItem(BaseModel):
     category: str = Field(description="模板分类")
     description: str = Field(description="模板描述，Markdown格式")
     favorite_count: int = Field(description="收藏数")
+    is_favorited: bool = Field(default=False, description="当前用户是否已收藏")
     created_at: datetime = Field(description="创建时间")
 
 
@@ -80,7 +81,9 @@ class TemplateDetail(BaseModel):
     description: str = Field(description="模板描述，Markdown格式")
     favorite_count: int = Field(description="收藏数")
     codes: list[TemplateCodeResponse] = Field(description="多语言代码实现列表")
+    is_favorited: bool = Field(default=False, description="当前用户是否已收藏")
     created_at: datetime = Field(description="创建时间")
+    updated_at: datetime = Field(description="更新时间")
 
 
 class TemplateListResponse(BaseModel):
@@ -88,7 +91,7 @@ class TemplateListResponse(BaseModel):
     模板列表分页响应
     """
 
-    templates: list[TemplateListItem] = Field(description="模板列表")
+    items: list[TemplateListItem] = Field(description="模板列表")
     total: int = Field(description="总数")
     page: int = Field(description="当前页码")
     limit: int = Field(description="每页数量")
