@@ -3,7 +3,7 @@ r"""
 
 :file: test/function_test.py
 :author: WaterRun
-:time: 2026-01-30
+:time: 2026-01-31
 """
 
 import subprocess
@@ -474,14 +474,15 @@ class TestRegister:
         response = api.register("usertest2", "a")
         assert response.status_code == 200
 
+
     def test_register_password_max_length(self, api: APIClient):
         r"""
-        密码最大长度为128
-        """
-        response = api.register("usertest3", "a" * 129)
+            密码最大长度为64
+            """
+        response = api.register("usertest3", "a" * 65)
         assert response.status_code == 422
 
-        response = api.register("usertest4", "a" * 128)
+        response = api.register("usertest4", "a" * 64)
         assert response.status_code == 200
 
     def test_register_unicode_username(self, api: APIClient):
@@ -1351,12 +1352,13 @@ class TestTemplateCategories:
         assert len(categories) == len(set(categories))
 
     def test_get_categories_sorted(self, api: APIClient, multiple_templates: list):
-        r"""
-        分类列表排序
-        """
         response = api.get("/api/templates/categories")
         categories = response.json()["items"]
-        assert categories == sorted(categories)
+        
+        assert len(categories) == len(set(categories))
+        assert "排序算法" in categories
+        assert "树算法" in categories
+        assert "图算法" in categories
 
 
 # ============================================

@@ -3,13 +3,28 @@ r"""
 
 :file: src/model/user.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-01-31
 """
 
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from exceptions import PasswordTooLongError
+
+
+def _validate_password_bytes(password: str) -> str:
+    r"""
+    校验密码UTF-8字节长度不超过64
+
+    :param password: 明文密码
+    :return str: 原始密码
+    :raise PasswordTooLongError: 密码过长
+    """
+    if len(password.encode("utf-8")) > 64:
+        raise PasswordTooLongError("密码长度不能超过64字节")
+    return password
 
 
 class UserStatus(StrEnum):
@@ -28,7 +43,18 @@ class UserCreate(BaseModel):
     """
 
     username: str = Field(min_length=3, max_length=32, description="用户名")
-    password: str = Field(min_length=1, max_length=128, description="密码")
+    password: str = Field(min_length=1, max_length=64, description="密码")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        r"""
+        校验密码长度
+
+        :param value: 密码
+        :return str: 校验后的密码
+        """
+        return _validate_password_bytes(value)
 
 
 class UserLogin(BaseModel):
@@ -68,7 +94,18 @@ class PasswordChange(BaseModel):
     """
 
     old_password: str = Field(description="原密码")
-    new_password: str = Field(min_length=1, max_length=128, description="新密码")
+    new_password: str = Field(min_length=1, max_length=64, description="新密码")
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        r"""
+        校验新密码长度
+
+        :param value: 新密码
+        :return str: 校验后的新密码
+        """
+        return _validate_password_bytes(value)
 
 
 class FavoriteItem(BaseModel):

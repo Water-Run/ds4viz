@@ -77,7 +77,7 @@ Authorization: Bearer <token>
 | 字段 | 最小长度 | 最大长度 |
 |------|----------|----------|
 | username | 3 | 32 |
-| password | 1 | 128 |
+| password | 1 | 64 |
 
 **响应 (200)：**
 ```json
@@ -255,7 +255,7 @@ Authorization: Bearer <token>
 **字段约束：**
 | 字段 | 最小长度 | 最大长度 |
 |------|----------|----------|
-| new_password | 1 | 128 |
+| new_password | 1 | 64 |
 
 **响应 (200)：**
 ```json

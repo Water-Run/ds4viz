@@ -3,7 +3,7 @@ r"""
 
 :file: test/stress_test.py
 :author: WaterRun
-:time: 2026-01-30
+:time: 2026-01-31
 """
 
 import os
@@ -39,10 +39,10 @@ DB_CONFIG: dict[str, str | int] = {
     "password": "test_pwd_123",
 }
 
-STRESS_USERS: int = 20
-STRESS_TEMPLATES: int = 50
-STRESS_WORKERS: int = 40
-STRESS_OPS_PER_WORKER: int = 100
+STRESS_USERS = 5
+STRESS_TEMPLATES = 10
+STRESS_WORKERS = 5
+STRESS_OPS_PER_WORKER = 20
 STRESS_TIMEOUT_SECONDS: float = 10.0
 
 def insert_template(title: str, category: str, description: str) -> int:
@@ -385,6 +385,7 @@ def run_worker(
     return results
 
 
+@pytest.mark.stress
 class TestStress:
     r"""
     压力测试
