@@ -3,7 +3,7 @@ r"""
 
 :file: src/config.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-02-04
 """
 
 import os
@@ -62,6 +62,18 @@ class SandboxConfig:
 
 
 @dataclass(frozen=True)
+class LibraryConfig:
+    r"""
+    ds4viz库路径配置
+    """
+
+    python_path: str = ""
+    lua_path: str = "/usr/share/lua/5.4"
+    lua_cpath: str = "/usr/lib64/lua/5.4"
+    rust_ds4viz_path: str = ""
+
+
+@dataclass(frozen=True)
 class AppConfig:
     r"""
     应用总配置
@@ -71,6 +83,7 @@ class AppConfig:
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     sandbox: SandboxConfig = field(default_factory=SandboxConfig)
+    library: LibraryConfig = field(default_factory=LibraryConfig)
     env: str = "prod"
 
 
@@ -111,6 +124,7 @@ def _parse_config(raw: dict[str, Any], env: str) -> AppConfig:
     db_raw: dict[str, Any] = raw.get("database", {})
     sec_raw: dict[str, Any] = raw.get("security", {})
     sandbox_raw: dict[str, Any] = raw.get("sandbox", {})
+    library_raw: dict[str, Any] = raw.get("library", {})
 
     return AppConfig(
         server=ServerConfig(
@@ -136,6 +150,12 @@ def _parse_config(raw: dict[str, Any], env: str) -> AppConfig:
             timeout_seconds=sandbox_raw.get("timeout_seconds", 30),
             max_memory_mb=sandbox_raw.get("max_memory_mb", 512),
             temp_dir=sandbox_raw.get("temp_dir", "/tmp/ds4viz/exec"),
+        ),
+        library=LibraryConfig(
+            python_path=library_raw.get("python_path", ""),
+            lua_path=library_raw.get("lua_path", "/usr/share/lua/5.4"),
+            lua_cpath=library_raw.get("lua_cpath", "/usr/lib64/lua/5.4"),
+            rust_ds4viz_path=library_raw.get("rust_ds4viz_path", ""),
         ),
         env=env,
     )

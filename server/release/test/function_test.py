@@ -310,14 +310,15 @@ class TestAuthLogin:
         parts = token.split(".")
         assert len(parts) == 3
 
+
     def test_login_expires_at_reasonable(self):
         """验证 expires_at 时间合理"""
         register_user("testuser", "testpass")
         resp = login_user("testuser", "testpass")
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
 
         expires_at = datetime.fromisoformat(resp.json()["expires_at"])
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         # 测试配置为 1 小时，允许一些误差
         assert expires_at > now
         assert expires_at < now + timedelta(hours=2)
@@ -592,15 +593,17 @@ class TestUserPassword:
         )
         assert resp.status_code == 422
 
+
     def test_change_password_user_not_found(self):
-        """用户不存在，返回 404"""
+        """修改不存在用户的密码，当前用户无权限，返回 403"""
         token = create_user_and_login()
         resp = requests.put(
             api_url("/api/users/99999/password"),
             headers=auth_header(token),
             json={"old_password": "oldpass", "new_password": "newpass"},
         )
-        assert resp.status_code == 404
+        # 权限检查优先于资源存在性检查
+        assert resp.status_code == 403
 
     def test_change_password_not_logged_in(self):
         """未登录修改密码，返回 401"""
@@ -778,14 +781,16 @@ class TestUserFavorites:
         )
         assert resp.status_code == 403
 
+
     def test_get_favorites_user_not_found(self):
-        """用户不存在，返回 404"""
+        """获取不存在用户的收藏，当前用户无权限，返回 403"""
         token = create_user_and_login()
         resp = requests.get(
             api_url("/api/users/99999/favorites"),
             headers=auth_header(token),
         )
-        assert resp.status_code == 404
+        # 权限检查优先于资源存在性检查
+        assert resp.status_code == 403
 
     def test_get_favorites_not_logged_in(self):
         """未登录获取，返回 401"""

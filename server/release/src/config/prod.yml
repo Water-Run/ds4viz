@@ -22,3 +22,9 @@ sandbox:
   timeout_seconds: 30
   max_memory_mb: 512
   temp_dir: "/tmp/ds4viz/exec"
+
+library:
+  python_path: ""
+  lua_path: "/usr/share/lua/5.4"
+  lua_cpath: "/usr/lib64/lua/5.4"
+  rust_ds4viz_path: "/opt/ds4viz/library/rust"

@@ -3,9 +3,10 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-02-04
 """
 
+import os
 import shutil
 import subprocess
 import time
@@ -145,7 +146,7 @@ class PythonExecutor(LanguageExecutor):
         :param filename: 主文件名
         :return list[str]: 命令及参数列表
         """
-        return ["python3", str(workspace / filename)]
+        return ["python3", "-u", str(workspace / filename)]
 
 
 class LuaExecutor(LanguageExecutor):
@@ -197,8 +198,16 @@ class LuaExecutor(LanguageExecutor):
 
 class RustExecutor(LanguageExecutor):
     r"""
-    Rust语言执行器
+    Rust语言执行器，使用rust-script执行
     """
+
+    def __init__(self, ds4viz_path: str = "") -> None:
+        r"""
+        初始化Rust执行器
+
+        :param ds4viz_path: ds4viz库路径
+        """
+        self._ds4viz_path: str = ds4viz_path
 
     @property
     def language(self) -> SupportedLanguage:
@@ -220,35 +229,34 @@ class RustExecutor(LanguageExecutor):
 
     def prepare_files(self, workspace: Path, code: str) -> str:
         r"""
-        准备Rust执行文件
+        准备Rust执行文件，添加cargo依赖声明
 
         :param workspace: 工作目录
         :param code: Rust源代码
         :return str: 主文件名
         """
-        filename: str = f"main{self.file_extension}"
+        filename: str = "_prepared.rs"
         filepath: Path = workspace / filename
-        filepath.write_text(code, encoding="utf-8")
+
+        cargo_header: str = f"""//! ```cargo
+//! [dependencies]
+//! ds4viz = {{ path = "{self._ds4viz_path}" }}
+//! ```
+
+"""
+        prepared_code: str = cargo_header + code
+        filepath.write_text(prepared_code, encoding="utf-8")
         return filename
 
     def get_run_command(self, workspace: Path, filename: str) -> list[str]:
         r"""
-        获取Rust编译并执行的命令
+        获取Rust执行命令
 
         :param workspace: 工作目录
         :param filename: 主文件名
         :return list[str]: 命令及参数列表
         """
-        source_path: str = str(workspace / filename)
-        binary_path: str = str(workspace / "main")
-        return ["sh", "-c", f"rustc {source_path} -o {binary_path} && {binary_path}"]
-
-
-_EXECUTORS: dict[SupportedLanguage, LanguageExecutor] = {
-    SupportedLanguage.PYTHON: PythonExecutor(),
-    SupportedLanguage.LUA: LuaExecutor(),
-    SupportedLanguage.RUST: RustExecutor(),
-}
+        return ["rust-script", str(workspace / filename)]
 
 
 def _get_executor(language: SupportedLanguage) -> LanguageExecutor:
@@ -259,10 +267,21 @@ def _get_executor(language: SupportedLanguage) -> LanguageExecutor:
     :return LanguageExecutor: 执行器实例
     :raise ValueError: 不支持的语言
     """
-    executor: LanguageExecutor | None = _EXECUTORS.get(language)
-    if executor is None:
-        raise ValueError(f"不支持的语言: {language}")
-    return executor
+    from config import get_config
+
+    match language:
+        case SupportedLanguage.PYTHON:
+            return PythonExecutor()
+        case SupportedLanguage.LUA:
+            return LuaExecutor()
+        case SupportedLanguage.RUST:
+            config = get_config()
+            ds4viz_path: str = getattr(
+                getattr(config, "library", None), "rust_ds4viz_path", ""
+            ) if hasattr(config, "library") else ""
+            return RustExecutor(ds4viz_path=ds4viz_path)
+        case _:
+            raise ValueError(f"不支持的语言: {language}")
 
 
 def _prepare_workspace(config: SandboxConfig) -> Path:
@@ -315,75 +334,86 @@ def _cleanup_workspace(workspace: Path) -> None:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _build_minimal_env(workspace: Path) -> dict[str, str]:
+def _build_execution_env(workspace: Path) -> dict[str, str]:
     r"""
-    构建最小化环境变量集合
+    构建执行环境变量，继承系统关键路径以支持已安装的库
 
     :param workspace: 工作目录
     :return dict[str, str]: 环境变量字典
     """
-    return {
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "HOME": str(workspace),
+    system_path: str = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+    home_dir: str = os.environ.get("HOME", str(workspace))
+
+    env: dict[str, str] = {
+        "PATH": system_path,
+        "HOME": home_dir,
         "TMPDIR": str(workspace),
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
     }
 
+    pythonpath: str = os.environ.get("PYTHONPATH", "")
+    if pythonpath:
+        env["PYTHONPATH"] = pythonpath
 
-def _run_in_sandbox(
-    executor: LanguageExecutor,
+    lua_path: str = os.environ.get("LUA_PATH", "")
+    if lua_path:
+        env["LUA_PATH"] = lua_path
+
+    lua_cpath: str = os.environ.get("LUA_CPATH", "")
+    if lua_cpath:
+        env["LUA_CPATH"] = lua_cpath
+
+    cargo_home: str = os.environ.get("CARGO_HOME", "")
+    if cargo_home:
+        env["CARGO_HOME"] = cargo_home
+
+    rustup_home: str = os.environ.get("RUSTUP_HOME", "")
+    if rustup_home:
+        env["RUSTUP_HOME"] = rustup_home
+
+    return env
+
+
+def _run_with_timeout(
+    command: list[str],
     workspace: Path,
-    filename: str,
-    config: SandboxConfig,
+    timeout_seconds: int,
+    env: dict[str, str],
 ) -> SubprocessResult:
     r"""
-    在systemd-run沙箱中执行代码
+    使用timeout命令执行代码
 
-    :param executor: 语言执行器
+    :param command: 执行命令列表
     :param workspace: 工作目录
-    :param filename: 主文件名
-    :param config: 沙箱配置
+    :param timeout_seconds: 超时秒数
+    :param env: 环境变量
     :return SubprocessResult: 子进程执行结果
     """
-    run_command: list[str] = executor.get_run_command(workspace, filename)
-
-    systemd_command: list[str] = [
-        "systemd-run",
-        "--user",
-        "--scope",
-        "--quiet",
-        f"--property=MemoryMax={config.memory_limit_mb}M",
-        "--property=CPUQuota=50%",
-        "--property=PrivateTmp=yes",
-        "--property=PrivateNetwork=yes",
-        "--property=ProtectSystem=strict",
-        "--property=ProtectHome=yes",
-        "--property=NoNewPrivileges=yes",
-        "--property=ProtectKernelTunables=yes",
-        "--property=ProtectKernelModules=yes",
-        "--property=ProtectControlGroups=yes",
-        f"--property=ReadWritePaths={workspace}",
-        "--",
-        *run_command,
+    timeout_command: list[str] = [
+        "timeout",
+        "--signal=KILL",
+        str(timeout_seconds),
+        *command,
     ]
-
-    minimal_env: dict[str, str] = _build_minimal_env(workspace)
 
     try:
         result: subprocess.CompletedProcess = subprocess.run(
-            systemd_command,
+            timeout_command,
             capture_output=True,
             text=True,
-            timeout=config.timeout_seconds,
+            timeout=timeout_seconds + 5,
             cwd=str(workspace),
-            env=minimal_env,
+            env=env,
         )
+
+        timed_out: bool = result.returncode == 137 or result.returncode == -9
+
         return SubprocessResult(
             return_code=result.returncode,
             stdout=result.stdout,
             stderr=result.stderr,
-            timed_out=False,
+            timed_out=timed_out,
         )
 
     except subprocess.TimeoutExpired:
@@ -393,6 +423,134 @@ def _run_in_sandbox(
             stderr="执行超时",
             timed_out=True,
         )
+
+
+def _run_with_systemd(
+    command: list[str],
+    workspace: Path,
+    timeout_seconds: int,
+    memory_limit_mb: int,
+    env: dict[str, str],
+) -> SubprocessResult:
+    r"""
+    使用systemd-run执行代码（资源限制）
+
+    :param command: 执行命令列表
+    :param workspace: 工作目录
+    :param timeout_seconds: 超时秒数
+    :param memory_limit_mb: 内存限制MB
+    :param env: 环境变量
+    :return SubprocessResult: 子进程执行结果
+    """
+    systemd_command: list[str] = [
+        "systemd-run",
+        "--user",
+        "--scope",
+        "--quiet",
+        f"--property=MemoryMax={memory_limit_mb}M",
+        "--property=CPUQuota=50%",
+        "--",
+        "timeout",
+        "--signal=KILL",
+        str(timeout_seconds),
+        *command,
+    ]
+
+    try:
+        result: subprocess.CompletedProcess = subprocess.run(
+            systemd_command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds + 10,
+            cwd=str(workspace),
+            env=env,
+        )
+
+        timed_out: bool = result.returncode == 137 or result.returncode == -9
+
+        return SubprocessResult(
+            return_code=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            timed_out=timed_out,
+        )
+
+    except subprocess.TimeoutExpired:
+        return SubprocessResult(
+            return_code=-1,
+            stdout="",
+            stderr="执行超时",
+            timed_out=True,
+        )
+
+
+def _check_systemd_available() -> bool:
+    r"""
+    检查systemd-run是否可用
+
+    :return bool: 是否可用
+    """
+    try:
+        result: subprocess.CompletedProcess = subprocess.run(
+            ["systemd-run", "--user", "--scope", "--quiet", "--", "true"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+
+
+_SYSTEMD_AVAILABLE: bool | None = None
+
+
+def _is_systemd_available() -> bool:
+    r"""
+    获取systemd是否可用（缓存结果）
+
+    :return bool: 是否可用
+    """
+    global _SYSTEMD_AVAILABLE
+    if _SYSTEMD_AVAILABLE is None:
+        _SYSTEMD_AVAILABLE = _check_systemd_available()
+    return _SYSTEMD_AVAILABLE
+
+
+def _run_in_sandbox(
+    executor: LanguageExecutor,
+    workspace: Path,
+    filename: str,
+    config: SandboxConfig,
+) -> SubprocessResult:
+    r"""
+    在沙箱中执行代码
+
+    优先使用systemd-run进行资源限制，不可用时降级为timeout命令
+
+    :param executor: 语言执行器
+    :param workspace: 工作目录
+    :param filename: 主文件名
+    :param config: 沙箱配置
+    :return SubprocessResult: 子进程执行结果
+    """
+    run_command: list[str] = executor.get_run_command(workspace, filename)
+    env: dict[str, str] = _build_execution_env(workspace)
+
+    if _is_systemd_available():
+        return _run_with_systemd(
+            command=run_command,
+            workspace=workspace,
+            timeout_seconds=config.timeout_seconds,
+            memory_limit_mb=config.memory_limit_mb,
+            env=env,
+        )
+
+    return _run_with_timeout(
+        command=run_command,
+        workspace=workspace,
+        timeout_seconds=config.timeout_seconds,
+        env=env,
+    )
 
 
 def run_code(

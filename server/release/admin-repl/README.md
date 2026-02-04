@@ -2,6 +2,13 @@
 
 一个简单的管理`REPL`, 直接对服务器进行读写操作.  
 
+依赖:  
+
+```bash
+sudo dnf install lua-luaossl
+sudo luarocks install pgmoon
+```
+
 启动:  
 
 ```bash
