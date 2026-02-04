@@ -1,9 +1,21 @@
-# ds4Viz  
+# ds4viz Vue前端  
 
-`WaterRun`  
-
-毕业论文项目: 数据结构可视化.
+ds4viz在线服务前端页面(Vue SPA).  
 
 ## 运行  
 
-## 技术栈
+准备环境:  
+
+```bash
+bun install
+```
+
+运行:  
+
+```bash
+bun run dev
+```
+
+> 测试于`Fedora 43`, `bun 1.3.8`  
+
+## 与后端结合  
