@@ -69,10 +69,10 @@ python src/main.py --test
 
 ## 管理系统  
 
-独立的TUI, 直接写数据库, 无额外后端接口.  
+独立的REPL, 直接写数据库, 无额外后端接口.  
 
 ```bash
-lua admin-tui/admin-tui.lua
+lua admin-repl/admin-repl.lua
 ```
 
 ## 文档  
