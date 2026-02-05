@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Ds4Viz (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Ds4Viz (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

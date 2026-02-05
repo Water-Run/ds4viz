@@ -1,4 +1,4 @@
-﻿namespace ds4viz
+﻿namespace Ds4Viz
 {
     public class Class1
     {
