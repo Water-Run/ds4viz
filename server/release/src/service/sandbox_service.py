@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-02-04
+:time: 2026-02-05
 """
 
 import os
@@ -486,35 +486,39 @@ def _run_with_systemd(
 
 def _check_systemd_available() -> bool:
     r"""
-    检查systemd-run是否可用
+    检查systemd-run --user是否可用
+
+    需要DBUS_SESSION_BUS_ADDRESS和XDG_RUNTIME_DIR环境变量支持用户会话，
+    并实际测试执行以确保可用
 
     :return bool: 是否可用
     """
+    has_dbus: bool = bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS"))
+    has_xdg: bool = bool(os.environ.get("XDG_RUNTIME_DIR"))
+
+    if not has_dbus or not has_xdg:
+        return False
+
+    xdg_runtime_dir: str = os.environ.get("XDG_RUNTIME_DIR", "")
+    if xdg_runtime_dir and not os.path.isdir(xdg_runtime_dir):
+        return False
+
     try:
         result: subprocess.CompletedProcess = subprocess.run(
             ["systemd-run", "--user", "--scope", "--quiet", "--", "true"],
             capture_output=True,
+            text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        if result.returncode != 0:
+            return False
+        if "DBUS_SESSION_BUS_ADDRESS" in result.stderr:
+            return False
+        if "XDG_RUNTIME_DIR" in result.stderr:
+            return False
+        return True
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
-
-
-_SYSTEMD_AVAILABLE: bool | None = None
-
-
-def _is_systemd_available() -> bool:
-    r"""
-    获取systemd是否可用（缓存结果）
-
-    :return bool: 是否可用
-    """
-    global _SYSTEMD_AVAILABLE
-    if _SYSTEMD_AVAILABLE is None:
-        _SYSTEMD_AVAILABLE = _check_systemd_available()
-    return _SYSTEMD_AVAILABLE
-
 
 def _run_in_sandbox(
     executor: LanguageExecutor,
@@ -536,7 +540,7 @@ def _run_in_sandbox(
     run_command: list[str] = executor.get_run_command(workspace, filename)
     env: dict[str, str] = _build_execution_env(workspace)
 
-    if _is_systemd_available():
+    if _check_systemd_available():
         return _run_with_systemd(
             command=run_command,
             workspace=workspace,
@@ -551,7 +555,6 @@ def _run_in_sandbox(
         timeout_seconds=config.timeout_seconds,
         env=env,
     )
-
 
 def run_code(
     language: SupportedLanguage,

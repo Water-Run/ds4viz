@@ -45,6 +45,7 @@
 │   │   └── user_service.py # 用户服务
 │   └── utils.py # 通用的无依赖工具
 └── test # 测试
+    ├── conftest.py
     ├── function_test.py
     └── stress_test.py
 ```
@@ -56,6 +57,14 @@
 ```bash
 pip install bcrypt pyjwt psycopg[pool] pyyaml fastapi uvicorn python-multipart
 ```
+
+测试:  
+
+```bash
+pytest -v
+```
+
+以生产配置启动服务器:  
 
 ```bash
 python src/main.py --prod
@@ -69,10 +78,10 @@ python src/main.py --test
 
 ## 管理系统  
 
-独立的REPL, 直接写数据库, 无额外后端接口.  
+独立的REPL, 直接写数据库, 做的简单, 无额外后端接口.  
 
 ```bash
-lua admin-repl/admin-repl.lua
+cd admin-repl && lua admin-repl.lua
 ```
 
 ## 文档  
@@ -80,3 +89,4 @@ lua admin-repl/admin-repl.lua
 - [表定义](./docs/表定义.md)  
 - [数据库环境准备](./docs/数据库环境准备.md)  
 - [API参考](./docs/API参考.md)  
+- [管理REPL](./admin-repl/README.md)  
