@@ -25,6 +25,31 @@
 * **渲染无关**: 同一份`.toml`可在Web/CLI/桌面/移动端多平台渲染
 * **教学友好**: 参考[algorithm-visualizer](https://github.com/algorithm-visualizer/algorithm-visualizer)设计, 代码即文档, 统一且易上手
 
+## 支持结构  
+
+* **全局配置**
+
+  * `config`（输出路径、标题、作者、注释）
+
+* **线性结构**
+
+  * `stack`（栈）
+  * `queue`（队列）
+  * `single_linked_list`（单链表）
+  * `double_linked_list`（双向链表）
+
+* **树结构**
+
+  * `binary_tree`（二叉树）
+  * `binary_search_tree`（二叉搜索树）
+  * `heap`（堆：`heap_type="min"` / `heap_type="max"`）
+
+* **图结构**
+
+  * `graph_undirected`（无向图）
+  * `graph_directed`（有向图）
+  * `graph_weighted`（带权图：`directed=False` 无向 / `directed=True` 有向）
+
 ## `.toml` IR生成库
 
 按语言实现ds4viz库, 运行时生成标准化的`.toml`中间文件.
@@ -61,11 +86,24 @@
 
 | 渲染器        | 平台                      | 下载  | 文档  | 状态  |
 | ---------- | ----------------------- | --- | --- | --- |
-| `simp-web` | Web (本地HTML, 对应Demo服务器) | -   | -   | 开发中 |
+| `simp-web` | Web (本地HTML, 对应Demo服务器) | -   | [Simp-Web渲染器](./render/simp-web/README.md)   | 已完成 |
 | `vue`      | Web (SPA, 在线服务)         | -   | -   | 开发中 |
 | `tui`      | 终端                      | -   | -   | 规划中 |
 | `winui3`   | Windows桌面               | -   | -   | 规划中 |
-| `flutter`  | Android (在线服务)          | -   | -   | 规划中 |
+| `flutter`*  | Android (在线服务)          | -   | -   | 规划中 |
+
+> `*`: 暂时放弃支持计划  
+
+## 编译器  
+
+和渲染器不同, 编译器直接生成可视化的结果.  
+
+|编译器|下载|文档|状态|  
+|---|---|---|---|
+|纯文本|-|-|规划中|
+|图像|-|-|规划中|
+|视频|-|-|规划中|
+|幻灯片|-|-|规划中|
 
 ## 在线服务(Vue Web)
 
@@ -84,11 +122,7 @@
 ```
 
 通过`systemd-run`瞬态单元做到每次请求对应一次性临时沙箱安全运行.  
-提供:  
-
-* 可注册, 登陆, 历史  
-* 基础缓存机制, 相同的代码直接返回, 减少资源消耗  
-* 模板系统  
+另提供登陆及模板系统.  
 
 > Demo版本采用简化服务端的实现, 仅包含运行代码的功能: 使用`lua`+`pegasus`+`sqlite`, 对应`simp-web`前端  
 
