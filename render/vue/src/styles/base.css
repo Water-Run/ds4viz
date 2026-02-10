@@ -1,0 +1,198 @@
+/* ============================================================
+ *  DS4Viz 全局基础样式与重置
+ *
+ *  @file src/styles/base.css
+ *  @author WaterRun
+ *  @date 2026-02-10
+ * ============================================================ */
+
+@import './theme.css';
+
+/* -------- Reset -------- */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    tab-size: 4;
+    line-height: var(--leading-normal);
+}
+
+body {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--color-text-body);
+    background-color: var(--color-bg-base);
+    min-height: 100dvh;
+    overflow-x: hidden;
+}
+
+/* -------- 排版 -------- */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-tight);
+    color: var(--color-text-primary);
+}
+
+p {
+    line-height: var(--leading-normal);
+}
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: color var(--duration-fast) var(--ease);
+}
+
+a:hover {
+    color: var(--color-accent-hover);
+}
+
+code,
+pre,
+kbd,
+samp {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--leading-code);
+}
+
+pre {
+    overflow-x: auto;
+}
+
+/* -------- 表单元素 -------- */
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    outline: none;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* -------- 媒体 -------- */
+
+img,
+svg {
+    display: block;
+    max-width: 100%;
+}
+
+/* -------- 列表 -------- */
+
+ul,
+ol {
+    list-style: none;
+}
+
+/* -------- 选中态 -------- */
+
+::selection {
+    background-color: var(--color-accent-wash);
+    color: var(--color-text-primary);
+}
+
+/* -------- 滚动条（Webkit） -------- */
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-tertiary);
+}
+
+/* -------- Firefox 滚动条 -------- */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* -------- 焦点环 -------- */
+
+:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* -------- Vue transition -------- */
+
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity var(--duration-normal) var(--ease);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+    transition:
+        opacity var(--duration-normal) var(--ease),
+        transform var(--duration-normal) var(--ease);
+}
+
+.slide-fade-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+}
+
+.slide-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+}
+
+/* -------- 无障碍：减少动效 -------- */
+/* 例外：此处 !important 确保 prefers-reduced-motion 优先于所有组件级声明 */
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

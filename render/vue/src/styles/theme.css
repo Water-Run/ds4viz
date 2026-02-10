@@ -1,0 +1,128 @@
+/* ============================================================
+ *  DS4Viz Design Tokens — Light Only · Azure Blue Accent
+ *  Fluent Surface × Material Shape/Motion
+ *
+ *  所有视觉数值统一在此声明，组件层只引用变量名。
+ *
+ *  @file src/styles/theme.css
+ *  @author WaterRun
+ *  @date 2026-02-10
+ * ============================================================ */
+
+:root {
+    /* -------- 色彩 · 背景 -------- */
+    --color-bg-base: #f4f5f6;
+    --color-bg-surface: #ffffff;
+    --color-bg-surface-alt: #fbfbfc;
+    --color-bg-hover: rgba(0, 0, 0, 0.04);
+    --color-bg-active: rgba(0, 0, 0, 0.06);
+    --color-bg-mica: rgba(255, 255, 255, 0.55);
+
+    /* -------- 色彩 · 文本 -------- */
+    --color-text-primary: #101010;
+    --color-text-body: #3f3f3f;
+    --color-text-tertiary: #737373;
+    --color-text-disabled: #a0a0a0;
+
+    /* -------- 色彩 · 边框 -------- */
+    --color-border: rgba(0, 0, 0, 0.08);
+    --color-border-strong: rgba(0, 0, 0, 0.14);
+    --color-border-focus: rgba(0, 120, 212, 0.48);
+
+    /* -------- 色彩 · 强调 (Azure Blue #0078D4) -------- */
+    --color-accent: #0078d4;
+    --color-accent-hover: #106ebe;
+    --color-accent-pressed: #005a9e;
+    --color-accent-wash: rgba(0, 120, 212, 0.08);
+    --color-accent-muted: rgba(0, 120, 212, 0.12);
+    --color-accent-contrast: #ffffff;
+
+    /* -------- 色彩 · 语义（极少量、小面积） -------- */
+    --color-success: #22c55e;
+    --color-success-muted: rgba(34, 197, 94, 0.10);
+    --color-warning: #f59e0b;
+    --color-warning-muted: rgba(245, 158, 11, 0.10);
+    --color-error: #ef4444;
+    --color-error-muted: rgba(239, 68, 68, 0.10);
+
+    /* -------- 色彩 · 代码语言标签 -------- */
+    --color-lang-python: #3572a5;
+    --color-lang-lua: #000080;
+    --color-lang-rust: #dea584;
+
+    /* -------- 圆角 -------- */
+    --radius-sm: 4px;
+    --radius-control: 10px;
+    --radius-md: 12px;
+    --radius-lg: 14px;
+    --radius-full: 9999px;
+
+    /* -------- 阴影（极克制） -------- */
+    --shadow-static: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-hover: 0 10px 26px rgba(0, 0, 0, 0.10);
+
+    /* -------- 间距（8px 网格） -------- */
+    --space-0: 0;
+    --space-1: 8px;
+    --space-2: 16px;
+    --space-3: 24px;
+    --space-4: 32px;
+    --space-5: 40px;
+    --space-6: 48px;
+    --space-8: 64px;
+    --space-10: 80px;
+
+    /* -------- 字体族 -------- */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+
+    /* -------- 字号 -------- */
+    --text-xs: 0.75rem;
+    /* 12px — 分区标题 / 标签 */
+    --text-sm: 0.8125rem;
+    /* 13px — 正文 / 代码 */
+    --text-base: 0.875rem;
+    /* 14px — 分区标题偏大 */
+    --text-lg: 1rem;
+    /* 16px — 少量需要 */
+    --text-xl: 1.25rem;
+    /* 20px — 极少使用 */
+
+    /* -------- 行高 -------- */
+    --leading-tight: 1.25;
+    --leading-snug: 1.375;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+    --leading-code: 1.625;
+
+    /* -------- 字重 -------- */
+    --weight-normal: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+
+    /* -------- 字间距 -------- */
+    --tracking-panel-head: 0.06em;
+
+    /* -------- 动效（统一缓动，禁止弹跳） -------- */
+    --duration-fast: 140ms;
+    --duration-normal: 220ms;
+    --duration-slow: 280ms;
+    --duration-viz: 200ms;
+
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+
+    /* -------- z-index 分层 -------- */
+    --z-base: 0;
+    --z-dropdown: 100;
+    --z-sticky: 200;
+    --z-overlay: 300;
+    --z-modal: 400;
+    --z-toast: 500;
+
+    /* -------- 布局 -------- */
+    --sidebar-width: 220px;
+    --sidebar-width-collapsed: 56px;
+    --header-height: 48px;
+    --control-height-sm: 30px;
+    --control-height-md: 36px;
+}
