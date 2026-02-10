@@ -1,94 +1,80 @@
 /**
- * 路由配置及全局导航守卫
+ * 路由配置
  *
- * 认证页（login / register）标记 guest meta，
- * 应用页由 AppLayout 包裹并标记 requiresAuth。
- *
- * 需要创建以下视图/布局文件后路由方可正常工作：
- *   src/layouts/AppLayout.vue
- *   src/views/LoginView.vue
- *   src/views/RegisterView.vue
- *   src/views/EditorView.vue
- *   src/views/TemplatesView.vue
- *   src/views/DocsView.vue
- *   src/views/UserView.vue
+ * 管理所有页面路由及导航守卫（认证拦截）。
  *
  * @file src/router/index.ts
  * @author WaterRun
  * @date 2026-02-10
  */
 
-import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
-import { hasToken } from '@/utils/storage'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
-/** 路由表 */
+/**
+ * 路由表
+ *
+ * meta.requiresAuth — 需要登录才能访问
+ * meta.guest        — 仅未登录时可访问（已登录则重定向到编辑器）
+ */
 const routes: RouteRecordRaw[] = [
+  /* ---------- 认证页 ---------- */
   {
     path: '/login',
     name: 'login',
-    component: () => import('@/views/LoginView.vue'),
+    component: () => import('@/views/Login.vue'),
     meta: { guest: true },
   },
   {
     path: '/register',
     name: 'register',
-    component: () => import('@/views/RegisterView.vue'),
+    component: () => import('@/views/Register.vue'),
     meta: { guest: true },
   },
+
+  /* ---------- 主功能页 ---------- */
   {
     path: '/',
-    component: () => import('@/layouts/AppLayout.vue'),
+    name: 'home',
+    component: () => import('@/views/Home.vue'),
+  },
+  {
+    path: '/playground',
+    name: 'playground',
+    component: () => import('@/views/Playground.vue'),
     meta: { requiresAuth: true },
-    children: [
-      {
-        path: '',
-        redirect: '/editor',
-      },
-      {
-        path: 'editor',
-        name: 'editor',
-        component: () => import('@/views/EditorView.vue'),
-      },
-      {
-        path: 'templates',
-        name: 'templates',
-        component: () => import('@/views/TemplatesView.vue'),
-      },
-      {
-        path: 'docs',
-        name: 'docs',
-        component: () => import('@/views/DocsView.vue'),
-      },
-      {
-        path: 'user',
-        name: 'user',
-        component: () => import('@/views/UserView.vue'),
-      },
-    ],
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('@/views/Profile.vue'),
+    meta: { requiresAuth: true },
   },
 ]
 
+/**
+ * 路由实例
+ */
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
 /**
- * 全局前置守卫
+ * 全局前置守卫 — 认证拦截
  *
- * 未认证用户访问 requiresAuth 路由 → 重定向至登录页；
- * 已认证用户访问 guest 路由 → 重定向至编辑器页。
+ * 1. requiresAuth 页面未登录 → 重定向到 /login
+ * 2. guest 页面已登录 → 重定向到 /playground
  */
 router.beforeEach((to) => {
-  const authenticated = hasToken()
+  const auth = useAuthStore()
 
-  if (to.meta.requiresAuth === true && !authenticated) {
-    return { name: 'login' }
+  if (to.meta.requiresAuth === true && !auth.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.guest === true && authenticated) {
-    return { name: 'editor' }
+  if (to.meta.guest === true && auth.isAuthenticated) {
+    return { name: 'playground' }
   }
 })
 

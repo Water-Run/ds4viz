@@ -8,6 +8,16 @@
 
 /// <reference types="vite/client" />
 
+/**
+ * Vite 环境变量类型扩展
+ *
+ * @interface
+ */
+interface ImportMetaEnv {
+    /** API 基础路径，缺省为 /api */
+    readonly VITE_API_BASE_URL?: string
+}
+
 declare module 'vue-router' {
     /**
      * 路由元信息类型增强

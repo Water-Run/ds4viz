@@ -2,7 +2,6 @@
  * 认证状态管理
  *
  * 管理用户登录态、token 持久化及当前用户信息。
- * API 调用方法预留接口，待 HTTP 客户端实现后接入。
  *
  * @file src/stores/auth.ts
  * @author WaterRun
@@ -14,14 +13,15 @@ import { defineStore } from 'pinia'
 
 import type { User, LoginRequest, RegisterRequest, ChangePasswordRequest } from '@/types/auth'
 import { getToken, setToken, removeToken } from '@/utils/storage'
+import { loginApi, registerApi, logoutApi, fetchMeApi } from '@/api/auth'
 
 /**
  * 认证 Store
  *
  * @example
  * ```typescript
- * const authStore = useAuthStore()
- * await authStore.login({ username: 'admin', password: '123456' })
+ * const auth = useAuthStore()
+ * await auth.login({ username: 'admin', password: '123456' })
  * ```
  */
 export const useAuthStore = defineStore('auth', () => {
@@ -43,68 +43,71 @@ export const useAuthStore = defineStore('auth', () => {
   /* ---- Actions ---- */
 
   /**
-   * 登录
+   * 登录并持久化 token
    *
-   * @param _request - 登录凭证
-   * @throws {Error} API 未实现或请求失败时抛出
+   * @param request - 登录凭证
+   * @throws {ApiError} 凭证错误或账号被封禁
    */
-  const login = async (_request: LoginRequest): Promise<void> => {
-    // TODO: 接入 HTTP 客户端后替换
-    // const response = await api.post<LoginResponse>('/auth/login', _request)
-    // token.value = response.token
-    // setToken(response.token)
-    // currentUser.value = response.user
-    throw new Error('API client not implemented')
+  const login = async (request: LoginRequest): Promise<void> => {
+    const response = await loginApi(request)
+    token.value = response.token
+    setToken(response.token)
+    currentUser.value = response.user
   }
 
   /**
-   * 注册
+   * 注册新账号（注册后不自动登录）
    *
-   * @param _request - 注册信息
-   * @throws {Error} API 未实现或请求失败时抛出
+   * @param request - 注册信息
+   * @throws {ApiError} 用户名冲突或参数校验失败
    */
-  const register = async (_request: RegisterRequest): Promise<void> => {
-    // TODO: 接入 HTTP 客户端后替换
-    throw new Error('API client not implemented')
+  const register = async (request: RegisterRequest): Promise<void> => {
+    await registerApi(request)
   }
 
   /**
-   * 登出，清除 token 与用户信息
+   * 登出，清除远程会话与本地状态
+   *
+   * 无论 API 调用是否成功均清除本地 token。
    */
-  const logout = (): void => {
-    currentUser.value = null
-    token.value = null
-    removeToken()
+  const logout = async (): Promise<void> => {
+    try {
+      if (token.value !== null) {
+        await logoutApi()
+      }
+    } catch {
+      /* 退出时忽略网络 / 令牌失效错误 */
+    } finally {
+      currentUser.value = null
+      token.value = null
+      removeToken()
+    }
   }
 
   /**
-   * 拉取当前用户信息
+   * 拉取当前用户信息（token 不存在时静默跳过）
    *
-   * @throws {Error} API 未实现或 token 无效时抛出
+   * @throws {ApiError} token 无效时抛出
    */
   const fetchCurrentUser = async (): Promise<void> => {
     if (token.value === null) {
       return
     }
-    // TODO: 接入 HTTP 客户端后替换
-    // const user = await api.get<User>('/auth/me')
-    // currentUser.value = user
-    throw new Error('API client not implemented')
+    currentUser.value = await fetchMeApi()
   }
 
   /**
-   * 修改密码
+   * 修改密码（待 users API 模块实现后接入）
    *
    * @param _request - 新旧密码
-   * @throws {Error} API 未实现或请求失败时抛出
+   * @throws {Error} 尚未实现
    */
   const changePassword = async (_request: ChangePasswordRequest): Promise<void> => {
-    // TODO: 接入 HTTP 客户端后替换
-    throw new Error('API client not implemented')
+    throw new Error('Not implemented — pending users API module')
   }
 
   /**
-   * 更新内存中的 token 并同步至 sessionStorage
+   * 手动更新 token 并同步至 sessionStorage
    *
    * @param newToken - 新 token
    */

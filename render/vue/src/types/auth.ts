@@ -1,10 +1,20 @@
 /**
  * 认证相关类型定义
  *
+ * 与后端 /api/auth/* 接口一一对应，字段名使用 camelCase，
+ * API 层负责 snake_case ↔ camelCase 的双向映射。
+ *
  * @file src/types/auth.ts
  * @author WaterRun
  * @date 2026-02-10
  */
+
+/**
+ * 用户账号状态
+ *
+ * @typedef
+ */
+export type UserStatus = 'Active' | 'Suspended' | 'Banned'
 
 /**
  * 用户信息
@@ -16,14 +26,12 @@ export interface User {
     id: number
     /** 用户名 */
     username: string
-    /** 邮箱 */
-    email: string
-    /** 头像 URL */
-    avatar: string
+    /** 头像 URL（未设置时为 null） */
+    avatarUrl: string | null
+    /** 账号状态 */
+    status: UserStatus
     /** 创建时间（ISO 8601） */
     createdAt: string
-    /** 更新时间（ISO 8601） */
-    updatedAt: string
 }
 
 /**
@@ -48,6 +56,8 @@ export interface LoginResponse {
     token: string
     /** 用户信息 */
     user: User
+    /** token 过期时间（ISO 8601） */
+    expiresAt: string
 }
 
 /**
@@ -56,22 +66,10 @@ export interface LoginResponse {
  * @interface
  */
 export interface RegisterRequest {
-    /** 用户名 */
+    /** 用户名（3–32 字符） */
     username: string
-    /** 邮箱 */
-    email: string
-    /** 密码 */
+    /** 密码（1–64 字符，UTF-8 字节不超过 64） */
     password: string
-}
-
-/**
- * 注册响应
- *
- * @interface
- */
-export interface RegisterResponse {
-    /** 新创建的用户信息 */
-    user: User
 }
 
 /**
