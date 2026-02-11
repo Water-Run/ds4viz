@@ -1,24 +1,24 @@
-/**
- * 路由配置
- *
- * 管理所有页面路由及导航守卫（认证拦截）。
- *
- * @file src/router/index.ts
- * @author WaterRun
- * @date 2026-02-10
- */
-
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
+import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-/**
- * 路由表
- *
- * meta.requiresAuth — 需要登录才能访问
- * meta.guest        — 仅未登录时可访问（已登录则重定向到编辑器）
- */
+/* -------------------------------------------------- *
+ *  Route‑meta type augmentation                       *
+ * -------------------------------------------------- */
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean
+    guest?: boolean
+  }
+}
+
+/* -------------------------------------------------- *
+ *  Route definitions                                  *
+ * -------------------------------------------------- */
+
 const routes: RouteRecordRaw[] = [
-  /* ---------- 认证页 ---------- */
+  /* ---- Guest pages ---- */
   {
     path: '/login',
     name: 'login',
@@ -32,48 +32,87 @@ const routes: RouteRecordRaw[] = [
     meta: { guest: true },
   },
 
-  /* ---------- 主功能页 ---------- */
+  /* ---- Authenticated shell ---- */
   {
     path: '/',
-    name: 'home',
-    component: () => import('@/views/Home.vue'),
-  },
-  {
-    path: '/playground',
-    name: 'playground',
-    component: () => import('@/views/Playground.vue'),
+    component: () => import('@/layouts/AppLayout.vue'),
     meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'home',
+        redirect: { name: 'playground' },
+      },
+      {
+        path: 'playground',
+        name: 'playground',
+        component: () => import('@/views/Playground.vue'),
+      },
+      {
+        path: 'templates',
+        name: 'templates',
+        component: () => import('@/views/Templates.vue'),
+      },
+      {
+        path: 'templates/:id',
+        name: 'template-detail',
+        component: () => import('@/views/TemplateDetail.vue'),
+      },
+      {
+        path: 'profile',
+        name: 'profile',
+        component: () => import('@/views/Profile.vue'),
+      },
+      {
+        path: 'favorites',
+        name: 'favorites',
+        component: () => import('@/views/Favorites.vue'),
+      },
+      {
+        path: 'executions',
+        name: 'executions',
+        component: () => import('@/views/Executions.vue'),
+      },
+      {
+        path: 'docs',
+        name: 'docs',
+        component: () => import('@/views/Docs.vue'),
+      },
+    ],
   },
+
+  /* ---- 404 ---- */
   {
-    path: '/profile',
-    name: 'profile',
-    component: () => import('@/views/Profile.vue'),
-    meta: { requiresAuth: true },
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFound.vue'),
   },
 ]
 
-/**
- * 路由实例
- */
+/* -------------------------------------------------- *
+ *  Router instance                                    *
+ * -------------------------------------------------- */
+
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHistory(),
   routes,
 })
 
-/**
- * 全局前置守卫 — 认证拦截
- *
- * 1. requiresAuth 页面未登录 → 重定向到 /login
- * 2. guest 页面已登录 → 重定向到 /playground
- */
-router.beforeEach((to) => {
-  const auth = useAuthStore()
+/* -------------------------------------------------- *
+ *  Navigation guards                                  *
+ * -------------------------------------------------- */
 
-  if (to.meta.requiresAuth === true && !auth.isAuthenticated) {
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+
+  const requiresAuth = to.matched.some((r) => r.meta.requiresAuth)
+  const isGuest = to.matched.some((r) => r.meta.guest)
+
+  if (requiresAuth && !authStore.token) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.guest === true && auth.isAuthenticated) {
+  if (isGuest && authStore.token) {
     return { name: 'playground' }
   }
 })

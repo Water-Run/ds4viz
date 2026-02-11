@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// placeholder — 编辑器页，后续实现
+// placeholder — 文档页
 </script>
 
 <template>
   <div class="page-placeholder">
-    <span class="material-symbols-outlined page-placeholder__icon">code</span>
-    <h2 class="page-placeholder__title">编辑器</h2>
+    <span class="material-symbols-outlined page-placeholder__icon">menu_book</span>
+    <h2 class="page-placeholder__title">文档</h2>
     <p class="page-placeholder__desc">此页面正在开发中</p>
   </div>
 </template>
