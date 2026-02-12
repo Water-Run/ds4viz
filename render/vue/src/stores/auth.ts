@@ -85,6 +85,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * 更新当前用户信息
+   *
+   * @param user - 新的用户信息
+   */
+  const setCurrentUser = (user: User | null): void => {
+    currentUser.value = user
+  }
+
+  /**
    * 拉取当前用户信息（token 不存在时静默跳过）
    *
    * @throws {ApiError} token 无效时抛出
@@ -126,5 +135,6 @@ export const useAuthStore = defineStore('auth', () => {
     fetchCurrentUser,
     changePassword,
     updateToken,
+    setCurrentUser,
   }
 })

@@ -5,10 +5,11 @@
  * 卡片列表 + 分类筛选 + 关键词搜索 + 收藏切换。
  * 点击卡片跳转到编辑器页加载对应代码（待编辑器页实现后对接）。
  *
- * @component Templates
+ * @component 模板库
  */
 
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
 import { extractErrorMessage } from '@/utils/error'
@@ -19,6 +20,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Loading from '@/components/common/Loading.vue'
 
 const store = useTemplatesStore()
+const router = useRouter()
 const {
     items,
     total,
@@ -32,13 +34,19 @@ const {
     isSearchMode,
 } = storeToRefs(store)
 
-/** 搜索输入框绑定值 */
+/**
+ * 搜索输入框绑定值
+ */
 const searchInput = ref<string>('')
 
-/** 收藏操作中的模板 ID 集合（防止重复点击） */
+/**
+ * 收藏操作中的模板 ID 集合
+ */
 const togglingIds = ref<Set<number>>(new Set())
 
-/** 收藏操作错误提示 */
+/**
+ * 收藏操作错误提示
+ */
 const favoriteError = ref<string>('')
 
 /**
@@ -88,6 +96,15 @@ async function handleToggleFavorite(templateId: number): Promise<void> {
  */
 async function handlePageChange(targetPage: number): Promise<void> {
     await store.goToPage(targetPage)
+}
+
+/**
+ * 进入编辑器
+ *
+ * @param templateId - 模板 ID
+ */
+function handleOpenTemplate(templateId: number): void {
+    router.push({ name: 'playground', query: { templateId } })
 }
 
 /**
@@ -208,6 +225,7 @@ onMounted(async () => {
                         v-for="item in items"
                         :key="item.id"
                         class="template-card"
+                        @click="handleOpenTemplate(item.id)"
                     >
                         <div class="template-card__header">
                             <h3 class="template-card__title">

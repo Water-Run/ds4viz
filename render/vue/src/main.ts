@@ -13,8 +13,11 @@ import App from './App.vue'
 import router from './router'
 
 import './styles/base.css'
+import { setupMonacoWorkers } from './utils/monaco'
 
 const app = createApp(App)
+
+setupMonacoWorkers()
 
 app.use(createPinia())
 app.use(router)
