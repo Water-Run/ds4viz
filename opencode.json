@@ -9,17 +9,16 @@
         "baseURL": "https://api.poe.com/v1"
       },
       "models": {
-        "claude-opus-4.5": { "name": "Claude 4.5 Opus" },
+        "claude-opus-4.6": { "name": "Claude 4.6 Opus" },
         "claude-sonnet-4.5": { "name": "Claude 4.5 Sonnet" },
         "gpt-5.2-codex": { "name": "CodeX-5.2" },
-        "gpt-5.1-codex-max": { "name": "CodeX-5.1 Max" },
-        "gpt-5": { "name": "GPT5" }
+        "gemini-3-flash": { "name": "Gemini 3 Flash" }
       }
     }
   },
 
   "model": "poe/gpt-5.2-codex",
-  "small_model": "poe/gpt-5",
+  "small_model": "poe/gemini-3-flash",
 
   "permission": {
     "bash": "ask",
