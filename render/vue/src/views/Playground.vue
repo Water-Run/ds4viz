@@ -462,11 +462,14 @@ watch(
   background-color: var(--color-bg-surface);
   color: var(--color-text-body);
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
 }
 
 .action-btn:hover {
   background-color: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
 }
 
 .playground__body {
@@ -513,6 +516,14 @@ watch(
   border-radius: var(--radius-control);
   background-color: var(--color-bg-surface);
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.icon-btn:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
 }
 
 .icon-btn:disabled {
@@ -539,6 +550,22 @@ watch(
   color: var(--color-accent-contrast);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.run-btn:hover {
+  background-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.run-btn:disabled {
+  background-color: var(--color-border-strong);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  transform: none;
 }
 
 .toml-view {

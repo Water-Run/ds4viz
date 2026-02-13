@@ -485,6 +485,21 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   background-color: var(--color-accent);
   color: var(--color-accent-contrast);
   font-weight: var(--weight-medium);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.primary-btn:hover {
+  background-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.primary-btn:disabled {
+  background-color: var(--color-border-strong);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  transform: none;
 }
 
 .text-btn {
@@ -493,6 +508,11 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   color: var(--color-accent);
   font-size: var(--text-xs);
   cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.text-btn:hover {
+  color: var(--color-accent-hover);
 }
 
 .success-text {
@@ -514,6 +534,16 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background-color: var(--color-bg-surface-alt);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.list-item:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
 }
 
 .list-item__title {

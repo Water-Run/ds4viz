@@ -16,7 +16,7 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
-    "@guolao/vue-monaco-editor": "^2.0.2",
+    "@guolao/vue-monaco-editor": "^1.6.0",
     "@iarna/toml": "^2.2.5",
     "monaco-editor": "^0.52.2",
     "pinia": "^3.0.4",

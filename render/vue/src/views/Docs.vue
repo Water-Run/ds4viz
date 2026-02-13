@@ -223,6 +223,10 @@ const handleLanguageChange = (language: Language): void => {
   background-color: var(--color-bg-surface);
   color: var(--color-text-body);
   font-size: var(--text-xs);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
 }
 
 .docs-page__lang-btn--active {
@@ -281,6 +285,14 @@ const handleLanguageChange = (language: Language): void => {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.toc-section__item:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 .docs-page__content {
@@ -345,3 +357,6 @@ const handleLanguageChange = (language: Language): void => {
   }
 }
 </style>
+.docs-page__lang-btn:hover {
+  border-color: var(--color-accent);
+}

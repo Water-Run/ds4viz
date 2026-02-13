@@ -520,15 +520,17 @@ onMounted(async () => {
     border-radius: var(--radius-lg);
     background-color: var(--color-bg-surface);
     box-shadow: var(--shadow-static);
-    cursor: default;
+    cursor: pointer;
     transition:
         box-shadow var(--duration-normal) var(--ease),
-        border-color var(--duration-normal) var(--ease);
+        border-color var(--duration-normal) var(--ease),
+        transform var(--duration-fast) var(--ease);
 }
 
 .template-card:hover {
     box-shadow: var(--shadow-hover);
     border-color: var(--color-border-strong);
+    transform: translateY(-1px);
 }
 
 .template-card__header {
@@ -596,7 +598,7 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     gap: 4px;
-    border: none;
+    border: 1px solid transparent;
     background: none;
     color: var(--color-text-tertiary);
     font-size: var(--text-xs);
@@ -606,12 +608,14 @@ onMounted(async () => {
     border-radius: var(--radius-sm);
     transition:
         color var(--duration-fast) var(--ease),
-        background-color var(--duration-fast) var(--ease);
+        background-color var(--duration-fast) var(--ease),
+        border-color var(--duration-fast) var(--ease);
 }
 
 .template-card__fav:hover:not(:disabled) {
     background-color: var(--color-bg-hover);
     color: var(--color-text-primary);
+    border-color: var(--color-border-strong);
 }
 
 .template-card__fav--active {

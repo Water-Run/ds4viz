@@ -1,41 +1,210 @@
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
+/**
+ * 模板详情页面
+ *
+ * @component 模板详情
+ */
 
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+import { useTemplatesStore } from '@/stores/templates'
+import { formatRelativeTime } from '@/utils/time'
+import { extractErrorMessage } from '@/utils/error'
+import ErrorBanner from '@/components/common/ErrorBanner.vue'
+import Loading from '@/components/common/Loading.vue'
+
+/**
+ * 路由参数
+ */
 const route = useRoute()
+const router = useRouter()
+const store = useTemplatesStore()
+
+/**
+ * 模板 ID
+ */
+const templateId = computed<number>(() => Number(route.params.id))
+
+/**
+ * 错误提示
+ */
+const errorMessage = ref<string>('')
+
+/**
+ * 加载状态
+ */
+const loading = ref<boolean>(false)
+
+/**
+ * 模板详情
+ */
+const detail = computed(() => store.currentDetail)
+
+/**
+ * 加载模板详情
+ */
+const handleLoad = async (): Promise<void> => {
+  if (Number.isNaN(templateId.value)) {
+    router.replace({ name: 'templates' })
+    return
+  }
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    await store.loadDetail(templateId.value)
+  } catch (error: unknown) {
+    errorMessage.value = extractErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 打开到编辑器
+ */
+const handleOpenInEditor = (): void => {
+  if (!detail.value) return
+  router.push({ name: 'playground', query: { templateId: detail.value.id } })
+}
+
+onMounted(async () => {
+  await handleLoad()
+})
 </script>
 
 <template>
-  <div class="page-placeholder">
-    <span class="material-symbols-outlined page-placeholder__icon">description</span>
-    <h2 class="page-placeholder__title">模板详情 #{{ route.params.id }}</h2>
-    <p class="page-placeholder__desc">此页面正在开发中</p>
+  <div class="template-detail">
+    <header class="template-detail__header">
+      <div class="template-detail__title">
+        <span class="material-symbols-outlined">description</span>
+        <span>模板详情</span>
+      </div>
+      <button class="primary-btn" :disabled="loading || !detail" @click="handleOpenInEditor">
+        打开编辑器
+      </button>
+    </header>
+
+    <ErrorBanner :message="errorMessage" @dismiss="errorMessage = ''" />
+    <Loading v-if="loading" message="加载中" />
+
+    <div v-if="detail" class="template-detail__content">
+      <section class="detail-card">
+        <div class="detail-card__title">{{ detail.title }}</div>
+        <div class="detail-card__meta">
+          类别 {{ detail.category }} · 创建 {{ formatRelativeTime(detail.createdAt) }}
+        </div>
+        <p class="detail-card__desc">{{ detail.description }}</p>
+        <div class="detail-card__stats">
+          <div class="stat">
+            <span class="material-symbols-outlined">favorite</span>
+            <span>{{ detail.favoriteCount }}</span>
+          </div>
+          <div class="stat">
+            <span class="material-symbols-outlined">code</span>
+            <span>{{ detail.language }}</span>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.page-placeholder {
-  flex: 1;
+.template-detail {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  height: 100%;
+  overflow: auto;
+}
+
+.template-detail__header {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--color-text-muted);
+  justify-content: space-between;
 }
 
-.page-placeholder__icon {
-  font-size: 48px;
+.template-detail__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
 }
 
-.page-placeholder__title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
+.template-detail__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.page-placeholder__desc {
-  margin: 0;
-  font-size: 14px;
+.detail-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  background-color: var(--color-bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail-card__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.detail-card__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.detail-card__desc {
+  font-size: var(--text-sm);
+  color: var(--color-text-body);
+  line-height: var(--leading-relaxed);
+}
+
+.detail-card__stats {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-body);
+}
+
+.primary-btn {
+  height: var(--control-height-md);
+  padding: 0 16px;
+  border-radius: var(--radius-control);
+  border: none;
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-weight: var(--weight-medium);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.primary-btn:hover {
+  background-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.primary-btn:disabled {
+  background-color: var(--color-border-strong);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  transform: none;
 }
 </style>
