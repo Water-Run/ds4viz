@@ -106,13 +106,17 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * 修改密码（待 users API 模块实现后接入）
+   * 修改密码
    *
-   * @param _request - 新旧密码
-   * @throws {Error} 尚未实现
+   * @param request - 新旧密码
+   * @throws {ApiError} 认证失败或原密码错误
    */
-  const changePassword = async (_request: ChangePasswordRequest): Promise<void> => {
-    throw new Error('Not implemented — pending users API module')
+  const changePassword = async (request: ChangePasswordRequest): Promise<void> => {
+    if (!currentUser.value) {
+      throw new Error('未登录')
+    }
+    const { changePasswordApi } = await import('@/api/users')
+    await changePasswordApi(currentUser.value.id, request)
   }
 
   /**

@@ -2,7 +2,7 @@
 /**
  * 收藏页面
  *
- * @component 收藏
+ * @component Favorites
  */
 
 import { computed, ref } from 'vue'
@@ -14,6 +14,7 @@ import { formatDateTime } from '@/utils/time'
 import Pagination from '@/components/common/Pagination.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 import type { FavoriteItem } from '@/api/users'
 
@@ -95,7 +96,7 @@ loadFavorites()
   <div class="favorites-page">
     <header class="favorites-page__header">
       <div class="favorites-page__title">
-        <span class="material-symbols-outlined">favorite</span>
+        <MaterialIcon name="favorite" :size="18" />
         <span>收藏</span>
       </div>
     </header>
@@ -105,7 +106,7 @@ loadFavorites()
     <Loading v-if="loading" message="加载中" />
     <div v-else class="favorites-page__content">
       <div v-if="favorites.length === 0" class="empty-state">
-        <span class="material-symbols-outlined">bookmark</span>
+        <MaterialIcon name="bookmark" :size="32" />
         <p>暂无收藏</p>
       </div>
       <div v-else class="favorites-list">
@@ -148,6 +149,11 @@ loadFavorites()
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+}
+
+.favorites-page__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .favorites-page__content {
@@ -212,7 +218,8 @@ loadFavorites()
   padding: var(--space-4) 0;
 }
 
-.empty-state span {
-  font-size: 32px;
+.empty-state :deep(.material-icon) {
+  width: 32px;
+  height: 32px;
 }
 </style>

@@ -2,7 +2,7 @@
 /**
  * 编辑器页面
  *
- * @component 编辑器
+ * @component Playground
  */
 
 import { computed, onMounted, ref, watch } from 'vue'
@@ -31,6 +31,7 @@ import LanguageSelect from '@/components/editor/LanguageSelect.vue'
 import VizPanel from '@/components/viz/VizPanel.vue'
 import TomlViewer from '@/components/viz/TomlViewer.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /**
  * 语言状态
@@ -162,6 +163,7 @@ const applyToml = (content: string): void => {
   }
   document.value = parsed.document
   vizModel.value = buildVizModel(parsed.document)
+  executeError.value = parsed.document.error?.message ?? ''
 }
 
 /**
@@ -171,6 +173,11 @@ const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
   running.value = true
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   try {
     const result = await executeCodeApi(language.value, code.value)
     if (result.tomlOutput) {
@@ -226,6 +233,11 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   const content = await file.text()
   tomlContent.value = content
   applyToml(content)
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   input.value = ''
 }
 
@@ -250,6 +262,11 @@ const handleDownloadToml = (): void => {
  */
 const goFirst = (): void => {
   if (!vizModel.value || vizModel.value.steps.length === 0) return
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   vizModel.value.currentStepId = vizModel.value.steps[0].id
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, 0)
 }
@@ -259,6 +276,11 @@ const goFirst = (): void => {
  */
 const goPrev = (): void => {
   if (!vizModel.value) return
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   const index = currentStepIndex.value
   if (index <= 0) return
   const nextIndex = index - 1
@@ -271,6 +293,11 @@ const goPrev = (): void => {
  */
 const goNext = (): void => {
   if (!vizModel.value) return
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   const index = currentStepIndex.value
   const nextIndex = index + 1
   if (nextIndex >= vizModel.value.steps.length) return
@@ -283,6 +310,11 @@ const goNext = (): void => {
  */
 const goLast = (): void => {
   if (!vizModel.value || vizModel.value.steps.length === 0) return
+  isPlaying.value = false
+  if (playTimer.value !== null) {
+    window.clearInterval(playTimer.value)
+    playTimer.value = null
+  }
   const lastIndex = vizModel.value.steps.length - 1
   vizModel.value.currentStepId = vizModel.value.steps[lastIndex].id
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, lastIndex)
@@ -304,11 +336,15 @@ const togglePlay = (): void => {
   isPlaying.value = true
   playTimer.value = window.setInterval(() => {
     if (!canStepForward.value) {
-      togglePlay()
+      isPlaying.value = false
+      if (playTimer.value !== null) {
+        window.clearInterval(playTimer.value)
+        playTimer.value = null
+      }
       return
     }
     goNext()
-  }, 240)
+  }, 220)
 }
 
 /**
@@ -343,16 +379,16 @@ watch(
   <div class="playground">
     <header class="playground__header">
       <div class="playground__title">
-        <span class="material-symbols-outlined">code</span>
+        <MaterialIcon name="code" :size="18" />
         <span>编辑器</span>
       </div>
       <div class="playground__actions">
         <label class="action-btn">
-          <span class="material-symbols-outlined">upload</span>
+          <MaterialIcon name="upload" :size="18" />
           <input class="sr-only" type="file" accept=".toml" @change="handleUploadToml" />
         </label>
         <button class="action-btn" :disabled="!tomlContent" @click="handleDownloadToml">
-          <span class="material-symbols-outlined">download</span>
+          <MaterialIcon name="download" :size="18" />
         </button>
       </div>
     </header>
@@ -368,22 +404,20 @@ watch(
           </div>
           <div class="panel-toolbar__controls">
             <button class="icon-btn" :disabled="!canStepBackward" @click="goFirst">
-              <span class="material-symbols-outlined">first_page</span>
+              <MaterialIcon name="first_page" :size="18" />
             </button>
             <button class="icon-btn" :disabled="!canStepBackward" @click="goPrev">
-              <span class="material-symbols-outlined">chevron_left</span>
+              <MaterialIcon name="chevron_left" :size="18" />
             </button>
             <span class="step-indicator">{{ currentStepIndex + 1 }} / {{ totalSteps }}</span>
             <button class="icon-btn" :disabled="!canStepForward" @click="goNext">
-              <span class="material-symbols-outlined">chevron_right</span>
+              <MaterialIcon name="chevron_right" :size="18" />
             </button>
             <button class="icon-btn" :disabled="!canStepForward" @click="goLast">
-              <span class="material-symbols-outlined">last_page</span>
+              <MaterialIcon name="last_page" :size="18" />
             </button>
             <button class="icon-btn" :disabled="totalSteps === 0" @click="togglePlay">
-              <span class="material-symbols-outlined">
-                {{ isPlaying ? 'pause' : 'play_arrow' }}
-              </span>
+              <MaterialIcon :name="isPlaying ? 'pause' : 'play_arrow'" :size="18" />
             </button>
           </div>
         </div>
@@ -405,14 +439,14 @@ watch(
           <div class="panel-toolbar__controls">
             <LanguageSelect v-model="language" @update:model-value="handleLanguageChange" />
             <button class="run-btn" :disabled="running || templateLoading" @click="handleRun">
-              <span class="material-symbols-outlined">play_arrow</span>
+              <MaterialIcon name="play_arrow" :size="18" />
               <span>{{ running ? '运行中' : '运行' }}</span>
             </button>
           </div>
         </div>
         <CodeEditor v-model="code" :language="language" :highlight-line="stepSummary?.line" />
         <div v-if="executionInfo" class="execution-info">
-          <span class="material-symbols-outlined">bolt</span>
+          <MaterialIcon name="bolt" :size="16" />
           <span>{{ executionInfo }}</span>
         </div>
       </section>
@@ -445,6 +479,11 @@ watch(
   color: var(--color-text-primary);
 }
 
+.playground__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
 .playground__actions {
   display: flex;
   align-items: center;
@@ -470,6 +509,11 @@ watch(
 .action-btn:hover {
   background-color: var(--color-bg-hover);
   border-color: var(--color-border-strong);
+}
+
+.action-btn :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .playground__body {
@@ -526,6 +570,11 @@ watch(
   border-color: var(--color-border-strong);
 }
 
+.icon-btn :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
 .icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -568,6 +617,11 @@ watch(
   transform: none;
 }
 
+.run-btn :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
 .toml-view {
   margin-top: var(--space-1);
 }
@@ -578,6 +632,11 @@ watch(
   gap: 6px;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+}
+
+.execution-info :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
 }
 
 .sr-only {

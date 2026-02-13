@@ -2,7 +2,7 @@
 /**
  * 执行记录页面
  *
- * @component 执行记录
+ * @component Executions
  */
 
 import { computed, ref } from 'vue'
@@ -14,6 +14,7 @@ import { formatDateTime, formatDuration } from '@/utils/time'
 import Pagination from '@/components/common/Pagination.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 import type { ExecutionHistoryItem } from '@/api/users'
 
@@ -95,7 +96,7 @@ loadExecutions()
   <div class="executions-page">
     <header class="executions-page__header">
       <div class="executions-page__title">
-        <span class="material-symbols-outlined">history</span>
+        <MaterialIcon name="history" :size="18" />
         <span>执行记录</span>
       </div>
     </header>
@@ -105,7 +106,7 @@ loadExecutions()
     <Loading v-if="loading" message="加载中" />
     <div v-else class="executions-page__content">
       <div v-if="executions.length === 0" class="empty-state">
-        <span class="material-symbols-outlined">schedule</span>
+        <MaterialIcon name="schedule" :size="32" />
         <p>暂无执行记录</p>
       </div>
       <div v-else class="executions-list">
@@ -220,7 +221,8 @@ loadExecutions()
   padding: var(--space-4) 0;
 }
 
-.empty-state span {
-  font-size: 32px;
+.empty-state :deep(.material-icon) {
+  width: 32px;
+  height: 32px;
 }
 </style>

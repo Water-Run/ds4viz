@@ -2,12 +2,13 @@
 /**
  * 文档页面
  *
- * @component 文档
+ * @component Docs
  */
 
 import { computed, ref } from 'vue'
 
 import { LANGUAGES, LANGUAGE_LABELS } from '@/types/api'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import type { Language } from '@/types/api'
 
 /**
@@ -41,6 +42,11 @@ const expanded = ref<Record<string, boolean>>({
   guides: true,
   api: true,
 })
+
+/**
+ * 切换图标名称
+ */
+const getToggleIcon = (open: boolean): string => (open ? 'expand_more' : 'chevron_right')
 
 /**
  * 文档树数据
@@ -130,7 +136,7 @@ const handleLanguageChange = (language: Language): void => {
   <div class="docs-page">
     <header class="docs-page__header">
       <div class="docs-page__title">
-        <span class="material-symbols-outlined">menu_book</span>
+        <MaterialIcon name="menu_book" :size="18" />
         <span>文档</span>
       </div>
       <div class="docs-page__lang">
@@ -150,9 +156,7 @@ const handleLanguageChange = (language: Language): void => {
       <aside class="docs-page__toc">
         <div v-for="section in docTree" :key="section.id" class="toc-section">
           <button class="toc-section__title" @click="toggleNode(section.id)">
-            <span class="material-symbols-outlined">
-              {{ expanded[section.id] ? 'expand_more' : 'chevron_right' }}
-            </span>
+            <MaterialIcon :name="getToggleIcon(expanded[section.id])" :size="18" />
             <span>{{ section.title }}</span>
           </button>
           <div v-if="expanded[section.id]" class="toc-section__children">
@@ -208,6 +212,11 @@ const handleLanguageChange = (language: Language): void => {
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+}
+
+.docs-page__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .docs-page__lang {
@@ -269,6 +278,11 @@ const handleLanguageChange = (language: Language): void => {
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
   cursor: pointer;
+}
+
+.toc-section__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .toc-section__children {

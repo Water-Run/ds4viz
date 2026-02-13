@@ -23,6 +23,7 @@
     --color-text-body: #3f3f3f;
     --color-text-tertiary: #737373;
     --color-text-disabled: #a0a0a0;
+    --color-text-secondary: #5b5b5b;
 
     /* -------- 色彩 · 边框 -------- */
     --color-border: rgba(0, 0, 0, 0.08);

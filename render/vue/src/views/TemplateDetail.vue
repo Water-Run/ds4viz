@@ -2,7 +2,7 @@
 /**
  * 模板详情页面
  *
- * @component 模板详情
+ * @component TemplateDetail
  */
 
 import { computed, onMounted, ref } from 'vue'
@@ -11,8 +11,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTemplatesStore } from '@/stores/templates'
 import { formatRelativeTime } from '@/utils/time'
 import { extractErrorMessage } from '@/utils/error'
+import { LANGUAGE_LABELS } from '@/types/api'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /**
  * 路由参数
@@ -40,6 +42,18 @@ const loading = ref<boolean>(false)
  * 模板详情
  */
 const detail = computed(() => store.currentDetail)
+
+/**
+ * 可用语言列表
+ */
+const languageLabel = computed<string>(() => {
+  const codes = detail.value?.codes ?? []
+  if (codes.length === 0) return '--'
+  const labels = codes.map((code) => {
+    return LANGUAGE_LABELS[code.language as keyof typeof LANGUAGE_LABELS] ?? code.language
+  })
+  return labels.join(' / ')
+})
 
 /**
  * 加载模板详情
@@ -77,7 +91,7 @@ onMounted(async () => {
   <div class="template-detail">
     <header class="template-detail__header">
       <div class="template-detail__title">
-        <span class="material-symbols-outlined">description</span>
+        <MaterialIcon name="description" :size="18" />
         <span>模板详情</span>
       </div>
       <button class="primary-btn" :disabled="loading || !detail" @click="handleOpenInEditor">
@@ -97,12 +111,12 @@ onMounted(async () => {
         <p class="detail-card__desc">{{ detail.description }}</p>
         <div class="detail-card__stats">
           <div class="stat">
-            <span class="material-symbols-outlined">favorite</span>
+            <MaterialIcon name="favorite" :size="16" />
             <span>{{ detail.favoriteCount }}</span>
           </div>
           <div class="stat">
-            <span class="material-symbols-outlined">code</span>
-            <span>{{ detail.language }}</span>
+            <MaterialIcon name="code" :size="16" />
+            <span>{{ languageLabel }}</span>
           </div>
         </div>
       </section>
@@ -133,6 +147,11 @@ onMounted(async () => {
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+}
+
+.template-detail__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .template-detail__content {
@@ -181,6 +200,11 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-body);
+}
+
+.stat :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
 }
 
 .primary-btn {

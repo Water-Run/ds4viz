@@ -15,9 +15,9 @@ export type Language = 'python' | 'lua' | 'rust'
 
 /** 语言显示名称映射 */
 export const LANGUAGE_LABELS: Record<Language, string> = {
-    python: 'Python',
-    lua: 'Lua',
-    rust: 'Rust',
+  python: 'Python',
+  lua: 'Lua',
+  rust: 'Rust',
 }
 
 /** 全部可用语言列表 */
@@ -29,10 +29,10 @@ export const LANGUAGES: Language[] = ['python', 'lua', 'rust']
  * @interface
  */
 export interface PaginationParams {
-    /** 页码（从 1 起） */
-    page?: number
-    /** 每页条数 */
-    limit?: number
+  /** 页码（从 1 起） */
+  page?: number
+  /** 每页条数 */
+  limit?: number
 }
 
 /**
@@ -42,14 +42,14 @@ export interface PaginationParams {
  * @template T - 数据项类型
  */
 export interface PaginatedResult<T> {
-    /** 当前页数据 */
-    items: T[]
-    /** 总条数 */
-    total: number
-    /** 当前页码 */
-    page: number
-    /** 每页条数 */
-    limit: number
+  /** 当前页数据 */
+  items: T[]
+  /** 总条数 */
+  total: number
+  /** 当前页码 */
+  page: number
+  /** 每页条数 */
+  limit: number
 }
 
 /**
@@ -58,6 +58,6 @@ export interface PaginatedResult<T> {
  * @interface
  */
 export interface ApiErrorBody {
-    /** 错误消息 */
-    error: string
+  /** 错误消息 */
+  error: string
 }

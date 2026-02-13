@@ -17,12 +17,12 @@ import type { PaginationParams } from './api'
  * @interface
  */
 export interface TemplateCode {
-    /** 语言标识 */
-    language: string
-    /** 代码内容 */
-    code: string
-    /** 说明（可为 null） */
-    explanation: string | null
+  /** 语言标识 */
+  language: string
+  /** 代码内容 */
+  code: string
+  /** 说明（可为 null） */
+  explanation: string | null
 }
 
 /**
@@ -31,24 +31,24 @@ export interface TemplateCode {
  * @interface
  */
 export interface Template {
-    /** 模板 ID */
-    id: number
-    /** 标题 */
-    title: string
-    /** 描述 */
-    description: string
-    /** 分类 */
-    category: string
-    /** 收藏数 */
-    favoriteCount: number
-    /** 当前用户是否已收藏 */
-    isFavorited: boolean
-    /** 各语言代码 */
-    codes: TemplateCode[]
-    /** 创建时间（ISO 8601） */
-    createdAt: string
-    /** 更新时间（ISO 8601） */
-    updatedAt: string
+  /** 模板 ID */
+  id: number
+  /** 标题 */
+  title: string
+  /** 描述 */
+  description: string
+  /** 分类 */
+  category: string
+  /** 收藏数 */
+  favoriteCount: number
+  /** 当前用户是否已收藏 */
+  isFavorited: boolean
+  /** 各语言代码 */
+  codes: TemplateCode[]
+  /** 创建时间（ISO 8601） */
+  createdAt: string
+  /** 更新时间（ISO 8601） */
+  updatedAt: string
 }
 
 /**
@@ -57,20 +57,20 @@ export interface Template {
  * @interface
  */
 export interface TemplateListItem {
-    /** 模板 ID */
-    id: number
-    /** 标题 */
-    title: string
-    /** 描述 */
-    description: string
-    /** 分类 */
-    category: string
-    /** 收藏数 */
-    favoriteCount: number
-    /** 当前用户是否已收藏 */
-    isFavorited: boolean
-    /** 创建时间（ISO 8601） */
-    createdAt: string
+  /** 模板 ID */
+  id: number
+  /** 标题 */
+  title: string
+  /** 描述 */
+  description: string
+  /** 分类 */
+  category: string
+  /** 收藏数 */
+  favoriteCount: number
+  /** 当前用户是否已收藏 */
+  isFavorited: boolean
+  /** 创建时间（ISO 8601） */
+  createdAt: string
 }
 
 /**
@@ -79,8 +79,8 @@ export interface TemplateListItem {
  * @interface
  */
 export interface TemplateSearchParams extends PaginationParams {
-    /** 搜索关键词 */
-    keyword?: string
-    /** 分类筛选 */
-    category?: string
+  /** 搜索关键词 */
+  keyword?: string
+  /** 分类筛选 */
+  category?: string
 }

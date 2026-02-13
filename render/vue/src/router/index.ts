@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { getToken } from '@/utils/storage'
 
 /* -------------------------------------------------- *
  *  Route‑meta type augmentation                       *
@@ -103,16 +103,16 @@ const router = createRouter({
  * -------------------------------------------------- */
 
 router.beforeEach((to) => {
-  const authStore = useAuthStore()
+  const token = getToken()
 
   const requiresAuth = to.matched.some((r) => r.meta.requiresAuth)
   const isGuest = to.matched.some((r) => r.meta.guest)
 
-  if (requiresAuth && !authStore.token) {
+  if (requiresAuth && !token) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  if (isGuest && authStore.token) {
+  if (isGuest && token) {
     return { name: 'playground' }
   }
 })

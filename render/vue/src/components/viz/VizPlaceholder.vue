@@ -4,11 +4,13 @@
  *
  * @component VizPlaceholder
  */
+
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 </script>
 
 <template>
   <div class="viz-placeholder">
-    <span class="material-symbols-outlined viz-placeholder__icon">data_array</span>
+    <MaterialIcon name="data_array" class="viz-placeholder__icon" :size="40" />
     <div class="viz-placeholder__content">
       <p class="viz-placeholder__title">等待渲染</p>
       <p class="viz-placeholder__desc">运行代码或上传 TOML 查看结果</p>
@@ -32,7 +34,8 @@
 }
 
 .viz-placeholder__icon {
-  font-size: 40px;
+  width: 40px;
+  height: 40px;
 }
 
 .viz-placeholder__content {

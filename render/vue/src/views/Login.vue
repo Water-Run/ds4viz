@@ -58,11 +58,7 @@ const handleLogin = async (): Promise<void> => {
     <div class="auth-card">
       <!-- 标识 -->
       <div class="auth-card__header">
-        <img
-          src="/ds4viz/logo.png"
-          alt="DS4Viz"
-          class="auth-card__logo"
-        />
+        <img src="/ds4viz/logo.png" alt="DS4Viz" class="auth-card__logo" />
         <h1 class="auth-card__title">DS4Viz</h1>
         <p class="auth-card__subtitle">数据结构可视化平台</p>
       </div>

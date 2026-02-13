@@ -1,13 +1,28 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
+/**
+ * 加载指示组件
+ *
+ * @file src/components/common/Loading.vue
+ * @author WaterRun
+ * @date 2026-02-13
+ * @updated 2026-02-13
+ */
+
+/**
+ * 组件属性定义
+ */
+interface Props {
+  /** 文案提示 */
   message?: string
-}>(), {
+}
+
+withDefaults(defineProps<Props>(), {
   message: '',
 })
 </script>
 
 <template>
-  <div class="loading">
+  <div class="loading" role="status" aria-live="polite">
     <div class="loading__spinner" />
     <p v-if="message" class="loading__message">{{ message }}</p>
   </div>

@@ -13,16 +13,16 @@ const DEFAULT_MESSAGE = '发生未知错误，请稍后重试'
 
 /** HTTP 状态码对应的默认错误消息 */
 const HTTP_STATUS_MESSAGES: Record<number, string> = {
-    400: '请求参数有误',
-    401: '未登录或登录已过期',
-    403: '没有权限执行此操作',
-    404: '请求的资源不存在',
-    409: '数据冲突，请检查后重试',
-    422: '提交的数据无法处理',
-    429: '操作过于频繁，请稍后重试',
-    500: '服务器内部错误',
-    502: '网关错误，请稍后重试',
-    503: '服务暂时不可用',
+  400: '请求参数有误',
+  401: '未登录或登录已过期',
+  403: '没有权限执行此操作',
+  404: '请求的资源不存在',
+  409: '数据冲突，请检查后重试',
+  422: '提交的数据无法处理',
+  429: '操作过于频繁，请稍后重试',
+  500: '服务器内部错误',
+  502: '网关错误，请稍后重试',
+  503: '服务暂时不可用',
 }
 
 /**
@@ -40,19 +40,19 @@ const HTTP_STATUS_MESSAGES: Record<number, string> = {
  * ```
  */
 export function extractErrorMessage(error: unknown): string {
-    if (typeof error === 'string') {
-        return error
-    }
+  if (typeof error === 'string') {
+    return error
+  }
 
-    if (isApiErrorBody(error)) {
-        return error.error
-    }
+  if (isApiErrorBody(error)) {
+    return error.error
+  }
 
-    if (error instanceof Error) {
-        return error.message
-    }
+  if (error instanceof Error) {
+    return error.message
+  }
 
-    return DEFAULT_MESSAGE
+  return DEFAULT_MESSAGE
 }
 
 /**
@@ -68,7 +68,7 @@ export function extractErrorMessage(error: unknown): string {
  * ```
  */
 export function getHttpErrorMessage(status: number): string {
-    return HTTP_STATUS_MESSAGES[status] ?? DEFAULT_MESSAGE
+  return HTTP_STATUS_MESSAGES[status] ?? DEFAULT_MESSAGE
 }
 
 /**
@@ -77,7 +77,7 @@ export function getHttpErrorMessage(status: number): string {
  * @returns 默认错误消息
  */
 export function getDefaultErrorMessage(): string {
-    return DEFAULT_MESSAGE
+  return DEFAULT_MESSAGE
 }
 
 /**
@@ -87,10 +87,10 @@ export function getDefaultErrorMessage(): string {
  * @returns 是否为 ApiErrorBody
  */
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
-    return (
-        typeof value === 'object'
-        && value !== null
-        && 'error' in value
-        && typeof (value as ApiErrorBody).error === 'string'
-    )
+  return (
+    typeof value === 'object'
+    && value !== null
+    && 'error' in value
+    && typeof (value as ApiErrorBody).error === 'string'
+  )
 }

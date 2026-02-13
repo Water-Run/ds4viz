@@ -44,11 +44,148 @@ export function parseIrToml(content: string): ParseIrResult {
   try {
     const raw = toml.parse(content) as Record<string, unknown>
     const document = mapDocument(raw)
+    const validationError = validateDocument(document)
+    if (validationError) {
+      return { ok: false, errorMessage: validationError }
+    }
     return { ok: true, document }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'TOML 解析失败'
     return { ok: false, errorMessage: message }
   }
+}
+
+/**
+ * 校验 IR 文档结构
+ *
+ * @param document - IR 文档
+ * @returns 错误消息，校验通过时返回空字符串
+ */
+function validateDocument(document: IrDocument): string {
+  const allowedLangs = new Set([
+    'python',
+    'rust',
+    'lua',
+  ])
+  const allowedKinds = new Set([
+    'stack',
+    'queue',
+    'slist',
+    'dlist',
+    'binary_tree',
+    'bst',
+    'graph_undirected',
+    'graph_directed',
+    'graph_weighted',
+  ])
+
+  if (!document.meta.createdAt || !document.meta.lang || !document.meta.langVersion) {
+    return 'IR 缺少 meta 信息'
+  }
+
+  if (!allowedLangs.has(String(document.meta.lang))) {
+    return `不支持的语言: ${document.meta.lang}`
+  }
+
+  if (!document.package.name || !document.package.lang || !document.package.version) {
+    return 'IR 缺少 package 信息'
+  }
+
+  if (document.meta.lang !== document.package.lang) {
+    return 'meta.lang 与 package.lang 不一致'
+  }
+
+  if (!allowedKinds.has(document.object.kind)) {
+    return `不支持的数据结构类型: ${document.object.kind}`
+  }
+
+  if (document.meta.langVersion && !/^[0-9a-z.+-]+$/i.test(document.meta.langVersion)) {
+    return 'meta.lang_version 格式不合法'
+  }
+
+  if (document.states.length === 0) {
+    return 'IR states 不能为空'
+  }
+
+  for (let index = 0; index < document.states.length; index += 1) {
+    const state = document.states[index]
+    if (state.id !== index) {
+      return 'states.id 必须从 0 连续递增'
+    }
+  }
+
+  if (document.result && document.error) {
+    return 'IR 同时存在 result 与 error'
+  }
+
+  if (!document.result && !document.error) {
+    return 'IR 缺少 result 或 error'
+  }
+
+  if (document.result && !Number.isFinite(document.result.finalState)) {
+    return 'result.final_state 无效'
+  }
+
+  if (document.result && document.result.finalState >= document.states.length) {
+    return 'result.final_state 超出 states 范围'
+  }
+
+  if (document.error && document.error.step !== undefined) {
+    const stepId = document.error.step
+    if (!document.steps || !document.steps.some((step) => step.id === stepId)) {
+      return 'error.step 未引用有效 steps.id'
+    }
+  }
+
+  if (document.error && document.error.line !== undefined && document.error.line < 1) {
+    return 'error.line 必须为正整数'
+  }
+
+  if (document.error && document.error.lastState !== undefined) {
+    const lastState = document.error.lastState
+    if (lastState < 0 || lastState >= document.states.length) {
+      return 'error.last_state 未引用有效 states.id'
+    }
+  }
+
+  if (document.error) {
+    const allowedErrorTypes = new Set(['runtime', 'timeout', 'validation', 'sandbox', 'unknown'])
+    if (!allowedErrorTypes.has(document.error.type)) {
+      return 'error.type 不在允许范围内'
+    }
+    if (!document.error.message || document.error.message.length > 512) {
+      return 'error.message 长度不合法'
+    }
+    if (document.error.message.includes('\n')) {
+      return 'error.message 不允许包含换行符'
+    }
+  }
+
+  const steps = document.steps ?? []
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index]
+    if (step.id !== index) {
+      return 'steps.id 必须从 0 连续递增'
+    }
+    if (step.before < 0 || step.before >= document.states.length) {
+      return 'steps.before 未引用有效 states.id'
+    }
+    if (step.after !== undefined) {
+      if (step.after < 0 || step.after >= document.states.length) {
+        return 'steps.after 未引用有效 states.id'
+      }
+    } else if (!document.error || document.error.step !== step.id) {
+      return 'steps.after 缺失时必须存在 error.step'
+    }
+    if (step.code?.line !== undefined && step.code.line < 1) {
+      return 'steps.code.line 必须为正整数'
+    }
+    if (step.code?.col !== undefined && step.code.col < 1) {
+      return 'steps.code.col 必须为正整数'
+    }
+  }
+
+  return ''
 }
 
 /**

@@ -10,11 +10,11 @@
 
 import { get, post } from './http'
 import type {
-    User,
-    UserStatus,
-    LoginRequest,
-    LoginResponse,
-    RegisterRequest,
+  User,
+  UserStatus,
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
 } from '@/types/auth'
 
 /* ----------------------------------------------------------------
@@ -27,16 +27,16 @@ import type {
  * @interface
  */
 interface RawUser {
-    /** 用户 ID */
-    id: number
-    /** 用户名 */
-    username: string
-    /** 头像路径（可为 null） */
-    avatar_url: string | null
-    /** 账号状态 */
-    status: UserStatus
-    /** 创建时间 */
-    created_at: string
+  /** 用户 ID */
+  id: number
+  /** 用户名 */
+  username: string
+  /** 头像路径（可为 null） */
+  avatar_url: string | null
+  /** 账号状态 */
+  status: UserStatus
+  /** 创建时间 */
+  created_at: string
 }
 
 /**
@@ -45,12 +45,12 @@ interface RawUser {
  * @interface
  */
 interface RawLoginResponse {
-    /** JWT */
-    token: string
-    /** 用户信息 */
-    user: RawUser
-    /** 过期时间 */
-    expires_at: string
+  /** JWT */
+  token: string
+  /** 用户信息 */
+  user: RawUser
+  /** 过期时间 */
+  expires_at: string
 }
 
 /* ----------------------------------------------------------------
@@ -64,13 +64,13 @@ interface RawLoginResponse {
  * @returns 前端 User 对象
  */
 function mapUser(raw: RawUser): User {
-    return {
-        id: raw.id,
-        username: raw.username,
-        avatarUrl: raw.avatar_url,
-        status: raw.status,
-        createdAt: raw.created_at,
-    }
+  return {
+    id: raw.id,
+    username: raw.username,
+    avatarUrl: raw.avatar_url,
+    status: raw.status,
+    createdAt: raw.created_at,
+  }
 }
 
 /**
@@ -80,11 +80,11 @@ function mapUser(raw: RawUser): User {
  * @returns 前端 LoginResponse 对象
  */
 function mapLoginResponse(raw: RawLoginResponse): LoginResponse {
-    return {
-        token: raw.token,
-        user: mapUser(raw.user),
-        expiresAt: raw.expires_at,
-    }
+  return {
+    token: raw.token,
+    user: mapUser(raw.user),
+    expiresAt: raw.expires_at,
+  }
 }
 
 /* ----------------------------------------------------------------
@@ -99,8 +99,8 @@ function mapLoginResponse(raw: RawLoginResponse): LoginResponse {
  * @throws {ApiError} 401 凭证错误 / 403 账号被封禁
  */
 export async function loginApi(request: LoginRequest): Promise<LoginResponse> {
-    const raw = await post<RawLoginResponse>('/auth/login', request)
-    return mapLoginResponse(raw)
+  const raw = await post<RawLoginResponse>('/auth/login', request)
+  return mapLoginResponse(raw)
 }
 
 /**
@@ -111,8 +111,8 @@ export async function loginApi(request: LoginRequest): Promise<LoginResponse> {
  * @throws {ApiError} 409 用户名已存在 / 422 参数校验失败
  */
 export async function registerApi(request: RegisterRequest): Promise<User> {
-    const raw = await post<RawUser>('/auth/register', request)
-    return mapUser(raw)
+  const raw = await post<RawUser>('/auth/register', request)
+  return mapUser(raw)
 }
 
 /**
@@ -121,7 +121,7 @@ export async function registerApi(request: RegisterRequest): Promise<User> {
  * @throws {ApiError} 401 令牌无效
  */
 export async function logoutApi(): Promise<void> {
-    await post<{ message: string }>('/auth/logout')
+  await post<{ message: string }>('/auth/logout')
 }
 
 /**
@@ -131,6 +131,6 @@ export async function logoutApi(): Promise<void> {
  * @throws {ApiError} 401 令牌无效或过期
  */
 export async function fetchMeApi(): Promise<User> {
-    const raw = await get<RawUser>('/auth/me')
-    return mapUser(raw)
+  const raw = await get<RawUser>('/auth/me')
+  return mapUser(raw)
 }

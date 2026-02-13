@@ -21,6 +21,7 @@ import type {
 import type { StepSummary } from '@/types/viz'
 
 import VizPlaceholder from './VizPlaceholder.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /**
  * 组件属性定义
@@ -332,7 +333,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   <section class="viz-panel">
     <header class="viz-panel__header">
       <div class="viz-panel__title">
-        <span class="material-symbols-outlined">graph_3</span>
+        <MaterialIcon name="graph_3" :size="18" />
         <span>{{ kindLabel || '可视化' }}</span>
       </div>
       <div v-if="step" class="viz-panel__step">
@@ -536,6 +537,11 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+}
+
+.viz-panel__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .viz-panel__step {

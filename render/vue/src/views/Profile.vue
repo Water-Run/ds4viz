@@ -2,13 +2,13 @@
 /**
  * 用户页面
  *
- * @component 用户页
+ * @component Profile
  */
 
 import { computed, ref } from 'vue'
 
 import { useAuthStore } from '@/stores/auth'
-import { uploadAvatarApi, changePasswordApi } from '@/api/users'
+import { uploadAvatarApi } from '@/api/users'
 import { fetchFavoritesApi, fetchExecutionHistoryApi } from '@/api/users'
 import { getUserAvatarUrl } from '@/api/users'
 import { extractErrorMessage } from '@/utils/error'
@@ -16,6 +16,7 @@ import { formatDateTime } from '@/utils/time'
 import Pagination from '@/components/common/Pagination.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 import type { FavoriteItem, ExecutionHistoryItem } from '@/api/users'
 
@@ -205,14 +206,25 @@ const handleAvatarChange = async (event: Event): Promise<void> => {
 }
 
 /**
+ * 头像加载失败
+ */
+const handleAvatarError = (event: Event): void => {
+  const target = event.target as HTMLImageElement
+  if (target.dataset.fallbackApplied === 'true') {
+    return
+  }
+  target.dataset.fallbackApplied = 'true'
+  target.src = '/ds4viz/logo.png'
+}
+
+/**
  * 更新密码
  */
 const handlePasswordChange = async (): Promise<void> => {
-  if (!currentUser.value) return
   passwordError.value = ''
   passwordSuccess.value = ''
   try {
-    await changePasswordApi(currentUser.value.id, {
+    await authStore.changePassword({
       oldPassword: oldPassword.value,
       newPassword: newPassword.value,
     })
@@ -265,16 +277,16 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   <div class="profile-page">
     <header class="profile-page__header">
       <div class="profile-page__title">
-        <span class="material-symbols-outlined">person</span>
+        <MaterialIcon name="person" :size="18" />
         <span>用户</span>
       </div>
     </header>
 
     <section class="profile-page__card">
       <div class="profile-card__avatar">
-        <img :src="avatarUrl" alt="avatar" />
+        <img :src="avatarUrl" alt="avatar" @error="handleAvatarError" />
         <label class="avatar-upload">
-          <span class="material-symbols-outlined">photo_camera</span>
+          <MaterialIcon name="photo_camera" :size="18" />
           <input
             class="sr-only"
             type="file"
@@ -387,6 +399,11 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   color: var(--color-text-primary);
 }
 
+.profile-page__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
 .profile-page__card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -424,6 +441,11 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   border: 1px solid var(--color-border);
   background-color: var(--color-bg-surface);
   cursor: pointer;
+}
+
+.avatar-upload :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .profile-card__info {

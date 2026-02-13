@@ -1,68 +1,72 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import Loading from '@/components/common/Loading.vue'
+/**
+ * 应用壳布局
+ *
+ * @component AppLayout
+ */
 
-/* -------------------------------------------------- *
- *  State                                              *
- * -------------------------------------------------- */
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+import Loading from '@/components/common/Loading.vue'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
+import { useAuthStore } from '@/stores/auth'
+
+/**
+ * 导航项
+ *
+ * @interface
+ */
+interface NavItem {
+  /** 标题 */
+  label: string
+  /** 图标名称 */
+  icon: string
+  /** 路由路径 */
+  to: string
+}
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const collapsed = ref(false)
-const initializing = ref(true)
+/** 侧栏收起状态 */
+const collapsed = ref<boolean>(false)
 
-/* -------------------------------------------------- *
- *  Navigation definition                              *
- * -------------------------------------------------- */
+/** 初始化状态 */
+const initializing = ref<boolean>(true)
 
-interface NavItem {
-  label: string
-  icon: string
-  to: string
-}
-
+/** 导航列表 */
 const navItems: NavItem[] = [
   { label: '编辑器', icon: 'code', to: '/playground' },
   { label: '模板库', icon: 'dashboard', to: '/templates' },
-  { label: '文档', icon: 'description', to: '/docs' },
+  { label: '文档', icon: 'menu_book', to: '/docs' },
 ]
 
-/* -------------------------------------------------- *
- *  Computed                                           *
- * -------------------------------------------------- */
-
+/** 当前用户 */
 const currentUser = computed(() => authStore.currentUser)
 
-const userInitial = computed(() => {
+/** 用户头像初始字母 */
+const userInitial = computed<string>(() => {
   const name = currentUser.value?.username ?? ''
-  return name.charAt(0).toUpperCase()
+  return name.length > 0 ? name.charAt(0).toUpperCase() : '-'
 })
 
-/* -------------------------------------------------- *
- *  Actions                                            *
- * -------------------------------------------------- */
-
-function toggleSidebar(): void {
+/** 切换侧栏 */
+const toggleSidebar = (): void => {
   collapsed.value = !collapsed.value
 }
 
-async function handleLogout(): Promise<void> {
-  authStore.logout()
+/** 退出登录 */
+const handleLogout = async (): Promise<void> => {
+  await authStore.logout()
   await router.push({ name: 'login' })
 }
-
-/* -------------------------------------------------- *
- *  Lifecycle                                          *
- * -------------------------------------------------- */
 
 onMounted(async () => {
   try {
     await authStore.fetchCurrentUser()
   } catch {
-    authStore.logout()
+    await authStore.logout()
     router.push({ name: 'login' })
     return
   }
@@ -72,12 +76,10 @@ onMounted(async () => {
 
 <template>
   <div class="app-layout">
-    <!-- ====== Sidebar ====== -->
     <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
-      <!-- Header -->
       <div class="sidebar__header">
         <div v-show="!collapsed" class="sidebar__logo-mark">
-          <span class="material-symbols-outlined">insights</span>
+          <MaterialIcon name="insights" :size="18" />
         </div>
         <span v-show="!collapsed" class="sidebar__brand">DS4Viz</span>
         <button
@@ -85,13 +87,10 @@ onMounted(async () => {
           :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'"
           @click="toggleSidebar"
         >
-          <span class="material-symbols-outlined">
-            {{ collapsed ? 'menu' : 'menu_open' }}
-          </span>
+          <MaterialIcon :name="collapsed ? 'menu' : 'menu_open'" :size="20" />
         </button>
       </div>
 
-      <!-- Navigation -->
       <nav class="sidebar__nav">
         <router-link
           v-for="item in navItems"
@@ -100,64 +99,35 @@ onMounted(async () => {
           class="nav-item"
           :title="collapsed ? item.label : undefined"
         >
-          <span class="material-symbols-outlined nav-item__icon">
-            {{ item.icon }}
-          </span>
-          <span v-show="!collapsed" class="nav-item__label">
-            {{ item.label }}
-          </span>
+          <MaterialIcon :name="item.icon" class="nav-item__icon" :size="20" />
+          <span v-show="!collapsed" class="nav-item__label">{{ item.label }}</span>
         </router-link>
       </nav>
 
-      <!-- Footer -->
       <div class="sidebar__footer">
-        <router-link
-          to="/profile"
-          class="sidebar__user"
-          title="个人资料"
-        >
+        <router-link to="/profile" class="sidebar__user" title="个人资料">
           <div class="sidebar__avatar">{{ userInitial }}</div>
           <span v-show="!collapsed" class="sidebar__username">
             {{ currentUser?.username ?? '' }}
           </span>
         </router-link>
-        <button
-          class="sidebar__logout"
-          title="退出登录"
-          @click="handleLogout"
-        >
-          <span class="material-symbols-outlined">logout</span>
+        <button class="sidebar__logout" title="退出登录" @click="handleLogout">
+          <MaterialIcon name="logout" :size="20" />
           <span v-show="!collapsed" class="sidebar__logout-label">退出</span>
         </button>
       </div>
     </aside>
 
-    <!-- ====== Main Content ====== -->
     <main class="app-layout__main">
       <div v-if="initializing" class="app-layout__loading">
-        <Loading message="加载中…" />
+        <Loading message="加载中..." />
       </div>
       <router-view v-else />
     </main>
   </div>
 </template>
 
-<!-- Global: icon font-variation defaults -->
-<style>
-.material-symbols-outlined {
-  font-variation-settings:
-    'FILL' 0,
-    'wght' 400,
-    'GRAD' 0,
-    'opsz' 20;
-}
-</style>
-
 <style scoped>
-/* ============================================= *
- *  Layout Shell                                  *
- * ============================================= */
-
 .app-layout {
   display: flex;
   min-height: 100dvh;
@@ -169,7 +139,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  background: var(--color-bg-primary);
+  background: var(--color-bg-base);
 }
 
 .app-layout__loading {
@@ -179,15 +149,11 @@ onMounted(async () => {
   justify-content: center;
 }
 
-/* ============================================= *
- *  Sidebar                                       *
- * ============================================= */
-
 .sidebar {
   position: sticky;
   top: 0;
   height: 100dvh;
-  width: 220px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -198,10 +164,8 @@ onMounted(async () => {
 }
 
 .sidebar--collapsed {
-  width: 56px;
+  width: var(--sidebar-width-collapsed);
 }
-
-/* ---- Header ---- */
 
 .sidebar__header {
   display: flex;
@@ -226,10 +190,6 @@ onMounted(async () => {
   background: var(--color-accent);
   color: #fff;
   border-radius: var(--radius-control);
-}
-
-.sidebar__logo-mark .material-symbols-outlined {
-  font-size: 18px;
 }
 
 .sidebar__brand {
@@ -262,8 +222,6 @@ onMounted(async () => {
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
-
-/* ---- Navigation ---- */
 
 .sidebar__nav {
   flex: 1;
@@ -306,7 +264,8 @@ onMounted(async () => {
 }
 
 .nav-item__icon {
-  font-size: 20px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 
@@ -319,8 +278,6 @@ onMounted(async () => {
 .sidebar--collapsed .nav-item {
   justify-content: center;
 }
-
-/* ---- Footer ---- */
 
 .sidebar__footer {
   flex-shrink: 0;
@@ -399,12 +356,7 @@ onMounted(async () => {
 
 .sidebar__logout:hover {
   background: var(--color-bg-hover);
-  color: var(--color-danger);
-}
-
-.sidebar__logout .material-symbols-outlined {
-  font-size: 20px;
-  flex-shrink: 0;
+  color: var(--color-error);
 }
 
 .sidebar__logout-label {
@@ -414,5 +366,18 @@ onMounted(async () => {
 
 .sidebar--collapsed .sidebar__logout {
   justify-content: center;
+}
+
+@media (max-width: 980px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: var(--z-sticky);
+  }
+
+  .app-layout__main {
+    margin-left: var(--sidebar-width-collapsed);
+  }
 }
 </style>

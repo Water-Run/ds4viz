@@ -36,6 +36,10 @@ body {
     overflow-x: hidden;
 }
 
+#app {
+    min-height: 100dvh;
+}
+
 /* -------- 排版 -------- */
 
 h1,

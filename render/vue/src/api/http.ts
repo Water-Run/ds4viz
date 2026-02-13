@@ -19,7 +19,7 @@ import { getHttpErrorMessage } from '@/utils/error'
  * 开发环境可通过 Vite server.proxy 将 /api 代理至后端。
  */
 const BASE_URL: string =
-    (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
 
 /**
  * API 请求错误
@@ -27,8 +27,8 @@ const BASE_URL: string =
  * 携带 HTTP 状态码与后端返回的错误消息。
  */
 export class ApiError extends Error {
-    /** HTTP 状态码 */
-    readonly status: number
+  /** HTTP 状态码 */
+  readonly status: number
 
     /**
      * 构造 API 错误
@@ -36,11 +36,11 @@ export class ApiError extends Error {
      * @param status - HTTP 状态码
      * @param message - 可读的错误消息
      */
-    constructor(status: number, message: string) {
-        super(message)
-        this.name = 'ApiError'
-        this.status = status
-    }
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
 }
 
 /**
@@ -51,20 +51,20 @@ export class ApiError extends Error {
  * @returns 完整 URL 字符串
  */
 function buildUrl(
-    path: string,
-    params?: Record<string, string | number | undefined>,
+  path: string,
+  params?: Record<string, string | number | undefined>,
 ): string {
-    const url = new URL(`${BASE_URL}${path}`, window.location.origin)
+  const url = new URL(`${BASE_URL}${path}`, window.location.origin)
 
-    if (params !== undefined) {
-        for (const [key, value] of Object.entries(params)) {
-            if (value !== undefined) {
-                url.searchParams.set(key, String(value))
-            }
-        }
+  if (params !== undefined) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined) {
+        url.searchParams.set(key, String(value))
+      }
     }
+  }
 
-    return url.toString()
+  return url.toString()
 }
 
 /**
@@ -74,18 +74,18 @@ function buildUrl(
  * @returns Headers 实例
  */
 function buildHeaders(contentType?: string): Headers {
-    const headers = new Headers()
+  const headers = new Headers()
 
-    if (contentType !== undefined) {
-        headers.set('Content-Type', contentType)
-    }
+  if (contentType !== undefined) {
+    headers.set('Content-Type', contentType)
+  }
 
-    const token = getToken()
-    if (token !== null) {
-        headers.set('Authorization', `Bearer ${token}`)
-    }
+  const token = getToken()
+  if (token !== null) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
 
-    return headers
+  return headers
 }
 
 /**
@@ -98,22 +98,18 @@ function buildHeaders(contentType?: string): Headers {
  * @returns 可展示给用户的错误消息
  */
 async function parseErrorMessage(response: Response): Promise<string> {
-    try {
-        const body: unknown = await response.json()
-        if (
-            typeof body === 'object' &&
-            body !== null &&
-            'error' in body
-        ) {
-            const errorField = (body as { error: unknown }).error
-            if (typeof errorField === 'string') {
-                return errorField
-            }
-        }
-    } catch {
-        /* JSON 解析失败，使用状态码回退 */
+  try {
+    const body: unknown = await response.json()
+    if (typeof body === 'object' && body !== null && 'error' in body) {
+      const errorField = (body as { error: unknown }).error
+      if (typeof errorField === 'string') {
+        return errorField
+      }
     }
-    return getHttpErrorMessage(response.status)
+  } catch {
+    /* JSON 解析失败，使用状态码回退 */
+  }
+  return getHttpErrorMessage(response.status)
 }
 
 /**
@@ -125,19 +121,19 @@ async function parseErrorMessage(response: Response): Promise<string> {
  * @throws {ApiError} HTTP 状态码非 2xx 时抛出
  */
 async function handleResponse<T>(response: Response): Promise<T> {
-    if (!response.ok) {
-        if (response.status === 401) {
-            removeToken()
-        }
-        const message = await parseErrorMessage(response)
-        throw new ApiError(response.status, message)
+  if (!response.ok) {
+    if (response.status === 401) {
+      removeToken()
     }
+    const message = await parseErrorMessage(response)
+    throw new ApiError(response.status, message)
+  }
 
-    if (response.status === 204) {
-        return undefined as T
-    }
+  if (response.status === 204) {
+    return undefined as T
+  }
 
-    return response.json() as Promise<T>
+  return response.json() as Promise<T>
 }
 
 /**
@@ -150,14 +146,14 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * @throws {ApiError} 请求失败时抛出
  */
 export async function get<T>(
-    path: string,
-    params?: Record<string, string | number | undefined>,
+  path: string,
+  params?: Record<string, string | number | undefined>,
 ): Promise<T> {
-    const response = await fetch(buildUrl(path, params), {
-        method: 'GET',
-        headers: buildHeaders(),
-    })
-    return handleResponse<T>(response)
+  const response = await fetch(buildUrl(path, params), {
+    method: 'GET',
+    headers: buildHeaders(),
+  })
+  return handleResponse<T>(response)
 }
 
 /**
@@ -170,16 +166,16 @@ export async function get<T>(
  * @throws {ApiError} 请求失败时抛出
  */
 export async function post<T>(
-    path: string,
-    body?: unknown,
+  path: string,
+  body?: unknown,
 ): Promise<T> {
-    const hasBody = body !== undefined
-    const response = await fetch(buildUrl(path), {
-        method: 'POST',
-        headers: buildHeaders(hasBody ? 'application/json' : undefined),
-        body: hasBody ? JSON.stringify(body) : undefined,
-    })
-    return handleResponse<T>(response)
+  const hasBody = body !== undefined
+  const response = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers: buildHeaders(hasBody ? 'application/json' : undefined),
+    body: hasBody ? JSON.stringify(body) : undefined,
+  })
+  return handleResponse<T>(response)
 }
 
 /**
@@ -192,16 +188,16 @@ export async function post<T>(
  * @throws {ApiError} 请求失败时抛出
  */
 export async function put<T>(
-    path: string,
-    body?: unknown,
+  path: string,
+  body?: unknown,
 ): Promise<T> {
-    const hasBody = body !== undefined
-    const response = await fetch(buildUrl(path), {
-        method: 'PUT',
-        headers: buildHeaders(hasBody ? 'application/json' : undefined),
-        body: hasBody ? JSON.stringify(body) : undefined,
-    })
-    return handleResponse<T>(response)
+  const hasBody = body !== undefined
+  const response = await fetch(buildUrl(path), {
+    method: 'PUT',
+    headers: buildHeaders(hasBody ? 'application/json' : undefined),
+    body: hasBody ? JSON.stringify(body) : undefined,
+  })
+  return handleResponse<T>(response)
 }
 
 /**
@@ -213,9 +209,9 @@ export async function put<T>(
  * @throws {ApiError} 请求失败时抛出
  */
 export async function del<T>(path: string): Promise<T> {
-    const response = await fetch(buildUrl(path), {
-        method: 'DELETE',
-        headers: buildHeaders(),
-    })
-    return handleResponse<T>(response)
+  const response = await fetch(buildUrl(path), {
+    method: 'DELETE',
+    headers: buildHeaders(),
+  })
+  return handleResponse<T>(response)
 }

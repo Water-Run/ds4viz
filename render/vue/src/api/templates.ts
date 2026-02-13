@@ -12,10 +12,10 @@
 import { get, post, del } from './http'
 import type { PaginatedResult } from '@/types/api'
 import type {
-    TemplateListItem,
-    Template,
-    TemplateCode,
-    TemplateSearchParams,
+  TemplateListItem,
+  Template,
+  TemplateCode,
+  TemplateSearchParams,
 } from '@/types/template'
 
 /* ----------------------------------------------------------------
@@ -28,20 +28,20 @@ import type {
  * @interface
  */
 interface RawTemplateListItem {
-    /** 模板 ID */
-    id: number
-    /** 标题 */
-    title: string
-    /** 分类 */
-    category: string
-    /** 描述 */
-    description: string
-    /** 收藏数 */
-    favorite_count: number
-    /** 当前用户是否已收藏 */
-    is_favorited: boolean
-    /** 创建时间 */
-    created_at: string
+  /** 模板 ID */
+  id: number
+  /** 标题 */
+  title: string
+  /** 分类 */
+  category: string
+  /** 描述 */
+  description: string
+  /** 收藏数 */
+  favorite_count: number
+  /** 当前用户是否已收藏 */
+  is_favorited: boolean
+  /** 创建时间 */
+  created_at: string
 }
 
 /**
@@ -50,12 +50,12 @@ interface RawTemplateListItem {
  * @interface
  */
 interface RawTemplateCode {
-    /** 语言 */
-    language: string
-    /** 代码内容 */
-    code: string
-    /** 说明（可为 null） */
-    explanation: string | null
+  /** 语言 */
+  language: string
+  /** 代码内容 */
+  code: string
+  /** 说明（可为 null） */
+  explanation: string | null
 }
 
 /**
@@ -64,24 +64,24 @@ interface RawTemplateCode {
  * @interface
  */
 interface RawTemplate {
-    /** 模板 ID */
-    id: number
-    /** 标题 */
-    title: string
-    /** 分类 */
-    category: string
-    /** 描述 */
-    description: string
-    /** 收藏数 */
-    favorite_count: number
-    /** 各语言代码 */
-    codes: RawTemplateCode[]
-    /** 当前用户是否已收藏 */
-    is_favorited: boolean
-    /** 创建时间 */
-    created_at: string
-    /** 更新时间 */
-    updated_at: string
+  /** 模板 ID */
+  id: number
+  /** 标题 */
+  title: string
+  /** 分类 */
+  category: string
+  /** 描述 */
+  description: string
+  /** 收藏数 */
+  favorite_count: number
+  /** 各语言代码 */
+  codes: RawTemplateCode[]
+  /** 当前用户是否已收藏 */
+  is_favorited: boolean
+  /** 创建时间 */
+  created_at: string
+  /** 更新时间 */
+  updated_at: string
 }
 
 /**
@@ -90,14 +90,14 @@ interface RawTemplate {
  * @interface
  */
 interface RawPaginated<T> {
-    /** 数据列表 */
-    items: T[]
-    /** 总条数 */
-    total: number
-    /** 当前页码 */
-    page: number
-    /** 每页条数 */
-    limit: number
+  /** 数据列表 */
+  items: T[]
+  /** 总条数 */
+  total: number
+  /** 当前页码 */
+  page: number
+  /** 每页条数 */
+  limit: number
 }
 
 /**
@@ -106,8 +106,8 @@ interface RawPaginated<T> {
  * @interface
  */
 interface RawCategoriesResponse {
-    /** 分类名称列表 */
-    items: string[]
+  /** 分类名称列表 */
+  items: string[]
 }
 
 /* ----------------------------------------------------------------
@@ -121,15 +121,15 @@ interface RawCategoriesResponse {
  * @returns 前端 TemplateListItem 对象
  */
 function mapTemplateListItem(raw: RawTemplateListItem): TemplateListItem {
-    return {
-        id: raw.id,
-        title: raw.title,
-        description: raw.description,
-        category: raw.category,
-        favoriteCount: raw.favorite_count,
-        isFavorited: raw.is_favorited,
-        createdAt: raw.created_at,
-    }
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description,
+    category: raw.category,
+    favoriteCount: raw.favorite_count,
+    isFavorited: raw.is_favorited,
+    createdAt: raw.created_at,
+  }
 }
 
 /**
@@ -139,11 +139,11 @@ function mapTemplateListItem(raw: RawTemplateListItem): TemplateListItem {
  * @returns 前端 TemplateCode 对象
  */
 function mapTemplateCode(raw: RawTemplateCode): TemplateCode {
-    return {
-        language: raw.language,
-        code: raw.code,
-        explanation: raw.explanation,
-    }
+  return {
+    language: raw.language,
+    code: raw.code,
+    explanation: raw.explanation,
+  }
 }
 
 /**
@@ -153,17 +153,17 @@ function mapTemplateCode(raw: RawTemplateCode): TemplateCode {
  * @returns 前端 Template 对象
  */
 function mapTemplate(raw: RawTemplate): Template {
-    return {
-        id: raw.id,
-        title: raw.title,
-        description: raw.description,
-        category: raw.category,
-        favoriteCount: raw.favorite_count,
-        isFavorited: raw.is_favorited,
-        codes: raw.codes.map(mapTemplateCode),
-        createdAt: raw.created_at,
-        updatedAt: raw.updated_at,
-    }
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description,
+    category: raw.category,
+    favoriteCount: raw.favorite_count,
+    isFavorited: raw.is_favorited,
+    codes: raw.codes.map(mapTemplateCode),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  }
 }
 
 /* ----------------------------------------------------------------
@@ -177,22 +177,22 @@ function mapTemplate(raw: RawTemplate): Template {
  * @returns 分页模板列表
  */
 export async function fetchTemplatesApi(
-    params?: TemplateSearchParams,
+  params?: TemplateSearchParams,
 ): Promise<PaginatedResult<TemplateListItem>> {
-    const raw = await get<RawPaginated<RawTemplateListItem>>(
-        '/templates',
-        {
-            category: params?.category,
-            page: params?.page,
-            limit: params?.limit,
-        },
-    )
-    return {
-        items: raw.items.map(mapTemplateListItem),
-        total: raw.total,
-        page: raw.page,
-        limit: raw.limit,
-    }
+  const raw = await get<RawPaginated<RawTemplateListItem>>(
+    '/templates',
+    {
+      category: params?.category,
+      page: params?.page,
+      limit: params?.limit,
+    },
+  )
+  return {
+    items: raw.items.map(mapTemplateListItem),
+    total: raw.total,
+    page: raw.page,
+    limit: raw.limit,
+  }
 }
 
 /**
@@ -203,22 +203,22 @@ export async function fetchTemplatesApi(
  * @throws {ApiError} 422 缺少 keyword
  */
 export async function searchTemplatesApi(
-    params: TemplateSearchParams,
+  params: TemplateSearchParams,
 ): Promise<PaginatedResult<TemplateListItem>> {
-    const raw = await get<RawPaginated<RawTemplateListItem>>(
-        '/templates/search',
-        {
-            keyword: params.keyword,
-            page: params.page,
-            limit: params.limit,
-        },
-    )
-    return {
-        items: raw.items.map(mapTemplateListItem),
-        total: raw.total,
-        page: raw.page,
-        limit: raw.limit,
-    }
+  const raw = await get<RawPaginated<RawTemplateListItem>>(
+    '/templates/search',
+    {
+      keyword: params.keyword,
+      page: params.page,
+      limit: params.limit,
+    },
+  )
+  return {
+    items: raw.items.map(mapTemplateListItem),
+    total: raw.total,
+    page: raw.page,
+    limit: raw.limit,
+  }
 }
 
 /**
@@ -229,10 +229,10 @@ export async function searchTemplatesApi(
  * @throws {ApiError} 404 模板不存在
  */
 export async function fetchTemplateDetailApi(
-    id: number,
+  id: number,
 ): Promise<Template> {
-    const raw = await get<RawTemplate>(`/templates/${id}`)
-    return mapTemplate(raw)
+  const raw = await get<RawTemplate>(`/templates/${id}`)
+  return mapTemplate(raw)
 }
 
 /**
@@ -244,11 +244,11 @@ export async function fetchTemplateDetailApi(
  * @throws {ApiError} 404 模板或语言实现不存在
  */
 export async function fetchTemplateCodeApi(
-    id: number,
-    language: string,
+  id: number,
+  language: string,
 ): Promise<TemplateCode> {
-    const raw = await get<RawTemplateCode>(`/templates/${id}/code/${language}`)
-    return mapTemplateCode(raw)
+  const raw = await get<RawTemplateCode>(`/templates/${id}/code/${language}`)
+  return mapTemplateCode(raw)
 }
 
 /**
@@ -257,8 +257,8 @@ export async function fetchTemplateCodeApi(
  * @returns 去重且按字母排序的分类名称数组
  */
 export async function fetchCategoriesApi(): Promise<string[]> {
-    const raw = await get<RawCategoriesResponse>('/templates/categories')
-    return raw.items
+  const raw = await get<RawCategoriesResponse>('/templates/categories')
+  return raw.items
 }
 
 /**
@@ -268,7 +268,7 @@ export async function fetchCategoriesApi(): Promise<string[]> {
  * @throws {ApiError} 403 用户被暂停或封禁 / 404 模板不存在 / 409 已收藏
  */
 export async function favoriteTemplateApi(templateId: number): Promise<void> {
-    await post<{ message: string }>('/favorites', { template_id: templateId })
+  await post<{ message: string }>('/favorites', { template_id: templateId })
 }
 
 /**
@@ -278,5 +278,5 @@ export async function favoriteTemplateApi(templateId: number): Promise<void> {
  * @throws {ApiError} 404 未收藏该模板
  */
 export async function unfavoriteTemplateApi(templateId: number): Promise<void> {
-    await del<{ message: string }>(`/favorites/${templateId}`)
+  await del<{ message: string }>(`/favorites/${templateId}`)
 }

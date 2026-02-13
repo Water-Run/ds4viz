@@ -1,8 +1,18 @@
 <script setup lang="ts">
+/**
+ * 404 页面
+ *
+ * @component NotFound
+ */
+
 import { useRouter } from 'vue-router'
+import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 const router = useRouter()
 
+/**
+ * 返回首页
+ */
 function goHome(): void {
   router.push({ name: 'playground' })
 }
@@ -10,7 +20,7 @@ function goHome(): void {
 
 <template>
   <div class="not-found">
-    <span class="material-symbols-outlined not-found__icon">explore_off</span>
+    <MaterialIcon name="explore_off" class="not-found__icon" />
     <h1 class="not-found__code">404</h1>
     <p class="not-found__message">页面未找到</p>
     <button class="not-found__action" @click="goHome">返回首页</button>
@@ -25,12 +35,13 @@ function goHome(): void {
   justify-content: center;
   min-height: 100dvh;
   gap: 12px;
-  color: var(--color-text-muted);
+  color: var(--color-text-tertiary);
   padding: 24px;
 }
 
 .not-found__icon {
-  font-size: 64px;
+  width: 64px;
+  height: 64px;
 }
 
 .not-found__code {
