@@ -76,7 +76,7 @@ const tomlContent = ref<string>('')
 /**
  * IR 文档
  */
-const document = ref<IrDocument | null>(null)
+const irDoc = ref<IrDocument | null>(null)
 
 /**
  * 可视化模型
@@ -151,17 +151,19 @@ const handleLanguageChange = (value: Language): void => {
 }
 
 /**
- * 解析 TOML 内容
+ * 解析 TOML 内容并更新可视化模型
+ *
+ * @param content - TOML 原始文本
  */
 const applyToml = (content: string): void => {
   const parsed = parseIrToml(content)
   if (!parsed.ok || !parsed.document) {
     executeError.value = parsed.errorMessage ?? 'TOML 解析失败'
-    document.value = null
+    irDoc.value = null
     vizModel.value = null
     return
   }
-  document.value = parsed.document
+  irDoc.value = parsed.document
   vizModel.value = buildVizModel(parsed.document)
   executeError.value = parsed.document.error?.message ?? ''
 }
@@ -258,15 +260,22 @@ const handleDownloadToml = (): void => {
 }
 
 /**
- * 跳转到第一步
+ * 停止自动播放并清除定时器
  */
-const goFirst = (): void => {
-  if (!vizModel.value || vizModel.value.steps.length === 0) return
+const stopPlay = (): void => {
   isPlaying.value = false
   if (playTimer.value !== null) {
     window.clearInterval(playTimer.value)
     playTimer.value = null
   }
+}
+
+/**
+ * 跳转到第一步
+ */
+const goFirst = (): void => {
+  if (!vizModel.value || vizModel.value.steps.length === 0) return
+  stopPlay()
   vizModel.value.currentStepId = vizModel.value.steps[0].id
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, 0)
 }
@@ -276,11 +285,7 @@ const goFirst = (): void => {
  */
 const goPrev = (): void => {
   if (!vizModel.value) return
-  isPlaying.value = false
-  if (playTimer.value !== null) {
-    window.clearInterval(playTimer.value)
-    playTimer.value = null
-  }
+  stopPlay()
   const index = currentStepIndex.value
   if (index <= 0) return
   const nextIndex = index - 1
@@ -293,11 +298,6 @@ const goPrev = (): void => {
  */
 const goNext = (): void => {
   if (!vizModel.value) return
-  isPlaying.value = false
-  if (playTimer.value !== null) {
-    window.clearInterval(playTimer.value)
-    playTimer.value = null
-  }
   const index = currentStepIndex.value
   const nextIndex = index + 1
   if (nextIndex >= vizModel.value.steps.length) return
@@ -310,11 +310,7 @@ const goNext = (): void => {
  */
 const goLast = (): void => {
   if (!vizModel.value || vizModel.value.steps.length === 0) return
-  isPlaying.value = false
-  if (playTimer.value !== null) {
-    window.clearInterval(playTimer.value)
-    playTimer.value = null
-  }
+  stopPlay()
   const lastIndex = vizModel.value.steps.length - 1
   vizModel.value.currentStepId = vizModel.value.steps[lastIndex].id
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, lastIndex)
@@ -326,21 +322,13 @@ const goLast = (): void => {
 const togglePlay = (): void => {
   if (!vizModel.value) return
   if (isPlaying.value) {
-    isPlaying.value = false
-    if (playTimer.value !== null) {
-      window.clearInterval(playTimer.value)
-      playTimer.value = null
-    }
+    stopPlay()
     return
   }
   isPlaying.value = true
   playTimer.value = window.setInterval(() => {
     if (!canStepForward.value) {
-      isPlaying.value = false
-      if (playTimer.value !== null) {
-        window.clearInterval(playTimer.value)
-        playTimer.value = null
-      }
+      stopPlay()
       return
     }
     goNext()
@@ -422,7 +410,7 @@ watch(
           </div>
         </div>
         <VizPanel
-          :kind="document?.object.kind"
+          :kind="irDoc?.object.kind"
           :data="currentState?.data"
           :step="stepSummary"
         />
