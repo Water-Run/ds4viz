@@ -370,7 +370,8 @@ const handleLanguageChange = (language: Language): void => {
     order: 2;
   }
 }
-</style>
+
 .docs-page__lang-btn:hover {
   border-color: var(--color-accent);
 }
+</style>

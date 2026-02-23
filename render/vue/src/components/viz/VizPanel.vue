@@ -483,16 +483,17 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               :class="{ 'graph-view__edge--highlight': isEdgeHighlighted(edge.from, edge.to) }"
               :marker-end="isDirected ? 'url(#arrow)' : undefined"
             />
-            <text
-              v-for="(edge, index) in graphLayout.edges"
-              v-if="isWeighted"
-              :key="`weight-${index}`"
-              :x="(edge.x1 + edge.x2) / 2"
-              :y="(edge.y1 + edge.y2) / 2 - 6"
-              class="graph-view__weight"
-            >
-              {{ edge.weight }}
-            </text>
+            <g v-if="isWeighted">
+              <text
+                v-for="(edge, index) in graphLayout.edges"
+                :key="`weight-${index}`"
+                :x="(edge.x1 + edge.x2) / 2"
+                :y="(edge.y1 + edge.y2) / 2 - 6"
+                class="graph-view__weight"
+              >
+                {{ edge.weight }}
+              </text>
+            </g>
             <g v-for="node in graphLayout.nodes" :key="node.id">
               <circle
                 :cx="node.x"
@@ -734,8 +735,10 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
     transform: translateY(0);
   }
 }
-</style>
+
 .tree-view__node--highlight {
   fill: var(--color-accent-wash);
   stroke: var(--color-accent);
 }
+
+</style>

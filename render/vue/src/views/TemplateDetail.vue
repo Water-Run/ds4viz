@@ -12,6 +12,8 @@ import { useTemplatesStore } from '@/stores/templates'
 import { formatRelativeTime } from '@/utils/time'
 import { extractErrorMessage } from '@/utils/error'
 import { LANGUAGE_LABELS } from '@/types/api'
+import type { Language } from '@/types/api'
+import type { TemplateCode } from '@/types/template'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
@@ -44,7 +46,28 @@ const loading = ref<boolean>(false)
 const detail = computed(() => store.currentDetail)
 
 /**
+ * 当前选中的代码语言
+ */
+const selectedCodeLang = ref<string>('')
+
+/**
  * 可用语言列表
+ */
+const availableLanguages = computed<string[]>(() => {
+  return detail.value?.codes.map((c) => c.language) ?? []
+})
+
+/**
+ * 当前展示的代码块
+ */
+const currentCode = computed<TemplateCode | null>(() => {
+  if (!detail.value) return null
+  const lang = selectedCodeLang.value
+  return detail.value.codes.find((c) => c.language === lang) ?? detail.value.codes[0] ?? null
+})
+
+/**
+ * 语言显示名称
  */
 const languageLabel = computed<string>(() => {
   const codes = detail.value?.codes ?? []
@@ -54,6 +77,15 @@ const languageLabel = computed<string>(() => {
   })
   return labels.join(' / ')
 })
+
+/**
+ * 切换代码语言
+ *
+ * @param lang - 语言标识
+ */
+const handleCodeLangChange = (lang: string): void => {
+  selectedCodeLang.value = lang
+}
 
 /**
  * 加载模板详情
@@ -67,6 +99,9 @@ const handleLoad = async (): Promise<void> => {
   errorMessage.value = ''
   try {
     await store.loadDetail(templateId.value)
+    if (detail.value && detail.value.codes.length > 0) {
+      selectedCodeLang.value = detail.value.codes[0].language
+    }
   } catch (error: unknown) {
     errorMessage.value = extractErrorMessage(error)
   } finally {
@@ -119,6 +154,27 @@ onMounted(async () => {
             <span>{{ languageLabel }}</span>
           </div>
         </div>
+      </section>
+
+      <section v-if="detail.codes.length > 0" class="detail-card">
+        <div class="code-section__header">
+          <h3 class="card-title">代码</h3>
+          <div class="code-section__langs">
+            <button
+              v-for="lang in availableLanguages"
+              :key="lang"
+              class="code-lang-btn"
+              :class="{ 'code-lang-btn--active': selectedCodeLang === lang }"
+              @click="handleCodeLangChange(lang)"
+            >
+              {{ LANGUAGE_LABELS[lang as Language] ?? lang }}
+            </button>
+          </div>
+        </div>
+        <pre v-if="currentCode" class="code-block"><code>{{ currentCode.code }}</code></pre>
+        <p v-if="currentCode?.explanation" class="code-explanation">
+          {{ currentCode.explanation }}
+        </p>
       </section>
     </div>
   </div>
@@ -205,6 +261,70 @@ onMounted(async () => {
 .stat :deep(.material-icon) {
   width: 16px;
   height: 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.code-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-section__langs {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.code-lang-btn {
+  height: var(--control-height-sm);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-body);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.code-lang-btn:hover {
+  border-color: var(--color-accent);
+}
+
+.code-lang-btn--active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background-color: var(--color-accent-wash);
+}
+
+.code-block {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-surface-alt);
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--leading-code);
+  color: var(--color-text-body);
+  overflow: auto;
+  max-height: 400px;
+}
+
+.code-explanation {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+  line-height: var(--leading-relaxed);
 }
 
 .primary-btn {

@@ -99,7 +99,7 @@ function validateDocument(document: IrDocument): string {
     return `不支持的数据结构类型: ${document.object.kind}`
   }
 
-  if (document.meta.langVersion && !/^[0-9a-z.+-]+$/i.test(document.meta.langVersion)) {
+  if (document.meta.langVersion && !/^[0-9a-z.+-]+$/.test(document.meta.langVersion)) {
     return 'meta.lang_version 格式不合法'
   }
 
