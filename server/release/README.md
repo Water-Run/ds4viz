@@ -81,7 +81,7 @@ python src/main.py --test
 独立的REPL, 直接写数据库, 做的简单, 无额外后端接口.  
 
 ```bash
-cd admin-repl && lua admin-repl.lua
+cd admin-repl && lua admin-repl.lua # 确保进入正确目录, 避免日志位置错误
 ```
 
 ## 文档  

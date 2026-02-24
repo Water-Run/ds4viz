@@ -69,13 +69,21 @@ const editorLanguage = computed<string>(() => {
 })
 
 /**
+ * Monaco 编辑器静态配置
+ *
+ * 提升为模块级常量，避免每次 computed 求值产生新的嵌套对象引用。
+ */
+const EDITOR_MINIMAP = { enabled: false } as const
+const EDITOR_SCROLLBAR = { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 } as const
+
+/**
  * Monaco 编辑器配置
  */
 const editorOptions = computed(() => ({
   fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 13,
   lineHeight: 20,
-  minimap: { enabled: false },
+  minimap: EDITOR_MINIMAP,
   scrollBeyondLastLine: false,
   wordWrap: 'on',
   lineNumbers: 'on',
@@ -83,10 +91,7 @@ const editorOptions = computed(() => ({
   readOnly: props.readonly,
   tabSize: 4,
   automaticLayout: true,
-  scrollbar: {
-    verticalScrollbarSize: 6,
-    horizontalScrollbarSize: 6,
-  },
+  scrollbar: EDITOR_SCROLLBAR,
 }))
 
 /**
@@ -135,9 +140,11 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (editorRef.value) {
-    editorRef.value.dispose()
-  }
+  /*
+   * 不手动调用 editorRef.value.dispose()。
+   * VueMonacoEditor 包装组件在自身 onBeforeUnmount 中管理 Monaco 实例的销毁，
+   * 若此处提前 dispose 会导致子组件清理时访问已销毁实例，引发页面冻结。
+   */
   editorRef.value = null
   monacoRef.value = null
   decorationIds.value = []

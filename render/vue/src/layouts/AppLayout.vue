@@ -5,8 +5,8 @@
  * @component AppLayout
  */
 
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
@@ -27,6 +27,7 @@ interface NavItem {
 }
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 /** 侧栏收起状态 */
@@ -34,6 +35,12 @@ const collapsed = ref<boolean>(false)
 
 /** 初始化状态 */
 const initializing = ref<boolean>(true)
+
+/** 是否为移动端视口 */
+const isMobile = ref<boolean>(false)
+
+/** MediaQueryList 引用，用于清理监听 */
+let mediaQuery: MediaQueryList | null = null
 
 /** 导航列表 */
 const navItems: NavItem[] = [
@@ -51,9 +58,26 @@ const userInitial = computed<string>(() => {
   return name.length > 0 ? name.charAt(0).toUpperCase() : '-'
 })
 
+/**
+ * 响应视口变化，进入移动模式时自动收起侧栏
+ *
+ * @param event - 媒体查询变化事件
+ */
+const handleMediaChange = (event: MediaQueryListEvent): void => {
+  isMobile.value = event.matches
+  if (event.matches && !collapsed.value) {
+    collapsed.value = true
+  }
+}
+
 /** 切换侧栏 */
 const toggleSidebar = (): void => {
   collapsed.value = !collapsed.value
+}
+
+/** 关闭移动端侧栏（点击遮罩层） */
+const closeMobileSidebar = (): void => {
+  collapsed.value = true
 }
 
 /** 退出登录 */
@@ -62,7 +86,28 @@ const handleLogout = async (): Promise<void> => {
   await router.push({ name: 'login' })
 }
 
+/**
+ * 路由变化时，移动端自动收起侧栏
+ */
+watch(
+  () => route.path,
+  () => {
+    if (isMobile.value && !collapsed.value) {
+      collapsed.value = true
+    }
+  },
+)
+
 onMounted(async () => {
+  /* ---- 响应式侧栏 ---- */
+  mediaQuery = window.matchMedia('(max-width: 980px)')
+  isMobile.value = mediaQuery.matches
+  if (isMobile.value) {
+    collapsed.value = true
+  }
+  mediaQuery.addEventListener('change', handleMediaChange)
+
+  /* ---- 用户认证 ---- */
   try {
     await authStore.fetchCurrentUser()
   } catch {
@@ -72,15 +117,22 @@ onMounted(async () => {
   }
   initializing.value = false
 })
+
+onBeforeUnmount(() => {
+  mediaQuery?.removeEventListener('change', handleMediaChange)
+})
 </script>
 
 <template>
   <div class="app-layout">
     <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
       <div class="sidebar__header">
-        <div v-show="!collapsed" class="sidebar__logo-mark">
-          <MaterialIcon name="insights" :size="18" />
-        </div>
+        <img
+          v-show="!collapsed"
+          src="/ds4viz/logo.png"
+          alt="DS4Viz"
+          class="sidebar__logo-img"
+        />
         <span v-show="!collapsed" class="sidebar__brand">DS4Viz</span>
         <button
           class="sidebar__toggle"
@@ -118,6 +170,15 @@ onMounted(async () => {
       </div>
     </aside>
 
+    <!-- 移动端遮罩层 -->
+    <Transition name="fade">
+      <div
+        v-if="isMobile && !collapsed"
+        class="sidebar-overlay"
+        @click="closeMobileSidebar"
+      />
+    </Transition>
+
     <main class="app-layout__main">
       <div v-if="initializing" class="app-layout__loading">
         <Loading message="加载中..." />
@@ -130,12 +191,14 @@ onMounted(async () => {
 <style scoped>
 .app-layout {
   display: flex;
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .app-layout__main {
   flex: 1;
   min-width: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -148,6 +211,17 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
 }
+
+/* ---- 遮罩层 ---- */
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+/* ---- 侧栏 ---- */
 
 .sidebar {
   position: sticky;
@@ -180,16 +254,12 @@ onMounted(async () => {
   justify-content: center;
 }
 
-.sidebar__logo-mark {
+.sidebar__logo-img {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-accent);
-  color: #fff;
   border-radius: var(--radius-control);
+  object-fit: contain;
 }
 
 .sidebar__brand {

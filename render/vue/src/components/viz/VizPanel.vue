@@ -515,7 +515,8 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
 .viz-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background-color: var(--color-bg-surface);
@@ -526,6 +527,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-surface-alt);
@@ -568,6 +570,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
 
 .viz-panel__body {
   flex: 1;
+  min-height: 0;
   padding: var(--space-3);
   overflow: auto;
 }
@@ -673,6 +676,11 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   stroke: var(--color-accent);
 }
 
+.tree-view__node--highlight {
+  fill: var(--color-accent-wash);
+  stroke: var(--color-accent);
+}
+
 .tree-view__label,
 .graph-view__label {
   font-size: 12px;
@@ -735,10 +743,4 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
     transform: translateY(0);
   }
 }
-
-.tree-view__node--highlight {
-  fill: var(--color-accent-wash);
-  stroke: var(--color-accent);
-}
-
 </style>

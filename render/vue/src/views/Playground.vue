@@ -5,7 +5,7 @@
  * @component Playground
  */
 
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { executeCodeApi } from '@/api/executions'
@@ -42,6 +42,13 @@ const language = ref<Language>('python')
  * 代码内容
  */
 const code = ref<string>(getDefaultTemplate('python'))
+
+/**
+ * 语言选择器强制刷新键
+ *
+ * 用户取消语言切换时递增，迫使组件重新挂载以重置原生 select 的视觉状态。
+ */
+const languageSelectKey = ref<number>(0)
 
 /**
  * 模板加载中
@@ -137,11 +144,16 @@ const canStepForward = computed<boolean>(() => {
 
 /**
  * 处理语言切换
+ *
+ * 仅在用户确认后才真正更新 language；取消时通过递增 key 重置选择器。
+ *
+ * @param value - 用户选择的目标语言
  */
 const handleLanguageChange = (value: Language): void => {
   if (code.value.trim().length > 0) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
     if (!confirmed) {
+      languageSelectKey.value += 1
       return
     }
   }
@@ -175,11 +187,7 @@ const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
   running.value = true
-  isPlaying.value = false
-  if (playTimer.value !== null) {
-    window.clearInterval(playTimer.value)
-    playTimer.value = null
-  }
+  stopPlay()
   try {
     const result = await executeCodeApi(language.value, code.value)
     if (result.tomlOutput) {
@@ -235,11 +243,7 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   const content = await file.text()
   tomlContent.value = content
   applyToml(content)
-  isPlaying.value = false
-  if (playTimer.value !== null) {
-    window.clearInterval(playTimer.value)
-    playTimer.value = null
-  }
+  stopPlay()
   input.value = ''
 }
 
@@ -349,6 +353,13 @@ onMounted(() => {
   }
 })
 
+/**
+ * 组件卸载时清除自动播放定时器，防止回调操作已卸载的响应式数据
+ */
+onBeforeUnmount(() => {
+  stopPlay()
+})
+
 watch(
   () => route.query.templateId,
   async (value) => {
@@ -360,6 +371,7 @@ watch(
     delete query.templateId
     router.replace({ query })
   },
+  { immediate: true },
 )
 </script>
 
@@ -425,7 +437,11 @@ watch(
             <span class="panel-toolbar__label">代码</span>
           </div>
           <div class="panel-toolbar__controls">
-            <LanguageSelect v-model="language" @update:model-value="handleLanguageChange" />
+            <LanguageSelect
+              :key="languageSelectKey"
+              :model-value="language"
+              @update:model-value="handleLanguageChange"
+            />
             <button class="run-btn" :disabled="running || templateLoading" @click="handleRun">
               <MaterialIcon name="play_arrow" :size="18" />
               <span>{{ running ? '运行中' : '运行' }}</span>
@@ -456,6 +472,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .playground__title {
@@ -506,7 +523,7 @@ watch(
 
 .playground__body {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
@@ -517,12 +534,15 @@ watch(
   flex-direction: column;
   gap: var(--space-2);
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .panel-toolbar__label {
@@ -611,6 +631,7 @@ watch(
 }
 
 .toml-view {
+  flex-shrink: 0;
   margin-top: var(--space-1);
 }
 
@@ -618,6 +639,7 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
@@ -641,7 +663,7 @@ watch(
 
 @media (max-width: 1100px) {
   .playground__body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>
