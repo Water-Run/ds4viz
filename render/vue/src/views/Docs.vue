@@ -40,7 +40,9 @@ const selectedLanguage = ref<Language>('python')
 const expanded = ref<Record<string, boolean>>({
   intro: true,
   guides: true,
-  api: true,
+  linear: true,
+  tree: true,
+  graph: true,
 })
 
 /**
@@ -56,7 +58,7 @@ const docTree = computed<DocNode[]>(() => [
     id: 'intro',
     title: '概览',
     content:
-      'ds4viz 是面向数据结构教学的可视化框架。通过执行示例代码，自动生成 TOML IR 并渲染为步骤化动画。',
+      'ds4viz 是面向数据结构教学的可视化框架。用户编写操作代码，框架自动记录每一步状态快照并生成 TOML IR，前端将其渲染为可交互的步骤化动画。支持 Python、Lua、Rust 三种语言。',
   },
   {
     id: 'guides',
@@ -73,40 +75,523 @@ const docTree = computed<DocNode[]>(() => [
         },
       },
       {
+        id: 'guide-config',
+        title: '全局配置',
+        content: '可选的全局配置，设定输出路径、标题、作者等元信息。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+dv.config(
+    output_path="trace.toml",
+    title="Demo",
+    author="WaterRun",
+    comment="示例"
+)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.config({
+    output_path = "trace.toml",
+    title = "Demo",
+    author = "WaterRun",
+    comment = "示例"
+})`,
+          rust: `use ds4viz::Config;
+
+ds4viz::config(
+    Config::builder()
+        .output_path("trace.toml")
+        .title("Demo")
+        .author("WaterRun")
+        .comment("示例")
+        .build()
+);`,
+        },
+      },
+      {
         id: 'guide-run',
         title: '运行',
-        content: '在编辑器中运行代码，生成 TOML 并进入可视化。',
+        content:
+          '在编辑器中编写代码并点击运行，后端执行后生成 TOML IR 并返回前端渲染可视化。也可在本地运行脚本直接生成 trace.toml 文件。',
       },
     ],
   },
   {
-    id: 'api',
-    title: '核心 API',
+    id: 'linear',
+    title: '线性结构',
     children: [
       {
         id: 'api-stack',
         title: 'Stack',
-        content: '演示栈的 push / pop 操作。',
+        content:
+          '栈，后进先出线性结构。支持 push（压栈）、pop（弹栈）、clear（清空）操作。pop 在栈为空时抛出异常。',
         codeBlocks: {
-          python:
-            'import ds4viz as dv\n\nwith dv.stack(label="demo") as s:\n    s.push(1)\n    s.pop()',
-          lua:
-            'local dv = require("ds4viz")\n\ndv.withContext(dv.stack("demo"), function(s)\n  s:push(1)\n  s:pop()\nend)',
-          rust:
-            'use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n  ds4viz::stack("demo", |s| {\n    s.push(1)?;\n    s.pop()?;\n    Ok(())\n  })\n}',
+          python: `import ds4viz as dv
+
+with dv.stack(label="demo_stack") as s:
+    s.push(10)
+    s.push(20)
+    s.push(30)
+    s.pop()
+    s.push(40)
+    s.pop()
+    s.pop()`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.stack("demo_stack"), function(s)
+    s:push(10)
+    s:push(20)
+    s:push(30)
+    s:pop()
+    s:push(40)
+    s:pop()
+    s:pop()
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::stack("demo_stack", |s| {
+        s.push(10)?;
+        s.push(20)?;
+        s.push(30)?;
+        s.pop()?;
+        s.push(40)?;
+        s.pop()?;
+        s.pop()?;
+        Ok(())
+    })
+}`,
         },
       },
       {
         id: 'api-queue',
         title: 'Queue',
-        content: '演示队列的 enqueue / dequeue 操作。',
+        content:
+          '队列，先进先出线性结构。支持 enqueue（入队）、dequeue（出队）、clear（清空）操作。dequeue 在队列为空时抛出异常。',
         codeBlocks: {
-          python:
-            'import ds4viz as dv\n\nwith dv.queue(label="demo") as q:\n    q.enqueue(1)\n    q.dequeue()',
-          lua:
-            'local dv = require("ds4viz")\n\ndv.withContext(dv.queue("demo"), function(q)\n  q:enqueue(1)\n  q:dequeue()\nend)',
-          rust:
-            'use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n  ds4viz::queue("demo", |q| {\n    q.enqueue(1)?;\n    q.dequeue()?;\n    Ok(())\n  })\n}',
+          python: `import ds4viz as dv
+
+with dv.queue(label="demo_queue") as q:
+    q.enqueue("A")
+    q.enqueue("B")
+    q.enqueue("C")
+    q.dequeue()
+    q.enqueue("D")
+    q.dequeue()`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.queue("demo_queue"), function(q)
+    q:enqueue("A")
+    q:enqueue("B")
+    q:enqueue("C")
+    q:dequeue()
+    q:enqueue("D")
+    q:dequeue()
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::queue("demo_queue", |q| {
+        q.enqueue("A")?;
+        q.enqueue("B")?;
+        q.enqueue("C")?;
+        q.dequeue()?;
+        q.enqueue("D")?;
+        q.dequeue()?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-slist',
+        title: 'SingleLinkedList',
+        content:
+          '单链表。支持 insertHead（头插）、insertTail（尾插）、insertAfter（指定节点后插入）、delete（删除节点）、deleteHead（删除头节点）、reverse（反转）操作。插入操作返回新节点 ID。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.single_linked_list(label="demo_slist") as slist:
+    node_a = slist.insert_head(10)
+    slist.insert_tail(20)
+    node_c = slist.insert_tail(30)
+    slist.insert_after(node_a, 15)
+    slist.delete(node_c)
+    slist.reverse()`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.singleLinkedList("demo_slist"), function(slist)
+    local node_a = slist:insertHead(10)
+    slist:insertTail(20)
+    local node_c = slist:insertTail(30)
+    slist:insertAfter(node_a, 15)
+    slist:delete(node_c)
+    slist:reverse()
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::single_linked_list("demo_slist", |slist| {
+        let node_a = slist.insert_head(10)?;
+        slist.insert_tail(20)?;
+        let node_c = slist.insert_tail(30)?;
+        slist.insert_after(node_a, 15)?;
+        slist.delete(node_c)?;
+        slist.reverse()?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-dlist',
+        title: 'DoubleLinkedList',
+        content:
+          '双向链表。在单链表基础上增加 insertBefore（指定节点前插入）、deleteTail（删除尾节点）操作，并支持双向遍历。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.double_linked_list(label="demo_dlist") as dlist:
+    node_a = dlist.insert_head(10)
+    node_b = dlist.insert_tail(30)
+    dlist.insert_after(node_a, 20)
+    dlist.insert_before(node_b, 25)
+    dlist.delete_tail()
+    dlist.reverse()`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.doubleLinkedList("demo_dlist"), function(dlist)
+    local node_a = dlist:insertHead(10)
+    local node_b = dlist:insertTail(30)
+    dlist:insertAfter(node_a, 20)
+    dlist:insertBefore(node_b, 25)
+    dlist:deleteTail()
+    dlist:reverse()
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::double_linked_list("demo_dlist", |dlist| {
+        let node_a = dlist.insert_head(10)?;
+        let node_b = dlist.insert_tail(30)?;
+        dlist.insert_after(node_a, 20)?;
+        dlist.insert_before(node_b, 25)?;
+        dlist.delete_tail()?;
+        dlist.reverse()?;
+        Ok(())
+    })
+}`,
+        },
+      },
+    ],
+  },
+  {
+    id: 'tree',
+    title: '树结构',
+    children: [
+      {
+        id: 'api-binary-tree',
+        title: 'BinaryTree',
+        content:
+          '二叉树。支持 insertRoot（插入根节点）、insertLeft / insertRight（插入左/右子节点）、delete（删除节点及其子树）、updateValue（更新节点值）操作。插入操作返回节点 ID。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.binary_tree(label="demo_tree") as tree:
+    root = tree.insert_root(1)
+    left = tree.insert_left(root, 2)
+    right = tree.insert_right(root, 3)
+    tree.insert_left(left, 4)
+    tree.insert_right(left, 5)
+    tree.insert_left(right, 6)
+    tree.update_value(right, 30)
+    tree.delete(left)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.binaryTree("demo_tree"), function(tree)
+    local root = tree:insertRoot(1)
+    local left = tree:insertLeft(root, 2)
+    local right = tree:insertRight(root, 3)
+    tree:insertLeft(left, 4)
+    tree:insertRight(left, 5)
+    tree:insertLeft(right, 6)
+    tree:updateValue(right, 30)
+    tree:delete(left)
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::binary_tree("demo_tree", |tree| {
+        let root = tree.insert_root(1)?;
+        let left = tree.insert_left(root, 2)?;
+        let right = tree.insert_right(root, 3)?;
+        tree.insert_left(left, 4)?;
+        tree.insert_right(left, 5)?;
+        tree.insert_left(right, 6)?;
+        tree.update_value(right, 30)?;
+        tree.delete(left)?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-bst',
+        title: 'BinarySearchTree',
+        content:
+          '二叉搜索树。支持 insert（插入，自动维护 BST 性质）和 delete（删除，自动处理叶子、单子、双子三种情况）操作。值类型限制为数值。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.binary_search_tree(label="demo_bst") as bst:
+    bst.insert(50)
+    bst.insert(30)
+    bst.insert(70)
+    bst.insert(20)
+    bst.insert(40)
+    bst.insert(60)
+    bst.insert(80)
+    bst.delete(30)
+    bst.insert(35)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.binarySearchTree("demo_bst"), function(bst)
+    bst:insert(50)
+    bst:insert(30)
+    bst:insert(70)
+    bst:insert(20)
+    bst:insert(40)
+    bst:insert(60)
+    bst:insert(80)
+    bst:delete(30)
+    bst:insert(35)
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::binary_search_tree("demo_bst", |bst| {
+        bst.insert(50)?;
+        bst.insert(30)?;
+        bst.insert(70)?;
+        bst.insert(20)?;
+        bst.insert(40)?;
+        bst.insert(60)?;
+        bst.insert(80)?;
+        bst.delete(30)?;
+        bst.insert(35)?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-heap',
+        title: 'Heap',
+        content:
+          '堆（优先队列）。支持 min（最小堆）和 max（最大堆）两种模式。insert 插入元素并自动上浮，extract 提取堆顶并自动下沉。内部以二叉树形式渲染。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+# 最小堆
+with dv.heap(label="demo_min_heap", heap_type="min") as h:
+    h.insert(15)
+    h.insert(10)
+    h.insert(20)
+    h.insert(5)
+    h.insert(30)
+    h.extract()
+    h.insert(2)
+    h.extract()`,
+          lua: `local ds4viz = require("ds4viz")
+
+-- 最小堆
+ds4viz.withContext(ds4viz.heap("demo_min_heap", "min"), function(h)
+    h:insert(15)
+    h:insert(10)
+    h:insert(20)
+    h:insert(5)
+    h:insert(30)
+    h:extract()
+    h:insert(2)
+    h:extract()
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    // 最小堆
+    ds4viz::heap("demo_min_heap", HeapType::Min, |h| {
+        h.insert(15)?;
+        h.insert(10)?;
+        h.insert(20)?;
+        h.insert(5)?;
+        h.insert(30)?;
+        h.extract()?;
+        h.insert(2)?;
+        h.extract()?;
+        Ok(())
+    })
+}`,
+        },
+      },
+    ],
+  },
+  {
+    id: 'graph',
+    title: '图结构',
+    children: [
+      {
+        id: 'api-graph-undirected',
+        title: 'GraphUndirected',
+        content:
+          '无向图。支持 addNode（添加节点）、addEdge（添加无向边，内部自动规范化方向）、removeNode（删除节点及关联边）、removeEdge（删除边）、updateNodeLabel（更新节点标签）操作。不允许自环。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.graph_undirected(label="demo_graph") as g:
+    g.add_node(0, "A")
+    g.add_node(1, "B")
+    g.add_node(2, "C")
+    g.add_node(3, "D")
+    g.add_edge(0, 1)
+    g.add_edge(0, 2)
+    g.add_edge(1, 2)
+    g.add_edge(2, 3)
+    g.remove_edge(0, 2)
+    g.remove_node(3)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.graphUndirected("demo_graph"), function(g)
+    g:addNode(0, "A")
+    g:addNode(1, "B")
+    g:addNode(2, "C")
+    g:addNode(3, "D")
+    g:addEdge(0, 1)
+    g:addEdge(0, 2)
+    g:addEdge(1, 2)
+    g:addEdge(2, 3)
+    g:removeEdge(0, 2)
+    g:removeNode(3)
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::graph_undirected("demo_graph", |g| {
+        g.add_node(0, "A")?;
+        g.add_node(1, "B")?;
+        g.add_node(2, "C")?;
+        g.add_node(3, "D")?;
+        g.add_edge(0, 1)?;
+        g.add_edge(0, 2)?;
+        g.add_edge(1, 2)?;
+        g.add_edge(2, 3)?;
+        g.remove_edge(0, 2)?;
+        g.remove_node(3)?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-graph-directed',
+        title: 'GraphDirected',
+        content:
+          '有向图。API 与无向图一致，区别在于 addEdge 保留方向信息（from → to）。可视化时以箭头标识方向。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.graph_directed(label="demo_digraph") as g:
+    g.add_node(0, "A")
+    g.add_node(1, "B")
+    g.add_node(2, "C")
+    g.add_node(3, "D")
+    g.add_edge(0, 1)
+    g.add_edge(1, 2)
+    g.add_edge(2, 3)
+    g.add_edge(3, 0)
+    g.remove_edge(3, 0)
+    g.add_edge(0, 2)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.graphDirected("demo_digraph"), function(g)
+    g:addNode(0, "A")
+    g:addNode(1, "B")
+    g:addNode(2, "C")
+    g:addNode(3, "D")
+    g:addEdge(0, 1)
+    g:addEdge(1, 2)
+    g:addEdge(2, 3)
+    g:addEdge(3, 0)
+    g:removeEdge(3, 0)
+    g:addEdge(0, 2)
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::graph_directed("demo_digraph", |g| {
+        g.add_node(0, "A")?;
+        g.add_node(1, "B")?;
+        g.add_node(2, "C")?;
+        g.add_node(3, "D")?;
+        g.add_edge(0, 1)?;
+        g.add_edge(1, 2)?;
+        g.add_edge(2, 3)?;
+        g.add_edge(3, 0)?;
+        g.remove_edge(3, 0)?;
+        g.add_edge(0, 2)?;
+        Ok(())
+    })
+}`,
+        },
+      },
+      {
+        id: 'api-graph-weighted',
+        title: 'GraphWeighted',
+        content:
+          '带权图。addEdge 需要额外传入 weight 参数，支持 updateWeight 更新边权重。通过 directed 参数控制有向/无向。可视化时在边上标注权值。',
+        codeBlocks: {
+          python: `import ds4viz as dv
+
+with dv.graph_weighted(label="demo_weighted") as g:
+    g.add_node(0, "A")
+    g.add_node(1, "B")
+    g.add_node(2, "C")
+    g.add_node(3, "D")
+    g.add_edge(0, 1, 4.0)
+    g.add_edge(0, 2, 2.0)
+    g.add_edge(1, 3, 5.0)
+    g.add_edge(2, 3, 1.0)
+    g.update_weight(0, 1, 3.0)
+    g.remove_edge(2, 3)`,
+          lua: `local ds4viz = require("ds4viz")
+
+ds4viz.withContext(ds4viz.graphWeighted("demo_weighted"), function(g)
+    g:addNode(0, "A")
+    g:addNode(1, "B")
+    g:addNode(2, "C")
+    g:addNode(3, "D")
+    g:addEdge(0, 1, 4.0)
+    g:addEdge(0, 2, 2.0)
+    g:addEdge(1, 3, 5.0)
+    g:addEdge(2, 3, 1.0)
+    g:updateWeight(0, 1, 3.0)
+    g:removeEdge(2, 3)
+end)`,
+          rust: `use ds4viz::prelude::*;
+
+fn main() -> ds4viz::Result<()> {
+    ds4viz::graph_weighted("demo_weighted", false, |g| {
+        g.add_node(0, "A")?;
+        g.add_node(1, "B")?;
+        g.add_node(2, "C")?;
+        g.add_node(3, "D")?;
+        g.add_edge(0, 1, 4.0)?;
+        g.add_edge(0, 2, 2.0)?;
+        g.add_edge(1, 3, 5.0)?;
+        g.add_edge(2, 3, 1.0)?;
+        g.update_weight(0, 1, 3.0)?;
+        g.remove_edge(2, 3)?;
+        Ok(())
+    })
+}`,
         },
       },
     ],
