@@ -5,7 +5,7 @@
  * @component Docs
  */
 
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { LANGUAGES, LANGUAGE_LABELS } from '@/types/api'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
@@ -30,7 +30,7 @@ interface DocNode {
 }
 
 /**
- * 选中语言
+ * 选中语言（全局共享，切换一处则处处切换）
  */
 const selectedLanguage = ref<Language>('python')
 
@@ -123,13 +123,65 @@ const toggleNode = (id: string): void => {
 }
 
 /**
- * 切换语言
+ * 获取代码块的可用语言列表
+ *
+ * @param codeBlocks - 代码块映射
+ * @returns 可用语言数组
+ */
+const getCodeBlockLanguages = (codeBlocks: Partial<Record<Language, string>>): Language[] => {
+  return Object.keys(codeBlocks) as Language[]
+}
+
+/**
+ * 获取代码块的有效显示语言
+ *
+ * 若当前选中语言在该代码块中可用则使用，否则回退到第一个可用语言。
+ *
+ * @param codeBlocks - 代码块映射
+ * @returns 有效语言标识
+ */
+const getEffectiveLanguage = (codeBlocks: Partial<Record<Language, string>>): Language => {
+  if (codeBlocks[selectedLanguage.value] !== undefined) {
+    return selectedLanguage.value
+  }
+  const available = Object.keys(codeBlocks) as Language[]
+  return available.length > 0 ? available[0] : 'python'
+}
+
+/**
+ * 获取语言对应的色点颜色
  *
  * @param language - 语言标识
+ * @returns CSS 颜色值
  */
-const handleLanguageChange = (language: Language): void => {
-  selectedLanguage.value = language
+const getLanguageDotColor = (language: Language): string => {
+  const colors: Record<Language, string> = {
+    python: 'var(--color-lang-python)',
+    lua: 'var(--color-lang-lua)',
+    rust: 'var(--color-lang-rust)',
+  }
+  return colors[language] ?? 'var(--color-text-tertiary)'
 }
+
+/**
+ * 处理代码块语言下拉切换（全局同步）
+ *
+ * @param event - 原生 change 事件
+ */
+const handleCodeBlockLangChange = (event: Event): void => {
+  const target = event.target as HTMLSelectElement
+  selectedLanguage.value = target.value as Language
+}
+
+/**
+ * 初始化时同步编辑器页的语言选择
+ */
+onMounted(() => {
+  const stored = localStorage.getItem('ds4viz_language') as Language | null
+  if (stored && LANGUAGES.includes(stored)) {
+    selectedLanguage.value = stored
+  }
+})
 </script>
 
 <template>
@@ -138,17 +190,6 @@ const handleLanguageChange = (language: Language): void => {
       <div class="docs-page__title">
         <MaterialIcon name="menu_book" :size="18" />
         <span>文档</span>
-      </div>
-      <div class="docs-page__lang">
-        <button
-          v-for="lang in LANGUAGES"
-          :key="lang"
-          class="docs-page__lang-btn"
-          :class="{ 'docs-page__lang-btn--active': selectedLanguage === lang }"
-          @click="handleLanguageChange(lang)"
-        >
-          {{ LANGUAGE_LABELS[lang] }}
-        </button>
       </div>
     </header>
 
@@ -178,10 +219,33 @@ const handleLanguageChange = (language: Language): void => {
           <div v-for="child in section.children" :key="child.id" class="doc-subsection">
             <h3 class="doc-subsection__title">{{ child.title }}</h3>
             <p v-if="child.content" class="doc-subsection__desc">{{ child.content }}</p>
-            <pre
-              v-if="child.codeBlocks && child.codeBlocks[selectedLanguage]"
-              class="doc-code"
-            ><code>{{ child.codeBlocks[selectedLanguage] }}</code></pre>
+            <div
+              v-if="child.codeBlocks && Object.keys(child.codeBlocks).length > 0"
+              class="doc-code-block"
+            >
+              <div class="doc-code-block__toolbar">
+                <div class="doc-code-block__lang-select">
+                  <span
+                    class="doc-code-block__dot"
+                    :style="{ backgroundColor: getLanguageDotColor(getEffectiveLanguage(child.codeBlocks)) }"
+                  />
+                  <select
+                    class="doc-code-block__select"
+                    :value="getEffectiveLanguage(child.codeBlocks)"
+                    @change="handleCodeBlockLangChange"
+                  >
+                    <option
+                      v-for="lang in getCodeBlockLanguages(child.codeBlocks)"
+                      :key="lang"
+                      :value="lang"
+                    >
+                      {{ LANGUAGE_LABELS[lang as Language] ?? lang }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              <pre class="doc-code"><code>{{ child.codeBlocks[getEffectiveLanguage(child.codeBlocks)] }}</code></pre>
+            </div>
           </div>
         </div>
       </section>
@@ -219,30 +283,7 @@ const handleLanguageChange = (language: Language): void => {
   height: 18px;
 }
 
-.docs-page__lang {
-  display: inline-flex;
-  gap: var(--space-1);
-}
-
-.docs-page__lang-btn {
-  height: var(--control-height-sm);
-  padding: 0 12px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-border-strong);
-  background-color: var(--color-bg-surface);
-  color: var(--color-text-body);
-  font-size: var(--text-xs);
-  transition:
-    border-color var(--duration-fast) var(--ease),
-    background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.docs-page__lang-btn--active {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background-color: var(--color-accent-wash);
-}
+/* ---- 主体 ---- */
 
 .docs-page__body {
   display: grid;
@@ -252,6 +293,8 @@ const handleLanguageChange = (language: Language): void => {
   min-height: 0;
   overflow: hidden;
 }
+
+/* ---- 目录侧栏 ---- */
 
 .docs-page__toc {
   border: 1px solid var(--color-border);
@@ -301,13 +344,17 @@ const handleLanguageChange = (language: Language): void => {
   cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--radius-sm);
-  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
 }
 
 .toc-section__item:hover {
   background-color: var(--color-bg-hover);
   color: var(--color-text-primary);
 }
+
+/* ---- 内容区 ---- */
 
 .docs-page__content {
   border: 1px solid var(--color-border);
@@ -350,16 +397,64 @@ const handleLanguageChange = (language: Language): void => {
   color: var(--color-text-body);
 }
 
+/* ---- 代码块容器 ---- */
+
+.doc-code-block {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-surface-alt);
+  overflow: hidden;
+}
+
+.doc-code-block__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface);
+}
+
+.doc-code-block__lang-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 26px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-surface);
+}
+
+.doc-code-block__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.doc-code-block__select {
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 .doc-code {
   margin: 0;
   padding: var(--space-2);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg-surface-alt);
-  border: 1px solid var(--color-border);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: var(--leading-code);
+  color: var(--color-text-body);
+  overflow: auto;
 }
+
+/* ---- 响应式 ---- */
 
 @media (max-width: 1100px) {
   .docs-page__body {
@@ -369,9 +464,5 @@ const handleLanguageChange = (language: Language): void => {
   .docs-page__toc {
     order: 2;
   }
-}
-
-.docs-page__lang-btn:hover {
-  border-color: var(--color-accent);
 }
 </style>

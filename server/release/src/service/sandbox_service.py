@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-02-05
+:time: 2026-02-25
 """
 
 import os
@@ -338,6 +338,9 @@ def _build_execution_env(workspace: Path) -> dict[str, str]:
     r"""
     构建执行环境变量，继承系统关键路径以支持已安装的库
 
+    同时转发 systemd-run --user 所需的 D-Bus 会话变量，
+    确保调度层能正常访问用户级 systemd 会话。
+
     :param workspace: 工作目录
     :return dict[str, str]: 环境变量字典
     """
@@ -371,6 +374,14 @@ def _build_execution_env(workspace: Path) -> dict[str, str]:
     rustup_home: str = os.environ.get("RUSTUP_HOME", "")
     if rustup_home:
         env["RUSTUP_HOME"] = rustup_home
+
+    dbus_address: str = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
+    if dbus_address:
+        env["DBUS_SESSION_BUS_ADDRESS"] = dbus_address
+
+    xdg_runtime_dir: str = os.environ.get("XDG_RUNTIME_DIR", "")
+    if xdg_runtime_dir:
+        env["XDG_RUNTIME_DIR"] = xdg_runtime_dir
 
     return env
 
@@ -520,6 +531,7 @@ def _check_systemd_available() -> bool:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return False
 
+
 def _run_in_sandbox(
     executor: LanguageExecutor,
     workspace: Path,
@@ -555,6 +567,7 @@ def _run_in_sandbox(
         timeout_seconds=config.timeout_seconds,
         env=env,
     )
+
 
 def run_code(
     language: SupportedLanguage,

@@ -237,8 +237,8 @@ $error: #ef4444;
 
 .auth-card {
   position: relative; z-index: 1;
-  width: 100%; max-width: 960px; height: 560px;
-  padding: 52px 64px;
+  width: 100%; max-width: 960px;
+  padding: 56px 64px;
   background-color: $surface;
   border: 1px solid $border;
   border-radius: 20px;
@@ -261,7 +261,8 @@ $error: #ef4444;
 
 .auth-brand {
   display: flex; flex-direction: column;
-  justify-content: space-between; height: 100%;
+  justify-content: space-between;
+  min-height: 340px;
 }
 .auth-brand__top { display: flex; flex-direction: column; }
 .auth-brand__logo {
@@ -297,25 +298,30 @@ $error: #ef4444;
 }
 .github-link__icon { width: 18px; height: 18px; flex-shrink: 0; }
 
-.auth-body { height: 100%; }
+.auth-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .auth-form {
-  display: flex; flex-direction: column; height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 .auth-form__header {
   display: flex; justify-content: flex-end;
-  margin-bottom: 32px; flex-shrink: 0;
+  margin-bottom: 28px; flex-shrink: 0;
 }
 .auth-form__title {
   margin: 0; font-size: 22px; font-weight: 600;
   letter-spacing: -0.01em; color: $text-primary; line-height: 1;
 }
 .auth-form__fields {
-  display: flex; flex-direction: column; gap: 20px; flex: 1;
+  display: flex; flex-direction: column; gap: 24px;
 }
 .auth-form__footer {
   display: flex; align-items: center;
   justify-content: space-between;
-  flex-shrink: 0; padding-top: 24px;
+  flex-shrink: 0; padding-top: 28px;
 }
 
 .form-field { display: flex; flex-direction: column; gap: 8px; }
@@ -334,7 +340,7 @@ $error: #ef4444;
   transition: color 160ms $ease;
 }
 .form-field__input {
-  width: 100%; height: 50px;
+  width: 100%; height: 54px;
   padding: 0 14px 0 44px;
   border: 1px solid $border-strong; border-radius: 12px;
   background-color: $surface;
@@ -389,7 +395,7 @@ $error: #ef4444;
 }
 .primary-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  gap: 8px; height: 46px; min-width: 100px; padding: 0 28px;
+  gap: 8px; height: 48px; min-width: 100px; padding: 0 28px;
   border: none; border-radius: 12px;
   background-color: $accent; color: #fff;
   font-size: 15px; font-weight: 600; cursor: pointer;
@@ -425,13 +431,12 @@ $error: #ef4444;
 
 @media (max-width: 820px) {
   .auth-card {
-    height: auto; display: flex; flex-direction: column;
+    display: flex; flex-direction: column;
     gap: 36px; padding: 36px 28px;
   }
-  .auth-brand { height: auto; gap: 24px; }
+  .auth-brand { min-height: auto; gap: 24px; }
   .auth-brand__logo { width: 88px; height: 88px; }
   .auth-brand__name { font-size: 22px; }
-  .auth-body { height: auto; }
   .auth-form__header { justify-content: flex-start; margin-bottom: 24px; }
 }
 </style>

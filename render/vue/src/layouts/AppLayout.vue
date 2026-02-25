@@ -26,6 +26,46 @@ interface NavItem {
   to: string
 }
 
+/** 默认头像颜色调色板（低饱和、适合白色前景文字） */
+const AVATAR_COLORS: readonly string[] = [
+  '#0078d4',
+  '#0e7c6b',
+  '#7c3aed',
+  '#c2410c',
+  '#0369a1',
+  '#6d28d9',
+  '#b45309',
+  '#059669',
+  '#dc2626',
+  '#4f46e5',
+]
+
+/**
+ * 根据用户名生成确定性头像背景色
+ *
+ * 使用 DJB2 变体哈希，对调色板长度取模。
+ *
+ * @param username - 用户名
+ * @returns 十六进制颜色字符串
+ */
+function getAvatarColor(username: string): string {
+  let hash = 0
+  for (let i = 0; i < username.length; i += 1) {
+    hash = ((hash << 5) - hash + username.charCodeAt(i)) | 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+/**
+ * 获取用户名首字母（大写）
+ *
+ * @param username - 用户名
+ * @returns 大写首字母，空值时返回 '-'
+ */
+function getAvatarInitial(username: string): string {
+  return username.length > 0 ? username.charAt(0).toUpperCase() : '-'
+}
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -54,8 +94,12 @@ const currentUser = computed(() => authStore.currentUser)
 
 /** 用户头像初始字母 */
 const userInitial = computed<string>(() => {
-  const name = currentUser.value?.username ?? ''
-  return name.length > 0 ? name.charAt(0).toUpperCase() : '-'
+  return getAvatarInitial(currentUser.value?.username ?? '')
+})
+
+/** 用户头像背景色（基于用户名哈希） */
+const userAvatarColor = computed<string>(() => {
+  return getAvatarColor(currentUser.value?.username ?? '')
 })
 
 /**
@@ -158,7 +202,12 @@ onBeforeUnmount(() => {
 
       <div class="sidebar__footer">
         <router-link to="/profile" class="sidebar__user" title="个人资料">
-          <div class="sidebar__avatar">{{ userInitial }}</div>
+          <div
+            class="sidebar__avatar"
+            :style="{ backgroundColor: userAvatarColor }"
+          >
+            {{ userInitial }}
+          </div>
           <span v-show="!collapsed" class="sidebar__username">
             {{ currentUser?.username ?? '' }}
           </span>
@@ -386,9 +435,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  background: var(--color-accent-wash);
-  color: var(--color-accent);
+  border-radius: 8px;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 600;
   line-height: 1;

@@ -5,7 +5,7 @@
  * @component Profile
  */
 
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useAuthStore } from '@/stores/auth'
 import { uploadAvatarApi } from '@/api/users'
@@ -19,6 +19,44 @@ import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 import type { FavoriteItem, ExecutionHistoryItem } from '@/api/users'
+
+/** 默认头像颜色调色板（低饱和、适合白色前景文字） */
+const AVATAR_COLORS: readonly string[] = [
+  '#0078d4',
+  '#0e7c6b',
+  '#7c3aed',
+  '#c2410c',
+  '#0369a1',
+  '#6d28d9',
+  '#b45309',
+  '#059669',
+  '#dc2626',
+  '#4f46e5',
+]
+
+/**
+ * 根据用户名生成确定性头像背景色
+ *
+ * @param username - 用户名
+ * @returns 十六进制颜色字符串
+ */
+function getAvatarColor(username: string): string {
+  let hash = 0
+  for (let i = 0; i < username.length; i += 1) {
+    hash = ((hash << 5) - hash + username.charCodeAt(i)) | 0
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+/**
+ * 获取用户名首字母（大写）
+ *
+ * @param username - 用户名
+ * @returns 大写首字母，空值时返回 '-'
+ */
+function getAvatarInitial(username: string): string {
+  return username.length > 0 ? username.charAt(0).toUpperCase() : '-'
+}
 
 /**
  * 认证状态
@@ -34,6 +72,11 @@ const avatarUploading = ref<boolean>(false)
  * 头像错误提示
  */
 const avatarError = ref<string>('')
+
+/**
+ * 头像图片加载失败标志
+ */
+const avatarLoadFailed = ref<boolean>(false)
 
 /**
  * 密码错误提示
@@ -121,11 +164,34 @@ const executionsExpanded = ref<boolean>(false)
 const currentUser = computed(() => authStore.currentUser)
 
 /**
- * 头像地址
+ * 是否拥有自定义头像（avatarUrl 非 null 且图片未加载失败）
  */
-const avatarUrl = computed(() => {
-  if (!currentUser.value) return ''
-  return currentUser.value.avatarUrl ?? getUserAvatarUrl(currentUser.value.id)
+const hasCustomAvatar = computed<boolean>(() => {
+  return currentUser.value !== null
+    && currentUser.value.avatarUrl !== null
+    && !avatarLoadFailed.value
+})
+
+/**
+ * 头像图片地址（仅当有自定义头像时使用）
+ */
+const avatarSrc = computed<string>(() => {
+  if (!currentUser.value || currentUser.value.avatarUrl === null) return ''
+  return getUserAvatarUrl(currentUser.value.id)
+})
+
+/**
+ * 用户名首字母
+ */
+const userInitial = computed<string>(() => {
+  return getAvatarInitial(currentUser.value?.username ?? '')
+})
+
+/**
+ * 默认头像背景色（基于用户名哈希）
+ */
+const userAvatarColor = computed<string>(() => {
+  return getAvatarColor(currentUser.value?.username ?? '')
 })
 
 /**
@@ -138,6 +204,16 @@ const favoritesTotalPages = computed(() => Math.max(1, Math.ceil(favoritesTotal.
  */
 const executionsTotalPages = computed(() =>
   Math.max(1, Math.ceil(executionsTotal.value / 10)),
+)
+
+/**
+ * avatarUrl 变化时重置加载失败标志
+ */
+watch(
+  () => currentUser.value?.avatarUrl,
+  () => {
+    avatarLoadFailed.value = false
+  },
 )
 
 /**
@@ -206,15 +282,10 @@ const handleAvatarChange = async (event: Event): Promise<void> => {
 }
 
 /**
- * 头像加载失败
+ * 头像图片加载失败，切换到默认字母头像
  */
-const handleAvatarError = (event: Event): void => {
-  const target = event.target as HTMLImageElement
-  if (target.dataset.fallbackApplied === 'true') {
-    return
-  }
-  target.dataset.fallbackApplied = 'true'
-  target.src = '/ds4viz/logo.png'
+const handleAvatarError = (): void => {
+  avatarLoadFailed.value = true
 }
 
 /**
@@ -284,7 +355,20 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
 
     <section class="profile-page__card">
       <div class="profile-card__avatar">
-        <img :src="avatarUrl" alt="avatar" @error="handleAvatarError" />
+        <img
+          v-if="hasCustomAvatar"
+          :src="avatarSrc"
+          alt="avatar"
+          class="profile-card__avatar-img"
+          @error="handleAvatarError"
+        />
+        <div
+          v-else
+          class="profile-card__default-avatar"
+          :style="{ backgroundColor: userAvatarColor }"
+        >
+          {{ userInitial }}
+        </div>
         <label class="avatar-upload">
           <MaterialIcon name="photo_camera" :size="18" />
           <input
@@ -414,18 +498,34 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   gap: var(--space-2);
 }
 
+/* ---- 头像区域 ---- */
+
 .profile-card__avatar {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 88px;
+  height: 88px;
 }
 
-.profile-card__avatar img {
-  width: 72px;
-  height: 72px;
+.profile-card__avatar-img {
+  width: 88px;
+  height: 88px;
   border-radius: 16px;
   object-fit: cover;
   border: 1px solid var(--color-border-strong);
+}
+
+.profile-card__default-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
 }
 
 .avatar-upload {
@@ -441,12 +541,19 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   border: 1px solid var(--color-border);
   background-color: var(--color-bg-surface);
   cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.avatar-upload:hover {
+  background-color: var(--color-bg-hover);
 }
 
 .avatar-upload :deep(.material-icon) {
   width: 18px;
   height: 18px;
 }
+
+/* ---- 信息区域 ---- */
 
 .profile-card__info {
   display: flex;
@@ -474,6 +581,8 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
+
+/* ---- 通用卡片元素 ---- */
 
 .card-title {
   margin: 0;
@@ -541,6 +650,8 @@ const handleExecutionsPage = async (page: number): Promise<void> => {
   font-size: var(--text-xs);
   color: var(--color-success);
 }
+
+/* ---- 列表 ---- */
 
 .list {
   display: flex;
