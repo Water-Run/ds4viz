@@ -2,6 +2,9 @@
 /**
  * 可视化面板
  *
+ * 支持栈、队列、链表、树、图等数据结构的交互式渲染，
+ * 步骤切换间提供平滑过渡动画。
+ *
  * @component VizPanel
  */
 
@@ -346,8 +349,9 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
       <VizPlaceholder v-if="isEmpty" />
 
       <div v-else class="viz-panel__content">
+        <!-- ── 栈 ── -->
         <div v-if="stackData" class="stack-view">
-          <div class="stack-view__items">
+          <TransitionGroup name="viz-item" tag="div" class="stack-view__items">
             <div
               v-for="(item, index) in stackData.items"
               :key="index"
@@ -357,11 +361,12 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               <span class="stack-view__value">{{ item }}</span>
               <span v-if="index === stackData.top" class="stack-view__badge">TOP</span>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
+        <!-- ── 队列 ── -->
         <div v-else-if="queueData" class="queue-view">
-          <div class="queue-view__items">
+          <TransitionGroup name="viz-item" tag="div" class="queue-view__items">
             <div
               v-for="(item, index) in queueData.items"
               :key="index"
@@ -375,11 +380,12 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               <span v-if="index === queueData.front" class="queue-view__badge">FRONT</span>
               <span v-if="index === queueData.rear" class="queue-view__badge">REAR</span>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
+        <!-- ── 单链表 ── -->
         <div v-else-if="slistData" class="list-view">
-          <div class="list-view__nodes">
+          <TransitionGroup name="viz-item" tag="div" class="list-view__nodes">
             <div
               v-for="node in slistData.nodes"
               :key="node.id"
@@ -395,11 +401,12 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               <div class="list-view__meta">#{{ node.id }} -> {{ node.next }}</div>
               <span v-if="node.id === slistData.head" class="list-view__badge">HEAD</span>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
+        <!-- ── 双链表 ── -->
         <div v-else-if="dlistData" class="list-view">
-          <div class="list-view__nodes">
+          <TransitionGroup name="viz-item" tag="div" class="list-view__nodes">
             <div
               v-for="node in dlistData.nodes"
               :key="node.id"
@@ -419,9 +426,10 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               <span v-if="node.id === dlistData.head" class="list-view__badge">HEAD</span>
               <span v-if="node.id === dlistData.tail" class="list-view__badge">TAIL</span>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
+        <!-- ── 树 ── -->
         <div v-else-if="treeLayout" class="tree-view">
           <svg
             class="tree-view__svg"
@@ -429,15 +437,15 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
             preserveAspectRatio="xMidYMid meet"
           >
             <line
-              v-for="(edge, index) in treeLayout.edges"
-              :key="`edge-${index}`"
-              :x1="treeLayout.nodes.find((node) => node.id === edge.from)?.x"
-              :y1="treeLayout.nodes.find((node) => node.id === edge.from)?.y"
-              :x2="treeLayout.nodes.find((node) => node.id === edge.to)?.x"
-              :y2="treeLayout.nodes.find((node) => node.id === edge.to)?.y"
+              v-for="edge in treeLayout.edges"
+              :key="`te-${edge.from}-${edge.to}`"
+              :x1="treeLayout.nodes.find((node) => node.id === edge.from)?.x ?? 0"
+              :y1="treeLayout.nodes.find((node) => node.id === edge.from)?.y ?? 0"
+              :x2="treeLayout.nodes.find((node) => node.id === edge.to)?.x ?? 0"
+              :y2="treeLayout.nodes.find((node) => node.id === edge.to)?.y ?? 0"
               class="tree-view__edge"
             />
-            <g v-for="node in treeLayout.nodes" :key="node.id">
+            <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
               <circle
                 :cx="node.x"
                 :cy="node.y"
@@ -453,6 +461,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
           </svg>
         </div>
 
+        <!-- ── 图 ── -->
         <div v-else-if="graphLayout" class="graph-view">
           <svg
             class="graph-view__svg"
@@ -473,8 +482,8 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               </marker>
             </defs>
             <line
-              v-for="(edge, index) in graphLayout.edges"
-              :key="`edge-${index}`"
+              v-for="edge in graphLayout.edges"
+              :key="`ge-${edge.from}-${edge.to}`"
               :x1="edge.x1"
               :y1="edge.y1"
               :x2="edge.x2"
@@ -485,8 +494,8 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
             />
             <g v-if="isWeighted">
               <text
-                v-for="(edge, index) in graphLayout.edges"
-                :key="`weight-${index}`"
+                v-for="edge in graphLayout.edges"
+                :key="`gw-${edge.from}-${edge.to}`"
                 :x="(edge.x1 + edge.x2) / 2"
                 :y="(edge.y1 + edge.y2) / 2 - 6"
                 class="graph-view__weight"
@@ -494,7 +503,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
                 {{ edge.weight }}
               </text>
             </g>
-            <g v-for="node in graphLayout.nodes" :key="node.id">
+            <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`">
               <circle
                 :cx="node.x"
                 :cy="node.y"
@@ -585,12 +594,22 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   animation: vizFadeIn var(--duration-viz) var(--ease);
 }
 
+/* ---- 线性结构通用网格 ---- */
+
 .stack-view__items,
-.queue-view__items {
+.queue-view__items,
+.list-view__nodes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: var(--space-2);
+  position: relative;
 }
+
+.list-view__nodes {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+/* ---- 线性结构条目 ---- */
 
 .stack-view__item,
 .queue-view__item,
@@ -600,7 +619,10 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background-color: var(--color-bg-surface);
-  transition: transform var(--duration-viz) var(--ease);
+  transition:
+    border-color var(--duration-viz) var(--ease),
+    background-color var(--duration-viz) var(--ease),
+    box-shadow var(--duration-viz) var(--ease);
 }
 
 .stack-view__item--top,
@@ -632,6 +654,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+  transition: color var(--duration-viz) var(--ease);
 }
 
 .list-view__meta {
@@ -640,11 +663,38 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   color: var(--color-text-tertiary);
 }
 
-.list-view__nodes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-2);
+.list-view__value--highlight {
+  color: var(--color-accent);
 }
+
+/* ---- TransitionGroup: viz-item (线性结构条目动画) ---- */
+
+.viz-item-enter-active,
+.viz-item-leave-active {
+  transition:
+    opacity var(--duration-viz) var(--ease),
+    transform var(--duration-viz) var(--ease);
+}
+
+.viz-item-enter-from {
+  opacity: 0;
+  transform: scale(0.92) translateY(8px);
+}
+
+.viz-item-leave-to {
+  opacity: 0;
+  transform: scale(0.92) translateY(-8px);
+}
+
+.viz-item-leave-active {
+  position: absolute;
+}
+
+.viz-item-move {
+  transition: transform var(--duration-viz) var(--ease);
+}
+
+/* ---- SVG 通用 ---- */
 
 .tree-view__svg,
 .graph-view__svg {
@@ -655,10 +705,17 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   background-color: var(--color-bg-surface-alt);
 }
 
+/* ---- 树 ---- */
+
 .tree-view__edge {
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 1;
-  transition: stroke var(--duration-viz) var(--ease);
+  transition:
+    x1 var(--duration-viz) var(--ease),
+    y1 var(--duration-viz) var(--ease),
+    x2 var(--duration-viz) var(--ease),
+    y2 var(--duration-viz) var(--ease),
+    stroke var(--duration-viz) var(--ease);
 }
 
 .tree-view__node {
@@ -666,9 +723,10 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   stroke: var(--color-border-strong);
   stroke-width: 1;
   transition:
+    cx var(--duration-viz) var(--ease),
+    cy var(--duration-viz) var(--ease),
     fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease),
-    transform var(--duration-viz) var(--ease);
+    stroke var(--duration-viz) var(--ease);
 }
 
 .tree-view__node--root {
@@ -681,17 +739,26 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   stroke: var(--color-accent);
 }
 
-.tree-view__label,
-.graph-view__label {
+.tree-view__label {
   font-size: 12px;
   fill: var(--color-text-primary);
   text-anchor: middle;
+  transition:
+    x var(--duration-viz) var(--ease),
+    y var(--duration-viz) var(--ease);
 }
+
+/* ---- 图 ---- */
 
 .graph-view__edge {
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 1.2;
-  transition: stroke var(--duration-viz) var(--ease);
+  transition:
+    x1 var(--duration-viz) var(--ease),
+    y1 var(--duration-viz) var(--ease),
+    x2 var(--duration-viz) var(--ease),
+    y2 var(--duration-viz) var(--ease),
+    stroke var(--duration-viz) var(--ease);
 }
 
 .graph-view__edge--highlight {
@@ -707,6 +774,8 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   stroke: var(--color-border-strong);
   stroke-width: 1;
   transition:
+    cx var(--duration-viz) var(--ease),
+    cy var(--duration-viz) var(--ease),
     fill var(--duration-viz) var(--ease),
     stroke var(--duration-viz) var(--ease);
 }
@@ -716,14 +785,22 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   stroke: var(--color-accent);
 }
 
-.list-view__value--highlight {
-  color: var(--color-accent);
+.graph-view__label {
+  font-size: 12px;
+  fill: var(--color-text-primary);
+  text-anchor: middle;
+  transition:
+    x var(--duration-viz) var(--ease),
+    y var(--duration-viz) var(--ease);
 }
 
 .graph-view__weight {
   font-size: 11px;
   fill: var(--color-accent);
   text-anchor: middle;
+  transition:
+    x var(--duration-viz) var(--ease),
+    y var(--duration-viz) var(--ease);
 }
 
 @media (max-width: 1100px) {

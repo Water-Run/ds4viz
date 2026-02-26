@@ -81,6 +81,11 @@ const executionInfo = ref<string>('')
 const tomlContent = ref<string>('')
 
 /**
+ * TOML 查看器展开状态
+ */
+const tomlExpanded = ref<boolean>(false)
+
+/**
  * IR 文档
  */
 const irDoc = ref<IrDocument | null>(null)
@@ -165,6 +170,8 @@ const handleLanguageChange = (value: Language): void => {
 /**
  * 解析 TOML 内容并更新可视化模型
  *
+ * 解析成功后自动导航到第一步以立即展示可视化结果。
+ *
  * @param content - TOML 原始文本
  */
 const applyToml = (content: string): void => {
@@ -177,6 +184,13 @@ const applyToml = (content: string): void => {
   }
   irDoc.value = parsed.document
   vizModel.value = buildVizModel(parsed.document)
+
+  /* 自动导航到第一步，使可视化立即可见 */
+  if (vizModel.value.steps.length > 0) {
+    vizModel.value.currentStepId = vizModel.value.steps[0].id
+    vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, 0)
+  }
+
   executeError.value = parsed.document.error?.message ?? ''
 }
 
@@ -187,6 +201,7 @@ const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
   running.value = true
+  tomlExpanded.value = false
   stopPlay()
   try {
     const result = await executeCodeApi(language.value, code.value)
@@ -242,6 +257,7 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   if (!file) return
   const content = await file.text()
   tomlContent.value = content
+  tomlExpanded.value = false
   applyToml(content)
   stopPlay()
   input.value = ''
@@ -426,8 +442,16 @@ watch(
           :data="currentState?.data"
           :step="stepSummary"
         />
-        <div v-if="tomlContent" class="toml-view">
-          <TomlViewer :content="tomlContent" />
+        <div v-if="tomlContent" class="toml-section">
+          <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
+            <MaterialIcon :name="tomlExpanded ? 'expand_less' : 'expand_more'" :size="16" />
+            <span>TOML IR</span>
+          </button>
+          <Transition name="slide-fade">
+            <div v-if="tomlExpanded" class="toml-section__content">
+              <TomlViewer :content="tomlContent" />
+            </div>
+          </Transition>
         </div>
       </section>
 
@@ -630,8 +654,35 @@ watch(
   height: 18px;
 }
 
-.toml-view {
+.toml-section {
   flex-shrink: 0;
+  margin-top: var(--space-1);
+}
+
+.toml-section__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.toml-section__toggle:hover {
+  color: var(--color-text-primary);
+}
+
+.toml-section__toggle :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
+}
+
+.toml-section__content {
   margin-top: var(--space-1);
 }
 
