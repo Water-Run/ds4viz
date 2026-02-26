@@ -2,13 +2,13 @@
 /**
  * 模板库页面
  *
- * 卡片列表 + 分类筛选 + 关键词搜索 + 收藏切换。
+ * 卡片列表 + 分类筛选 + 实时搜索 + 收藏切换 + 无限滚动。
  * 点击卡片跳转到编辑器页加载对应代码。
  *
  * @component Templates
  */
 
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
@@ -16,7 +16,6 @@ import { extractErrorMessage } from '@/utils/error'
 import { formatRelativeTime } from '@/utils/time'
 
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
@@ -25,20 +24,44 @@ const router = useRouter()
 const {
   items,
   total,
-  page,
-  totalPages,
   categories,
   selectedCategory,
   keyword,
   loading,
   errorMessage,
   isSearchMode,
+  hasMore,
 } = storeToRefs(store)
 
 /**
  * 搜索输入框绑定值
  */
 const searchInput = ref<string>('')
+
+/**
+ * 中文输入法组合状态
+ */
+const isComposing = ref<boolean>(false)
+
+/**
+ * 搜索防抖定时器
+ */
+let searchTimer: number | null = null
+
+/**
+ * IntersectionObserver 实例
+ */
+let observer: IntersectionObserver | null = null
+
+/**
+ * 无限滚动哨兵元素
+ */
+const sentinel = ref<HTMLElement | null>(null)
+
+/**
+ * 内容区容器引用（用于滚动回顶）
+ */
+const contentRef = ref<HTMLElement | null>(null)
 
 /**
  * 收藏操作中的模板 ID 集合
@@ -56,23 +79,64 @@ const favoriteError = ref<string>('')
 const hoveredId = ref<number | null>(null)
 
 /**
- * 执行搜索
+ * 滚动内容区到顶部
  */
-async function handleSearch(): Promise<void> {
-  const query = searchInput.value.trim()
-  if (query.length > 0) {
-    await store.search(query)
-  } else {
-    await store.clearSearch()
-  }
+const scrollToTop = (): void => {
+  contentRef.value?.scrollTo({ top: 0 })
 }
 
 /**
- * 清除搜索
+ * 防抖搜索
  */
-async function handleClearSearch(): Promise<void> {
+const debouncedSearch = (): void => {
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+  }
+  searchTimer = window.setTimeout(async () => {
+    const query = searchInput.value.trim()
+    if (query.length > 0) {
+      await store.search(query)
+    } else {
+      await store.clearSearch()
+    }
+    scrollToTop()
+  }, 300)
+}
+
+/**
+ * 输入事件（排除 IME 组合态）
+ */
+const handleInput = (): void => {
+  if (isComposing.value) return
+  debouncedSearch()
+}
+
+/**
+ * IME 组合开始
+ */
+const handleCompositionStart = (): void => {
+  isComposing.value = true
+}
+
+/**
+ * IME 组合结束
+ */
+const handleCompositionEnd = (): void => {
+  isComposing.value = false
+  debouncedSearch()
+}
+
+/**
+ * 清除搜索（立即触发，不走防抖）
+ */
+const handleClearSearch = async (): Promise<void> => {
   searchInput.value = ''
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
   await store.clearSearch()
+  scrollToTop()
 }
 
 /**
@@ -80,7 +144,7 @@ async function handleClearSearch(): Promise<void> {
  *
  * @param templateId - 模板 ID
  */
-async function handleToggleFavorite(templateId: number): Promise<void> {
+const handleToggleFavorite = async (templateId: number): Promise<void> => {
   if (togglingIds.value.has(templateId)) {
     return
   }
@@ -96,31 +160,63 @@ async function handleToggleFavorite(templateId: number): Promise<void> {
 }
 
 /**
- * 分页跳转
- *
- * @param targetPage - 目标页码
- */
-async function handlePageChange(targetPage: number): Promise<void> {
-  await store.goToPage(targetPage)
-}
-
-/**
  * 进入编辑器
  *
  * @param templateId - 模板 ID
  */
-function handleOpenTemplate(templateId: number): void {
+const handleOpenTemplate = (templateId: number): void => {
   router.push({ name: 'playground', query: { templateId } })
 }
 
 /**
- * 初始化：加载分类列表与模板列表
+ * 切换分类
+ *
+ * @param category - 分类名称
+ */
+const handleSelectCategory = async (category: string): Promise<void> => {
+  searchInput.value = ''
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  await store.selectCategory(category)
+  scrollToTop()
+}
+
+/**
+ * 初始化：加载分类列表与模板列表，创建 IntersectionObserver
  */
 onMounted(async () => {
-  await Promise.all([
-    store.loadCategories(),
-    store.loadTemplates(),
-  ])
+  observer = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0]
+      if (entry?.isIntersecting && !loading.value && hasMore.value) {
+        store.appendTemplates()
+      }
+    },
+    { rootMargin: '200px' },
+  )
+
+  await Promise.all([store.loadCategories(), store.loadTemplates()])
+})
+
+/**
+ * 自动观察/取消观察哨兵元素
+ */
+watchEffect(() => {
+  const el = sentinel.value
+  if (!observer) return
+  observer.disconnect()
+  if (el) {
+    observer.observe(el)
+  }
+})
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+  }
 })
 </script>
 
@@ -128,7 +224,10 @@ onMounted(async () => {
   <div class="templates-page">
     <!-- 顶栏 -->
     <header class="templates-page__header">
-      <h1 class="templates-page__title">模板库</h1>
+      <div class="templates-page__title">
+        <MaterialIcon name="dashboard" :size="18" />
+        <span>模板库</span>
+      </div>
       <div class="templates-page__search">
         <MaterialIcon name="search" class="templates-page__search-icon" :size="18" />
         <input
@@ -136,7 +235,9 @@ onMounted(async () => {
           type="text"
           class="templates-page__search-input"
           placeholder="搜索模板…"
-          @keydown.enter="handleSearch"
+          @input="handleInput"
+          @compositionstart="handleCompositionStart"
+          @compositionend="handleCompositionEnd"
         />
         <button
           v-if="searchInput.length > 0"
@@ -171,7 +272,7 @@ onMounted(async () => {
               :class="{
                 'category-list__item--active': selectedCategory.length === 0 && !isSearchMode,
               }"
-              @click="store.selectCategory('')"
+              @click="handleSelectCategory('')"
             >
               全部
             </button>
@@ -182,7 +283,7 @@ onMounted(async () => {
               :class="{
                 'category-list__item--active': selectedCategory === cat && !isSearchMode,
               }"
-              @click="store.selectCategory(cat)"
+              @click="handleSelectCategory(cat)"
             >
               {{ cat }}
             </button>
@@ -191,7 +292,7 @@ onMounted(async () => {
       </aside>
 
       <!-- 内容区 -->
-      <section class="templates-page__content">
+      <section ref="contentRef" class="templates-page__content">
         <!-- 搜索状态提示 -->
         <div v-if="isSearchMode" class="templates-page__search-status">
           <span class="templates-page__search-hint">
@@ -205,14 +306,14 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- 加载中 -->
-        <div v-if="loading" class="templates-page__loading">
+        <!-- 初始加载 -->
+        <div v-if="loading && items.length === 0" class="templates-page__loading">
           <Loading />
         </div>
 
         <!-- 空状态 -->
         <div
-          v-else-if="items.length === 0"
+          v-else-if="!loading && items.length === 0"
           class="templates-page__empty"
         >
           <MaterialIcon name="folder_open" class="templates-page__empty-icon" :size="48" />
@@ -220,74 +321,71 @@ onMounted(async () => {
         </div>
 
         <!-- 卡片网格 -->
-        <div v-else class="template-grid">
-          <article
-            v-for="item in items"
-            :key="item.id"
-            class="template-card"
-            @mouseenter="hoveredId = item.id"
-            @mouseleave="hoveredId = null"
-            @click="handleOpenTemplate(item.id)"
-          >
-            <div class="template-card__header">
-              <h3 class="template-card__title">
-                {{ item.title }}
-              </h3>
-              <span class="template-card__category">
-                {{ item.category }}
-              </span>
-            </div>
-            <p
-              class="template-card__desc"
-              :title="hoveredId === item.id ? item.description : undefined"
+        <template v-if="items.length > 0">
+          <div class="template-grid">
+            <article
+              v-for="item in items"
+              :key="item.id"
+              class="template-card"
+              @mouseenter="hoveredId = item.id"
+              @mouseleave="hoveredId = null"
+              @click="handleOpenTemplate(item.id)"
             >
-              {{ item.description }}
-            </p>
-            <div class="template-card__footer">
-              <span class="template-card__time">
-                {{ formatRelativeTime(item.createdAt) }}
-              </span>
-              <div class="template-card__actions">
-                <button
-                  class="template-card__fav"
-                  :class="{
-                    'template-card__fav--active': item.isFavorited,
-                  }"
-                  :disabled="togglingIds.has(item.id)"
-                  :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
-                  @click.stop="handleToggleFavorite(item.id)"
-                >
-                  <MaterialIcon
-                    :name="item.isFavorited ? 'favorite' : 'favorite_border'"
-                    :size="18"
-                  />
-                  <span class="template-card__fav-count">
-                    {{ item.favoriteCount }}
-                  </span>
-                </button>
+              <div class="template-card__header">
+                <h3 class="template-card__title">
+                  {{ item.title }}
+                </h3>
+                <span class="template-card__category">
+                  {{ item.category }}
+                </span>
               </div>
-            </div>
-          </article>
-        </div>
+              <p
+                class="template-card__desc"
+                :title="hoveredId === item.id ? item.description : undefined"
+              >
+                {{ item.description }}
+              </p>
+              <div class="template-card__footer">
+                <span class="template-card__time">
+                  {{ formatRelativeTime(item.createdAt) }}
+                </span>
+                <div class="template-card__actions">
+                  <button
+                    class="template-card__fav"
+                    :class="{
+                      'template-card__fav--active': item.isFavorited,
+                    }"
+                    :disabled="togglingIds.has(item.id)"
+                    :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
+                    @click.stop="handleToggleFavorite(item.id)"
+                  >
+                    <MaterialIcon
+                      :name="item.isFavorited ? 'favorite' : 'favorite_border'"
+                      :size="18"
+                    />
+                    <span class="template-card__fav-count">
+                      {{ item.favoriteCount }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </article>
+          </div>
 
-        <!-- 分页 -->
-        <div v-if="!loading && items.length > 0" class="templates-page__pagination">
-          <Pagination
-            :page="page"
-            :total-pages="totalPages"
-            @change="handlePageChange"
-          />
-        </div>
+          <!-- 无限滚动哨兵 -->
+          <div v-if="hasMore && !loading" ref="sentinel" class="sentinel" />
+
+          <!-- 追加加载指示器 -->
+          <div v-if="loading" class="templates-page__loading-more">
+            <Loading />
+          </div>
+        </template>
       </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* ============================================================
- *  模板库页面
- * ============================================================ */
-
 .templates-page {
   display: flex;
   flex-direction: column;
@@ -308,11 +406,19 @@ onMounted(async () => {
 }
 
 .templates-page__title {
-  font-size: var(--text-lg);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
   margin: 0;
   white-space: nowrap;
+}
+
+.templates-page__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .templates-page__search {
@@ -490,6 +596,14 @@ onMounted(async () => {
   justify-content: center;
 }
 
+.templates-page__loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) 0;
+  flex-shrink: 0;
+}
+
 .templates-page__empty {
   flex: 1;
   display: flex;
@@ -644,17 +758,15 @@ onMounted(async () => {
   height: 18px;
 }
 
-
 .template-card__fav-count {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- 分页 ---- */
+/* ---- 哨兵 ---- */
 
-.templates-page__pagination {
-  display: flex;
-  justify-content: center;
+.sentinel {
+  height: 1px;
+  width: 100%;
   flex-shrink: 0;
-  padding-top: var(--space-1);
 }
 </style>

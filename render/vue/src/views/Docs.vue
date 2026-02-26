@@ -46,6 +46,11 @@ const expanded = ref<Record<string, boolean>>({
 })
 
 /**
+ * 内容区容器引用
+ */
+const contentRef = ref<HTMLElement | null>(null)
+
+/**
  * 切换图标名称
  */
 const getToggleIcon = (open: boolean): string => (open ? 'expand_more' : 'chevron_right')
@@ -608,6 +613,22 @@ const toggleNode = (id: string): void => {
 }
 
 /**
+ * 滚动到指定文档节（顶部留出间距）
+ *
+ * @param id - 目标节点 id
+ */
+const scrollToSection = (id: string): void => {
+  const target = document.getElementById(id)
+  if (!target || !contentRef.value) return
+  const container = contentRef.value
+  const containerRect = container.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const topOffset = 20
+  const scrollPos = targetRect.top - containerRect.top + container.scrollTop - topOffset
+  container.scrollTo({ top: scrollPos, behavior: 'smooth' })
+}
+
+/**
  * 获取代码块的可用语言列表
  *
  * @param codeBlocks - 代码块映射
@@ -619,8 +640,6 @@ const getCodeBlockLanguages = (codeBlocks: Partial<Record<Language, string>>): L
 
 /**
  * 获取代码块的有效显示语言
- *
- * 若当前选中语言在该代码块中可用则使用，否则回退到第一个可用语言。
  *
  * @param codeBlocks - 代码块映射
  * @returns 有效语言标识
@@ -681,8 +700,8 @@ onMounted(() => {
     <div class="docs-page__body">
       <aside class="docs-page__toc">
         <div v-for="section in docTree" :key="section.id" class="toc-section">
-          <button class="toc-section__title" @click="toggleNode(section.id)">
-            <MaterialIcon :name="getToggleIcon(expanded[section.id])" :size="18" />
+          <button class="toc-section__title" @click="toggleNode(section.id); scrollToSection(section.id)">
+            <MaterialIcon :name="getToggleIcon(expanded[section.id])" :size="16" />
             <span>{{ section.title }}</span>
           </button>
           <div v-if="expanded[section.id]" class="toc-section__children">
@@ -690,6 +709,7 @@ onMounted(() => {
               v-for="child in section.children"
               :key="child.id"
               class="toc-section__item"
+              @click="scrollToSection(child.id)"
             >
               {{ child.title }}
             </button>
@@ -697,11 +717,11 @@ onMounted(() => {
         </div>
       </aside>
 
-      <section class="docs-page__content">
-        <div v-for="section in docTree" :key="section.id" class="doc-section">
+      <section ref="contentRef" class="docs-page__content">
+        <div v-for="section in docTree" :key="section.id" :id="section.id" class="doc-section">
           <h2 class="doc-section__title">{{ section.title }}</h2>
           <p v-if="section.content" class="doc-section__desc">{{ section.content }}</p>
-          <div v-for="child in section.children" :key="child.id" class="doc-subsection">
+          <div v-for="child in section.children" :key="child.id" :id="child.id" class="doc-subsection">
             <h3 class="doc-subsection__title">{{ child.title }}</h3>
             <p v-if="child.content" class="doc-subsection__desc">{{ child.content }}</p>
             <div
@@ -752,6 +772,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .docs-page__title {
@@ -772,7 +793,7 @@ onMounted(() => {
 
 .docs-page__body {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 200px 1fr;
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
@@ -792,31 +813,38 @@ onMounted(() => {
 .toc-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   margin-bottom: var(--space-2);
 }
 
 .toc-section__title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border: none;
   background: none;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
   cursor: pointer;
+  padding: 4px 0;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.toc-section__title:hover {
+  color: var(--color-accent);
 }
 
 .toc-section__title :deep(.material-icon) {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .toc-section__children {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding-left: 20px;
 }
 
@@ -827,7 +855,7 @@ onMounted(() => {
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 3px 6px;
   border-radius: var(--radius-sm);
   transition:
     background-color var(--duration-fast) var(--ease),
@@ -836,7 +864,7 @@ onMounted(() => {
 
 .toc-section__item:hover {
   background-color: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  color: var(--color-accent);
 }
 
 /* ---- 内容区 ---- */
@@ -850,12 +878,13 @@ onMounted(() => {
 }
 
 .doc-section {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+  scroll-margin-top: var(--space-3);
 }
 
 .doc-section__title {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-base);
+  font-size: 18px;
   font-weight: var(--weight-semibold);
 }
 
@@ -867,12 +896,13 @@ onMounted(() => {
 }
 
 .doc-subsection {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  scroll-margin-top: var(--space-3);
 }
 
 .doc-subsection__title {
   margin: 0 0 var(--space-1);
-  font-size: var(--text-sm);
+  font-size: 15px;
   font-weight: var(--weight-semibold);
 }
 
@@ -880,6 +910,7 @@ onMounted(() => {
   margin: 0 0 var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-body);
+  line-height: var(--leading-relaxed);
 }
 
 /* ---- 代码块容器 ---- */
@@ -905,8 +936,8 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 8px;
-  height: 26px;
+  padding: 0 10px;
+  height: 28px;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control);
   background-color: var(--color-bg-surface);
@@ -933,8 +964,8 @@ onMounted(() => {
   margin: 0;
   padding: var(--space-2);
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  line-height: var(--leading-code);
+  font-size: var(--text-sm);
+  line-height: 1.65;
   color: var(--color-text-body);
   overflow: auto;
 }

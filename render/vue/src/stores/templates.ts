@@ -5,7 +5,7 @@
  *
  * @file src/stores/templates.ts
  * @author WaterRun
- * @date 2026-02-11
+ * @date 2026-02-26
  */
 
 import { ref, computed } from 'vue'
@@ -83,10 +83,32 @@ export const useTemplatesStore = defineStore('templates', () => {
      */
     const isSearchMode = computed<boolean>(() => keyword.value.length > 0)
 
+    /**
+     * 是否还有更多数据可加载
+     */
+    const hasMore = computed<boolean>(() => items.value.length < total.value)
+
+    /* ---- Internal ---- */
+
+    /**
+     * 对非搜索模式的列表按收藏数降序排序
+     *
+     * 搜索模式由后端保证排序，无需客户端排序。
+     *
+     * @param list - 待排序的模板列表
+     * @returns 排序后的列表（原地修改并返回）
+     */
+    const sortIfNeeded = (list: TemplateListItem[]): TemplateListItem[] => {
+        if (!isSearchMode.value) {
+            list.sort((a, b) => b.favoriteCount - a.favoriteCount)
+        }
+        return list
+    }
+
     /* ---- Actions ---- */
 
     /**
-     * 加载模板列表（根据当前筛选条件）
+     * 加载模板列表（根据当前筛选条件），替换当前列表
      *
      * 搜索关键词非空时走搜索接口，否则走列表接口。
      */
@@ -109,9 +131,50 @@ export const useTemplatesStore = defineStore('templates', () => {
                 ? await searchTemplatesApi(params)
                 : await fetchTemplatesApi(params)
 
-            items.value = result.items
+            items.value = sortIfNeeded(result.items)
             total.value = result.total
         } catch (error: unknown) {
+            const { extractErrorMessage } = await import('@/utils/error')
+            errorMessage.value = extractErrorMessage(error)
+        } finally {
+            loading.value = false
+        }
+    }
+
+    /**
+     * 追加加载下一页模板（无限滚动）
+     *
+     * 如果当前正在加载或无更多数据则跳过。
+     */
+    const appendTemplates = async (): Promise<void> => {
+        if (loading.value || !hasMore.value) return
+        page.value += 1
+        loading.value = true
+        errorMessage.value = ''
+        try {
+            const params = {
+                page: page.value,
+                limit: limit.value,
+                category: selectedCategory.value.length > 0
+                    ? selectedCategory.value
+                    : undefined,
+                keyword: keyword.value.length > 0
+                    ? keyword.value
+                    : undefined,
+            }
+
+            const result = keyword.value.length > 0
+                ? await searchTemplatesApi(params)
+                : await fetchTemplatesApi(params)
+
+            if (result.items.length === 0) {
+                total.value = items.value.length
+            } else {
+                items.value = sortIfNeeded([...items.value, ...result.items])
+                total.value = result.total
+            }
+        } catch (error: unknown) {
+            page.value -= 1
             const { extractErrorMessage } = await import('@/utils/error')
             errorMessage.value = extractErrorMessage(error)
         } finally {
@@ -131,33 +194,40 @@ export const useTemplatesStore = defineStore('templates', () => {
     }
 
     /**
-     * 切换分类筛选，重置页码并重新加载
+     * 切换分类筛选，重置列表并重新加载
      *
      * @param category - 分类名称，空字符串表示全部
      */
     const selectCategory = async (category: string): Promise<void> => {
         selectedCategory.value = category
+        keyword.value = ''
         page.value = 1
+        items.value = []
+        total.value = 0
         await loadTemplates()
     }
 
     /**
-     * 执行搜索，重置页码并重新加载
+     * 执行搜索，重置列表并重新加载
      *
      * @param query - 搜索关键词
      */
     const search = async (query: string): Promise<void> => {
         keyword.value = query
         page.value = 1
+        items.value = []
+        total.value = 0
         await loadTemplates()
     }
 
     /**
-     * 清除搜索状态并重新加载
+     * 清除搜索状态，重置列表并重新加载
      */
     const clearSearch = async (): Promise<void> => {
         keyword.value = ''
         page.value = 1
+        items.value = []
+        total.value = 0
         await loadTemplates()
     }
 
@@ -238,7 +308,9 @@ export const useTemplatesStore = defineStore('templates', () => {
         detailError,
         totalPages,
         isSearchMode,
+        hasMore,
         loadTemplates,
+        appendTemplates,
         loadCategories,
         selectCategory,
         search,

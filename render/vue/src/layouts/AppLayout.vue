@@ -26,7 +26,7 @@ interface NavItem {
   to: string
 }
 
-/** 默认头像颜色调色板（低饱和、适合白色前景文字） */
+/** 默认头像颜色调色板 */
 const AVATAR_COLORS: readonly string[] = [
   '#0078d4',
   '#0e7c6b',
@@ -43,8 +43,6 @@ const AVATAR_COLORS: readonly string[] = [
 /**
  * 根据用户名生成确定性头像背景色
  *
- * 使用 DJB2 变体哈希，对调色板长度取模。
- *
  * @param username - 用户名
  * @returns 十六进制颜色字符串
  */
@@ -60,7 +58,7 @@ function getAvatarColor(username: string): string {
  * 获取用户名首字母（大写）
  *
  * @param username - 用户名
- * @returns 大写首字母，空值时返回 '-'
+ * @returns 大写首字母
  */
 function getAvatarInitial(username: string): string {
   return username.length > 0 ? username.charAt(0).toUpperCase() : '-'
@@ -79,7 +77,7 @@ const initializing = ref<boolean>(true)
 /** 是否为移动端视口 */
 const isMobile = ref<boolean>(false)
 
-/** MediaQueryList 引用，用于清理监听 */
+/** MediaQueryList 引用 */
 let mediaQuery: MediaQueryList | null = null
 
 /** 导航列表 */
@@ -97,13 +95,13 @@ const userInitial = computed<string>(() => {
   return getAvatarInitial(currentUser.value?.username ?? '')
 })
 
-/** 用户头像背景色（基于用户名哈希） */
+/** 用户头像背景色 */
 const userAvatarColor = computed<string>(() => {
   return getAvatarColor(currentUser.value?.username ?? '')
 })
 
 /**
- * 响应视口变化，进入移动模式时自动收起侧栏
+ * 响应视口变化
  *
  * @param event - 媒体查询变化事件
  */
@@ -119,7 +117,7 @@ const toggleSidebar = (): void => {
   collapsed.value = !collapsed.value
 }
 
-/** 关闭移动端侧栏（点击遮罩层） */
+/** 关闭移动端侧栏 */
 const closeMobileSidebar = (): void => {
   collapsed.value = true
 }
@@ -130,9 +128,6 @@ const handleLogout = async (): Promise<void> => {
   await router.push({ name: 'login' })
 }
 
-/**
- * 路由变化时，移动端自动收起侧栏
- */
 watch(
   () => route.path,
   () => {
@@ -143,7 +138,6 @@ watch(
 )
 
 onMounted(async () => {
-  /* ---- 响应式侧栏 ---- */
   mediaQuery = window.matchMedia('(max-width: 980px)')
   isMobile.value = mediaQuery.matches
   if (isMobile.value) {
@@ -151,7 +145,6 @@ onMounted(async () => {
   }
   mediaQuery.addEventListener('change', handleMediaChange)
 
-  /* ---- 用户认证 ---- */
   try {
     await authStore.fetchCurrentUser()
   } catch {
@@ -171,13 +164,14 @@ onBeforeUnmount(() => {
   <div class="app-layout">
     <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
       <div class="sidebar__header">
-        <img
-          v-show="!collapsed"
-          src="/ds4viz/logo.png"
-          alt="DS4Viz"
-          class="sidebar__logo-img"
-        />
-        <span v-show="!collapsed" class="sidebar__brand">DS4Viz</span>
+        <router-link v-show="!collapsed" to="/about" class="sidebar__brand-link">
+          <img
+            src="/ds4viz/logo.png"
+            alt="ds4viz"
+            class="sidebar__logo-img"
+          />
+          <span class="sidebar__brand">ds4viz</span>
+        </router-link>
         <button
           class="sidebar__toggle"
           :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'"
@@ -229,10 +223,18 @@ onBeforeUnmount(() => {
     </Transition>
 
     <main class="app-layout__main">
-      <div v-if="initializing" class="app-layout__loading">
-        <Loading message="加载中..." />
-      </div>
-      <router-view v-else />
+      <Transition name="route-fade" mode="out-in">
+        <div v-if="initializing" key="init" class="app-layout__loading">
+          <Loading message="加载中..." />
+        </div>
+        <div v-else key="content" class="app-layout__view">
+          <router-view v-slot="{ Component, route: viewRoute }">
+            <Transition name="view-fade" mode="out-in">
+              <component :is="Component" :key="viewRoute.path" />
+            </Transition>
+          </router-view>
+        </div>
+      </Transition>
     </main>
   </div>
 </template>
@@ -259,6 +261,15 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 100%;
+}
+
+.app-layout__view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 /* ---- 遮罩层 ---- */
@@ -273,10 +284,12 @@ onBeforeUnmount(() => {
 /* ---- 侧栏 ---- */
 
 .sidebar {
+  --_sidebar-w: 176px;
+
   position: sticky;
   top: 0;
   height: 100dvh;
-  width: var(--sidebar-width);
+  width: var(--_sidebar-w);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -293,9 +306,9 @@ onBeforeUnmount(() => {
 .sidebar__header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 56px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 48px;
+  padding: 0 10px;
   flex-shrink: 0;
 }
 
@@ -303,9 +316,30 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
+.sidebar__brand-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-control);
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.sidebar__brand-link:hover {
+  opacity: 0.8;
+}
+
+.sidebar__brand-link:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
 .sidebar__logo-img {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   border-radius: var(--radius-control);
   object-fit: contain;
@@ -313,11 +347,12 @@ onBeforeUnmount(() => {
 
 .sidebar__brand {
   flex: 1;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
+  letter-spacing: 0.2px;
 }
 
 .sidebar__toggle {
@@ -347,7 +382,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px;
+  padding: 6px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -356,7 +391,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: var(--control-height-md);
+  height: 36px;
   padding: 0 10px;
   border-radius: var(--radius-control);
   color: var(--color-text-secondary);
@@ -389,8 +424,8 @@ onBeforeUnmount(() => {
 }
 
 .nav-item__label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   overflow: hidden;
 }
 
@@ -403,7 +438,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px;
+  padding: 6px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -429,22 +464,22 @@ onBeforeUnmount(() => {
 }
 
 .sidebar__avatar {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 50%;
   color: #ffffff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
 }
 
 .sidebar__username {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -458,7 +493,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: var(--control-height-md);
+  height: 36px;
   padding: 0 10px;
   border: none;
   background: none;
@@ -478,8 +513,8 @@ onBeforeUnmount(() => {
 }
 
 .sidebar__logout-label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
 }
 
 .sidebar--collapsed .sidebar__logout {

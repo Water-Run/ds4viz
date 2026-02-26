@@ -6,7 +6,7 @@
  *
  *  @file src/styles/theme.css
  *  @author WaterRun
- *  @date 2026-02-10
+ *  @date 2026-02-26
  * ============================================================ */
 
 :root {
@@ -121,7 +121,7 @@
     --z-toast: 500;
 
     /* -------- 布局 -------- */
-    --sidebar-width: 220px;
+    --sidebar-width: 280px;
     --sidebar-width-collapsed: 56px;
     --header-height: 48px;
     --control-height-sm: 30px;

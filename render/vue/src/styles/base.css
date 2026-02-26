@@ -3,7 +3,7 @@
  *
  *  @file src/styles/base.css
  *  @author WaterRun
- *  @date 2026-02-10
+ *  @date 2026-02-26
  * ============================================================ */
 
 @import './theme.css';
@@ -158,7 +158,7 @@ ol {
     outline-offset: 2px;
 }
 
-/* -------- Vue transition -------- */
+/* -------- Vue transition: fade -------- */
 
 .fade-enter-active,
 .fade-leave-active {
@@ -169,6 +169,8 @@ ol {
 .fade-leave-to {
     opacity: 0;
 }
+
+/* -------- Vue transition: slide-fade -------- */
 
 .slide-fade-enter-active,
 .slide-fade-leave-active {
@@ -185,6 +187,44 @@ ol {
 .slide-fade-leave-to {
     opacity: 0;
     transform: translateY(-8px);
+}
+
+/* -------- Vue transition: route-fade（路由级切换） -------- */
+
+.route-fade-enter-active,
+.route-fade-leave-active {
+    transition:
+        opacity var(--duration-normal) var(--ease),
+        transform var(--duration-normal) var(--ease);
+}
+
+.route-fade-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.route-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+}
+
+/* -------- Vue transition: view-fade（壳内视图切换） -------- */
+
+.view-fade-enter-active,
+.view-fade-leave-active {
+    transition:
+        opacity var(--duration-fast) var(--ease),
+        transform var(--duration-fast) var(--ease);
+}
+
+.view-fade-enter-from {
+    opacity: 0;
+    transform: translateY(4px);
+}
+
+.view-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
 }
 
 /* -------- 无障碍：减少动效 -------- */
