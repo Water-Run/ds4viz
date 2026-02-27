@@ -2,10 +2,12 @@
 /**
  * 代码编辑器组件
  *
+ * 行高亮受 vizFlags.enableCodeLineHighlight 控制。
+ *
  * @component CodeEditor
  * @example
  * ```vue
- * <CodeEditor v-model="code" language="python" />
+ * <CodeEditor v-model="code" language="python" :highlight-line="10" />
  * ```
  */
 
@@ -15,6 +17,7 @@ import type { editor } from 'monaco-editor'
 
 import type { Language } from '@/types/api'
 import { registerDs4vizCompletions } from '@/utils/monaco'
+import { vizFlags, logDebug } from '@/utils/viz-flags'
 
 /**
  * 组件属性定义
@@ -26,7 +29,7 @@ interface Props {
   language: Language
   /** 是否只读 */
   readonly?: boolean
-  /** 高亮行号 */
+  /** 高亮行号（null 时不高亮） */
   highlightLine?: number | null
 }
 
@@ -101,14 +104,19 @@ const handleChange = (value: string | undefined): void => {
 }
 
 /**
- * 应用行高亮
+ * 应用行高亮（受 enableCodeLineHighlight flag 控制）
  */
 const applyHighlight = (line: number | null | undefined): void => {
   if (!editorRef.value || !monacoRef.value) return
-  if (!line || line < 1) {
-    decorationIds.value = editorRef.value.deltaDecorations(decorationIds.value, [])
+
+  if (!vizFlags.enableCodeLineHighlight || !line || line < 1) {
+    if (decorationIds.value.length > 0) {
+      decorationIds.value = editorRef.value.deltaDecorations(decorationIds.value, [])
+      logDebug('[editor] cleared line highlight')
+    }
     return
   }
+
   const range = new monacoRef.value.Range(line, 1, line, 1)
   decorationIds.value = editorRef.value.deltaDecorations(decorationIds.value, [
     {
@@ -119,6 +127,7 @@ const applyHighlight = (line: number | null | undefined): void => {
       },
     },
   ])
+  logDebug('[editor] highlight line', line)
 }
 
 /**
@@ -134,9 +143,12 @@ const handleMount = (
   applyHighlight(props.highlightLine)
 }
 
+/**
+ * 同时监听 highlightLine 和 flag 变化
+ */
 watch(
-  () => props.highlightLine,
-  (line) => applyHighlight(line),
+  [() => props.highlightLine, () => vizFlags.enableCodeLineHighlight],
+  ([line]) => applyHighlight(line),
 )
 
 onBeforeUnmount(() => {

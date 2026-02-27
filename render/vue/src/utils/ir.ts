@@ -1,13 +1,17 @@
 /**
  * IR TOML 解析与映射
  *
+ * 解析后的 IrDocument 使用 markRaw 标记，
+ * 防止 Vue 对嵌套数据创建响应式代理（消除渲染卡死根因）。
+ *
  * @file src/utils/ir.ts
  * @author WaterRun
- * @date 2026-02-12
- * @updated 2026-02-12
+ * @date 2026-02-27
  */
 
 import * as toml from '@iarna/toml'
+import { markRaw } from 'vue'
+
 import type {
   IrDocument,
   IrMeta,
@@ -19,6 +23,7 @@ import type {
   IrResult,
   IrError,
 } from '@/types/ir'
+import { logDebug } from '@/utils/viz-flags'
 
 /**
  * TOML 解析结果
@@ -28,32 +33,85 @@ import type {
 export interface ParseIrResult {
   /** 是否解析成功 */
   ok: boolean
-  /** IR 文档 */
+  /** IR 文档（已 markRaw） */
   document?: IrDocument
   /** 错误消息 */
   errorMessage?: string
 }
 
+/* ----------------------------------------------------------------
+ *  markRaw 工具
+ * ---------------------------------------------------------------- */
+
+/**
+ * 递归标记对象为 raw，阻止 Vue 创建响应式代理
+ *
+ * @param value - 任意值
+ * @returns 原值（对象/数组已标记）
+ */
+function deepMarkRaw<T>(value: T): T {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return value
+  }
+  markRaw(value as Record<string, unknown>)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item !== null && typeof item === 'object') {
+        deepMarkRaw(item)
+      }
+    }
+  } else {
+    for (const val of Object.values(value as Record<string, unknown>)) {
+      if (val !== null && typeof val === 'object') {
+        deepMarkRaw(val)
+      }
+    }
+  }
+  return value
+}
+
+/* ----------------------------------------------------------------
+ *  公开 API
+ * ---------------------------------------------------------------- */
+
 /**
  * 解析 TOML 并映射为 IR 文档
+ *
+ * 返回的 document 已通过 deepMarkRaw 处理，可安全存入
+ * shallowRef 而不触发 Vue 深层代理。
  *
  * @param content - TOML 原始文本
  * @returns 解析结果
  */
 export function parseIrToml(content: string): ParseIrResult {
   try {
+    logDebug('[ir] parsing TOML, length =', content.length)
     const raw = toml.parse(content) as Record<string, unknown>
     const document = mapDocument(raw)
     const validationError = validateDocument(document)
     if (validationError) {
+      logDebug('[ir] validation failed:', validationError)
       return { ok: false, errorMessage: validationError }
     }
+    deepMarkRaw(document)
+    logDebug('[ir] parse ok', {
+      kind: document.object.kind,
+      states: document.states.length,
+      steps: document.steps?.length ?? 0,
+      hasResult: document.result !== undefined,
+      hasError: document.error !== undefined,
+    })
     return { ok: true, document }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'TOML 解析失败'
+    logDebug('[ir] parse exception:', message)
     return { ok: false, errorMessage: message }
   }
 }
+
+/* ----------------------------------------------------------------
+ *  校验
+ * ---------------------------------------------------------------- */
 
 /**
  * 校验 IR 文档结构
@@ -63,20 +121,12 @@ export function parseIrToml(content: string): ParseIrResult {
  */
 function validateDocument(document: IrDocument): string {
   const allowedLangs = new Set([
-    'python',
-    'rust',
-    'lua',
+    'python', 'c', 'zig', 'rust', 'java', 'csharp', 'typescript', 'lua',
   ])
   const allowedKinds = new Set([
-    'stack',
-    'queue',
-    'slist',
-    'dlist',
-    'binary_tree',
-    'bst',
-    'graph_undirected',
-    'graph_directed',
-    'graph_weighted',
+    'stack', 'queue', 'slist', 'dlist',
+    'binary_tree', 'bst',
+    'graph_undirected', 'graph_directed', 'graph_weighted',
   ])
 
   if (!document.meta.createdAt || !document.meta.lang || !document.meta.langVersion) {
@@ -188,12 +238,10 @@ function validateDocument(document: IrDocument): string {
   return ''
 }
 
-/**
- * 映射 IR 文档
- *
- * @param raw - TOML 解析结果
- * @returns IR 文档
- */
+/* ----------------------------------------------------------------
+ *  映射函数
+ * ---------------------------------------------------------------- */
+
 function mapDocument(raw: Record<string, unknown>): IrDocument {
   return {
     meta: mapMeta(raw.meta),
@@ -207,9 +255,6 @@ function mapDocument(raw: Record<string, unknown>): IrDocument {
   }
 }
 
-/**
- * 映射 meta
- */
 function mapMeta(value: unknown): IrMeta {
   const meta = value as Record<string, unknown>
   return {
@@ -219,9 +264,6 @@ function mapMeta(value: unknown): IrMeta {
   }
 }
 
-/**
- * 映射 package
- */
 function mapPackage(value: unknown): IrPackage {
   const pkg = value as Record<string, unknown>
   return {
@@ -231,9 +273,6 @@ function mapPackage(value: unknown): IrPackage {
   }
 }
 
-/**
- * 映射 remarks
- */
 function mapRemarks(value: unknown): IrRemarks | undefined {
   if (value === undefined || value === null) {
     return undefined
@@ -246,9 +285,6 @@ function mapRemarks(value: unknown): IrRemarks | undefined {
   }
 }
 
-/**
- * 映射 object
- */
 function mapObject(value: unknown): IrObject {
   const object = value as Record<string, unknown>
   return {
@@ -257,9 +293,6 @@ function mapObject(value: unknown): IrObject {
   }
 }
 
-/**
- * 映射 states
- */
 function mapStates(value: unknown): IrState[] {
   if (!Array.isArray(value)) {
     return []
@@ -273,9 +306,6 @@ function mapStates(value: unknown): IrState[] {
   })
 }
 
-/**
- * 映射 steps
- */
 function mapSteps(value: unknown): IrStep[] | undefined {
   if (!Array.isArray(value)) {
     return undefined
@@ -294,17 +324,14 @@ function mapSteps(value: unknown): IrStep[] | undefined {
       code:
         code !== undefined
           ? {
-              line: Number(code.line ?? 0),
-              col: code.col !== undefined ? Number(code.col) : undefined,
-            }
+            line: Number(code.line ?? 0),
+            col: code.col !== undefined ? Number(code.col) : undefined,
+          }
           : undefined,
     }
   })
 }
 
-/**
- * 映射 result
- */
 function mapResult(value: unknown): IrResult | undefined {
   if (value === undefined || value === null) {
     return undefined
@@ -316,16 +343,13 @@ function mapResult(value: unknown): IrResult | undefined {
     commit:
       commit !== undefined
         ? {
-            op: String(commit.op ?? ''),
-            line: Number(commit.line ?? 0),
-          }
+          op: String(commit.op ?? ''),
+          line: Number(commit.line ?? 0),
+        }
         : undefined,
   }
 }
 
-/**
- * 映射 error
- */
 function mapError(value: unknown): IrError | undefined {
   if (value === undefined || value === null) {
     return undefined

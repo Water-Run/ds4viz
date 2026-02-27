@@ -1,27 +1,35 @@
 <script setup lang="ts">
 /**
- * 可视化面板
+ * 可视化面板（重写）
  *
- * 支持栈、队列、链表、树、图等数据结构的交互式渲染，
- * 步骤切换间提供平滑过渡动画。
+ * 修复响应式深层代理导致的渲染卡死问题：
+ * - 输入数据已通过 markRaw 处理，不会被 Vue 代理化
+ * - 布局计算使用 watch + shallowRef，避免级联求值
+ * - SVG 坐标全部预计算，模板内无 .find() 调用
+ * - TransitionGroup 受 enableSmoothTransitions flag 控制
  *
  * @component VizPanel
  */
 
-import { computed } from 'vue'
+import { computed, shallowRef, watch } from 'vue'
+
 import type {
   IrStateData,
+  IrObjectKind,
+  IrValue,
   StackStateData,
   QueueStateData,
   SListStateData,
+  SListNode,
   DListStateData,
+  DListNode,
   BinaryTreeStateData,
+  BinaryTreeNode,
   GraphStateData,
   GraphWeightedStateData,
-  IrObjectKind,
-  BinaryTreeNode,
 } from '@/types/ir'
 import type { StepSummary } from '@/types/viz'
+import { vizFlags, logDebug } from '@/utils/viz-flags'
 
 import VizPlaceholder from './VizPlaceholder.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
@@ -32,7 +40,7 @@ import MaterialIcon from '@/components/common/MaterialIcon.vue'
 interface Props {
   /** 结构类型 */
   kind?: IrObjectKind
-  /** 状态数据 */
+  /** 状态数据（markRaw 标记，非响应式） */
   data?: IrStateData
   /** 步骤信息 */
   step?: StepSummary | null
@@ -40,14 +48,70 @@ interface Props {
 
 const props = defineProps<Props>()
 
-/**
- * 是否为空状态
- */
-const isEmpty = computed<boolean>(() => props.data === undefined)
+/* ---- 辅助类型 ---- */
+
+interface TreeLayoutNode {
+  id: number
+  value: IrValue
+  x: number
+  y: number
+  isRoot: boolean
+}
+
+interface TreeLayoutEdge {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+interface TreeLayout {
+  svgWidth: number
+  svgHeight: number
+  nodeRadius: number
+  nodes: TreeLayoutNode[]
+  edges: TreeLayoutEdge[]
+}
+
+interface GraphLayoutNode {
+  id: number
+  label: string
+  x: number
+  y: number
+}
+
+interface GraphLayoutEdge {
+  from: number
+  to: number
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  weight?: number
+}
+
+interface GraphLayout {
+  svgWidth: number
+  svgHeight: number
+  nodeRadius: number
+  nodes: GraphLayoutNode[]
+  edges: GraphLayoutEdge[]
+}
+
+/* ---- 格式化 ---- */
 
 /**
- * 类型标题
+ * 格式化显示值
  */
+function formatValue(value: IrValue): string {
+  if (typeof value === 'string') return `"${value}"`
+  return String(value)
+}
+
+/* ---- 基础派生 ---- */
+
+const isEmpty = computed<boolean>(() => props.data === undefined)
+
 const kindLabel = computed<string>(() => {
   const mapping: Record<IrObjectKind, string> = {
     stack: 'Stack',
@@ -60,125 +124,110 @@ const kindLabel = computed<string>(() => {
     graph_directed: 'Digraph',
     graph_weighted: 'WeightedGraph',
   }
-  return props.kind ? mapping[props.kind] : ''
+  return props.kind ? mapping[props.kind] ?? props.kind : ''
 })
 
-/**
- * 栈数据
- */
+const isWeighted = computed<boolean>(() => props.kind === 'graph_weighted')
+const isDirected = computed<boolean>(() => props.kind === 'graph_directed')
+
+/* ---- 类型窄化 ---- */
+
 const stackData = computed<StackStateData | null>(() =>
   props.kind === 'stack' ? (props.data as StackStateData) : null,
 )
-
-/**
- * 队列数据
- */
 const queueData = computed<QueueStateData | null>(() =>
   props.kind === 'queue' ? (props.data as QueueStateData) : null,
 )
-
-/**
- * 单链表数据
- */
 const slistData = computed<SListStateData | null>(() =>
   props.kind === 'slist' ? (props.data as SListStateData) : null,
 )
-
-/**
- * 双链表数据
- */
 const dlistData = computed<DListStateData | null>(() =>
   props.kind === 'dlist' ? (props.data as DListStateData) : null,
 )
+const treeData = computed<BinaryTreeStateData | null>(() =>
+  props.kind === 'binary_tree' || props.kind === 'bst'
+    ? (props.data as BinaryTreeStateData)
+    : null,
+)
+const graphData = computed<GraphStateData | GraphWeightedStateData | null>(() =>
+  props.kind === 'graph_undirected' ||
+  props.kind === 'graph_directed' ||
+  props.kind === 'graph_weighted'
+    ? (props.data as GraphStateData)
+    : null,
+)
 
-/**
- * 树数据
- */
-const treeData = computed<BinaryTreeStateData | null>(() => {
-  if (props.kind === 'binary_tree' || props.kind === 'bst') {
-    return props.data as BinaryTreeStateData
+/* ---- 链表有序遍历 ---- */
+
+const slistOrdered = computed<SListNode[]>(() => {
+  if (!slistData.value) return []
+  const map = new Map<number, SListNode>()
+  slistData.value.nodes.forEach((n) => map.set(n.id, n))
+  const result: SListNode[] = []
+  let cur = slistData.value.head
+  const visited = new Set<number>()
+  while (cur !== -1 && !visited.has(cur)) {
+    visited.add(cur)
+    const node = map.get(cur)
+    if (!node) break
+    result.push(node)
+    cur = node.next
   }
-  return null
+  return result
 })
 
-/**
- * 图数据
- */
-const graphData = computed<GraphStateData | GraphWeightedStateData | null>(() => {
-  if (props.kind === 'graph_undirected' || props.kind === 'graph_directed') {
-    return props.data as GraphStateData
+const dlistOrdered = computed<DListNode[]>(() => {
+  if (!dlistData.value) return []
+  const map = new Map<number, DListNode>()
+  dlistData.value.nodes.forEach((n) => map.set(n.id, n))
+  const result: DListNode[] = []
+  let cur = dlistData.value.head
+  const visited = new Set<number>()
+  while (cur !== -1 && !visited.has(cur)) {
+    visited.add(cur)
+    const node = map.get(cur)
+    if (!node) break
+    result.push(node)
+    cur = node.next
   }
-  if (props.kind === 'graph_weighted') {
-    return props.data as GraphWeightedStateData
-  }
-  return null
+  return result
 })
 
-/**
- * 是否带权图
- */
-const isWeighted = computed<boolean>(() => props.kind === 'graph_weighted')
+/* ---- 树布局（watch + shallowRef 避免 computed 级联） ---- */
 
-/**
- * 是否有向图
- */
-const isDirected = computed<boolean>(() => props.kind === 'graph_directed')
+const treeLayout = shallowRef<TreeLayout | null>(null)
 
-/**
- * 提取高亮节点 ID
- */
-const highlightIds = computed<Set<number>>(() => {
-  const ids = new Set<number>()
-  if (!props.step) return ids
-  collectNumbers(props.step.args, ids)
-  collectNumbers(props.step.ret, ids)
-  collectSpecialIndices(props.step.args, ids)
-  return ids
-})
+watch(
+  () => treeData.value,
+  (data) => {
+    if (!data || data.root === -1 || data.nodes.length === 0) {
+      treeLayout.value = null
+      return
+    }
+    logDebug('[viz] computing tree layout, nodes =', data.nodes.length)
+    treeLayout.value = computeTreeLayout(data)
+  },
+  { immediate: true },
+)
 
-/**
- * 提取高亮边
- */
-const highlightEdges = computed<Array<{ from: number; to: number }>>(() => {
-  const edges: Array<{ from: number; to: number }> = []
-  if (!props.step) return edges
-  collectEdges(props.step.args, edges)
-  collectEdges(props.step.ret, edges)
-  return edges
-})
-
-/**
- * 树布局
- */
-const treeLayout = computed(() => {
-  if (!treeData.value) {
-    return null
-  }
-  const width = 520
-  const height = 300
-  const levelHeight = 80
+function computeTreeLayout(data: BinaryTreeStateData): TreeLayout {
   const nodeRadius = 16
+  const levelHeight = 70
+  const padding = 40
+  const rootId = data.root
 
-  const nodes = treeData.value.nodes
   const nodeMap = new Map<number, BinaryTreeNode>()
-  nodes.forEach((node) => nodeMap.set(node.id, node))
+  data.nodes.forEach((n) => nodeMap.set(n.id, n))
 
   const levels: number[][] = []
-  const rootId = treeData.value.root
-  if (rootId === -1) {
-    return { width, height, nodeRadius, nodes: [], edges: [] }
-  }
-
   const queue: Array<{ id: number; level: number }> = [{ id: rootId, level: 0 }]
   const visited = new Set<number>()
+
   while (queue.length > 0) {
-    const current = queue.shift()
-    if (!current) break
+    const current = queue.shift()!
     if (visited.has(current.id)) continue
     visited.add(current.id)
-    if (!levels[current.level]) {
-      levels[current.level] = []
-    }
+    if (!levels[current.level]) levels[current.level] = []
     levels[current.level].push(current.id)
     const node = nodeMap.get(current.id)
     if (!node) continue
@@ -186,154 +235,113 @@ const treeLayout = computed(() => {
     if (node.right !== -1) queue.push({ id: node.right, level: current.level + 1 })
   }
 
+  const maxInLevel = Math.max(...levels.map((l) => l.length))
+  const baseWidth = Math.max(300, maxInLevel * nodeRadius * 4 + padding * 2)
+
   const positions = new Map<number, { x: number; y: number }>()
   levels.forEach((levelNodes, level) => {
-    const gap = width / (levelNodes.length + 1)
+    const gap = baseWidth / (levelNodes.length + 1)
     levelNodes.forEach((id, index) => {
-      positions.set(id, { x: gap * (index + 1), y: 40 + level * levelHeight })
+      positions.set(id, { x: gap * (index + 1), y: padding + level * levelHeight })
     })
   })
 
-  const layoutNodes = nodes
-    .filter((node) => positions.has(node.id))
-    .map((node) => ({
-      id: node.id,
-      value: node.value,
-      x: positions.get(node.id)!.x,
-      y: positions.get(node.id)!.y,
-      isRoot: node.id === rootId,
-    }))
-
-  const edges: Array<{ from: number; to: number }> = []
-  nodes.forEach((node) => {
-    if (node.left !== -1) edges.push({ from: node.id, to: node.left })
-    if (node.right !== -1) edges.push({ from: node.id, to: node.right })
+  let maxX = 0
+  let maxY = 0
+  positions.forEach((pos) => {
+    if (pos.x > maxX) maxX = pos.x
+    if (pos.y > maxY) maxY = pos.y
   })
 
-  return { width, height, nodeRadius, nodes: layoutNodes, edges }
-})
+  const svgWidth = maxX + padding
+  const svgHeight = maxY + padding + nodeRadius
 
-/**
- * 图布局
- */
-const graphLayout = computed(() => {
-  if (!graphData.value) {
-    return null
-  }
-  const width = 520
-  const height = 300
-  const radius = 110
-  const nodes = graphData.value.nodes
-  const edges = graphData.value.edges
+  const nodes: TreeLayoutNode[] = []
+  data.nodes.forEach((node) => {
+    const pos = positions.get(node.id)
+    if (!pos) return
+    nodes.push({ id: node.id, value: node.value, x: pos.x, y: pos.y, isRoot: node.id === rootId })
+  })
 
-  const layoutNodes = nodes.map((node, index) => {
-    const angle = (2 * Math.PI * index) / Math.max(1, nodes.length)
-    const x = width / 2 + radius * Math.cos(angle)
-    const y = height / 2 + radius * Math.sin(angle)
+  const edges: TreeLayoutEdge[] = []
+  data.nodes.forEach((node) => {
+    const from = positions.get(node.id)
+    if (!from) return
+    if (node.left !== -1) {
+      const to = positions.get(node.left)
+      if (to) edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y })
+    }
+    if (node.right !== -1) {
+      const to = positions.get(node.right)
+      if (to) edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y })
+    }
+  })
+
+  return { svgWidth, svgHeight, nodeRadius, nodes, edges }
+}
+
+/* ---- 图布局（watch + shallowRef） ---- */
+
+const graphLayout = shallowRef<GraphLayout | null>(null)
+
+watch(
+  () => graphData.value,
+  (data) => {
+    if (!data || data.nodes.length === 0) {
+      graphLayout.value = null
+      return
+    }
+    logDebug('[viz] computing graph layout, nodes =', data.nodes.length, 'edges =', data.edges.length)
+    graphLayout.value = computeGraphLayout(data)
+  },
+  { immediate: true },
+)
+
+function computeGraphLayout(data: GraphStateData | GraphWeightedStateData): GraphLayout {
+  const svgWidth = 500
+  const svgHeight = 350
+  const nodeRadius = 16
+  const circleRadius = Math.min(120, 30 * Math.max(3, data.nodes.length))
+  const cx = svgWidth / 2
+  const cy = svgHeight / 2
+
+  const nodePositionMap = new Map<number, { x: number; y: number }>()
+  const nodes: GraphLayoutNode[] = data.nodes.map((node, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(1, data.nodes.length) - Math.PI / 2
+    const x = cx + circleRadius * Math.cos(angle)
+    const y = cy + circleRadius * Math.sin(angle)
+    nodePositionMap.set(node.id, { x, y })
     return { id: node.id, label: node.label, x, y }
   })
 
-  const nodeMap = new Map<number, { x: number; y: number }>()
-  layoutNodes.forEach((node) => nodeMap.set(node.id, { x: node.x, y: node.y }))
-
-  const layoutEdges = edges
-    .map((edge) => {
-      const from = nodeMap.get(edge.from)
-      const to = nodeMap.get(edge.to)
-      if (!from || !to) {
-        return null
-      }
-      return {
-        from: edge.from,
-        to: edge.to,
-        x1: from.x,
-        y1: from.y,
-        x2: to.x,
-        y2: to.y,
-        weight: (edge as { weight?: number }).weight,
-      }
+  const edges: GraphLayoutEdge[] = []
+  data.edges.forEach((edge) => {
+    const from = nodePositionMap.get(edge.from)
+    const to = nodePositionMap.get(edge.to)
+    if (!from || !to) return
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist === 0) return
+    const ux = dx / dist
+    const uy = dy / dist
+    edges.push({
+      from: edge.from,
+      to: edge.to,
+      x1: from.x + ux * nodeRadius,
+      y1: from.y + uy * nodeRadius,
+      x2: to.x - ux * nodeRadius,
+      y2: to.y - uy * nodeRadius,
+      weight: (edge as { weight?: number }).weight,
     })
-    .filter((edge): edge is NonNullable<typeof edge> => edge !== null)
-
-  return { width, height, nodes: layoutNodes, edges: layoutEdges }
-})
-
-/**
- * 判断节点是否高亮
- */
-const isNodeHighlighted = (id: number): boolean => highlightIds.value.has(id)
-
-/**
- * 判断边是否高亮
- */
-const isEdgeHighlighted = (from: number, to: number): boolean => {
-  if (highlightEdges.value.length === 0) return false
-  return highlightEdges.value.some((edge) => {
-    if (edge.from === from && edge.to === to) return true
-    if (!isDirected.value && edge.from === to && edge.to === from) return true
-    return false
   })
-}
 
-/**
- * 递归提取数字
- */
-function collectNumbers(value: unknown, ids: Set<number>): void {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    ids.add(value)
-    return
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectNumbers(item, ids))
-    return
-  }
-  if (value && typeof value === 'object') {
-    Object.values(value as Record<string, unknown>).forEach((item) => collectNumbers(item, ids))
-  }
-}
-
-/**
- * 提取特殊索引
- */
-function collectSpecialIndices(value: unknown, ids: Set<number>): void {
-  if (!value || typeof value !== 'object') return
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectSpecialIndices(item, ids))
-    return
-  }
-  const record = value as Record<string, unknown>
-  const keys = ['top', 'front', 'rear', 'head', 'tail', 'root', 'node', 'index', 'id']
-  keys.forEach((key) => {
-    const item = record[key]
-    if (typeof item === 'number' && Number.isFinite(item)) {
-      ids.add(item)
-    }
-  })
-  Object.values(record).forEach((item) => collectSpecialIndices(item, ids))
-}
-
-/**
- * 递归提取边
- */
-function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>): void {
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectEdges(item, edges))
-    return
-  }
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    const from = record.from
-    const to = record.to
-    if (typeof from === 'number' && typeof to === 'number') {
-      edges.push({ from, to })
-    }
-    Object.values(record).forEach((item) => collectEdges(item, edges))
-  }
+  return { svgWidth, svgHeight, nodeRadius, nodes, edges }
 }
 </script>
 
 <template>
-  <section class="viz-panel">
+  <section class="viz-panel" :class="{ 'viz-panel--animated': vizFlags.enableSmoothTransitions }">
     <header class="viz-panel__header">
       <div class="viz-panel__title">
         <MaterialIcon name="graph_3" :size="18" />
@@ -351,98 +359,108 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
       <div v-else class="viz-panel__content">
         <!-- ── 栈 ── -->
         <div v-if="stackData" class="stack-view">
-          <TransitionGroup name="viz-item" tag="div" class="stack-view__items">
+          <div class="stack-view__items">
             <div
               v-for="(item, index) in stackData.items"
               :key="index"
               class="stack-view__item"
-              :class="{ 'stack-view__item--top': index === stackData.top }"
+              :class="{ 'stack-view__item--top': vizFlags.enableNodeColors && index === stackData.top }"
             >
-              <span class="stack-view__value">{{ item }}</span>
-              <span v-if="index === stackData.top" class="stack-view__badge">TOP</span>
+              <span class="stack-view__value">{{ formatValue(item) }}</span>
+              <span
+                v-if="vizFlags.enableStepBadges && index === stackData.top"
+                class="stack-view__badge"
+              >
+                TOP
+              </span>
             </div>
-          </TransitionGroup>
+          </div>
         </div>
 
         <!-- ── 队列 ── -->
         <div v-else-if="queueData" class="queue-view">
-          <TransitionGroup name="viz-item" tag="div" class="queue-view__items">
+          <div class="queue-view__items">
             <div
               v-for="(item, index) in queueData.items"
               :key="index"
               class="queue-view__item"
               :class="{
-                'queue-view__item--front': index === queueData.front,
-                'queue-view__item--rear': index === queueData.rear,
+                'queue-view__item--front': vizFlags.enableNodeColors && index === queueData.front,
+                'queue-view__item--rear': vizFlags.enableNodeColors && index === queueData.rear,
               }"
             >
-              <span class="queue-view__value">{{ item }}</span>
-              <span v-if="index === queueData.front" class="queue-view__badge">FRONT</span>
-              <span v-if="index === queueData.rear" class="queue-view__badge">REAR</span>
+              <span class="queue-view__value">{{ formatValue(item) }}</span>
+              <span
+                v-if="vizFlags.enableStepBadges && index === queueData.front"
+                class="queue-view__badge"
+              >
+                FRONT
+              </span>
+              <span
+                v-if="vizFlags.enableStepBadges && index === queueData.rear"
+                class="queue-view__badge"
+              >
+                REAR
+              </span>
             </div>
-          </TransitionGroup>
+          </div>
         </div>
 
         <!-- ── 单链表 ── -->
         <div v-else-if="slistData" class="list-view">
-          <TransitionGroup name="viz-item" tag="div" class="list-view__nodes">
+          <div class="list-view__nodes">
             <div
-              v-for="node in slistData.nodes"
+              v-for="node in slistOrdered"
               :key="node.id"
               class="list-view__node"
-              :class="{ 'list-view__node--head': node.id === slistData.head }"
+              :class="{ 'list-view__node--head': vizFlags.enableNodeColors && node.id === slistData.head }"
             >
-              <div
-                class="list-view__value"
-                :class="{ 'list-view__value--highlight': isNodeHighlighted(node.id) }"
+              <div class="list-view__value">{{ formatValue(node.value) }}</div>
+              <div class="list-view__meta">#{{ node.id }} → {{ node.next === -1 ? 'null' : node.next }}</div>
+              <span
+                v-if="vizFlags.enableStepBadges && node.id === slistData.head"
+                class="list-view__badge"
               >
-                {{ node.value }}
-              </div>
-              <div class="list-view__meta">#{{ node.id }} -> {{ node.next }}</div>
-              <span v-if="node.id === slistData.head" class="list-view__badge">HEAD</span>
+                HEAD
+              </span>
             </div>
-          </TransitionGroup>
+          </div>
         </div>
 
         <!-- ── 双链表 ── -->
         <div v-else-if="dlistData" class="list-view">
-          <TransitionGroup name="viz-item" tag="div" class="list-view__nodes">
+          <div class="list-view__nodes">
             <div
-              v-for="node in dlistData.nodes"
+              v-for="node in dlistOrdered"
               :key="node.id"
               class="list-view__node"
               :class="{
-                'list-view__node--head': node.id === dlistData.head,
-                'list-view__node--tail': node.id === dlistData.tail,
+                'list-view__node--head': vizFlags.enableNodeColors && node.id === dlistData.head,
+                'list-view__node--tail': vizFlags.enableNodeColors && node.id === dlistData.tail,
               }"
             >
-              <div
-                class="list-view__value"
-                :class="{ 'list-view__value--highlight': isNodeHighlighted(node.id) }"
-              >
-                {{ node.value }}
-              </div>
-              <div class="list-view__meta">#{{ node.id }} <- {{ node.prev }} -> {{ node.next }}</div>
-              <span v-if="node.id === dlistData.head" class="list-view__badge">HEAD</span>
-              <span v-if="node.id === dlistData.tail" class="list-view__badge">TAIL</span>
+              <div class="list-view__value">{{ formatValue(node.value) }}</div>
+              <div class="list-view__meta">{{ node.prev === -1 ? 'null' : node.prev }} ← #{{ node.id }} → {{ node.next === -1 ? 'null' : node.next }}</div>
+              <span v-if="vizFlags.enableStepBadges && node.id === dlistData.head" class="list-view__badge">HEAD</span>
+              <span v-if="vizFlags.enableStepBadges && node.id === dlistData.tail" class="list-view__badge list-view__badge--tail">TAIL</span>
             </div>
-          </TransitionGroup>
+          </div>
         </div>
 
         <!-- ── 树 ── -->
         <div v-else-if="treeLayout" class="tree-view">
           <svg
             class="tree-view__svg"
-            :viewBox="`0 0 ${treeLayout.width} ${treeLayout.height}`"
+            :viewBox="`0 0 ${treeLayout.svgWidth} ${treeLayout.svgHeight}`"
             preserveAspectRatio="xMidYMid meet"
           >
             <line
-              v-for="edge in treeLayout.edges"
-              :key="`te-${edge.from}-${edge.to}`"
-              :x1="treeLayout.nodes.find((node) => node.id === edge.from)?.x ?? 0"
-              :y1="treeLayout.nodes.find((node) => node.id === edge.from)?.y ?? 0"
-              :x2="treeLayout.nodes.find((node) => node.id === edge.to)?.x ?? 0"
-              :y2="treeLayout.nodes.find((node) => node.id === edge.to)?.y ?? 0"
+              v-for="(edge, i) in treeLayout.edges"
+              :key="`te-${i}`"
+              :x1="edge.x1"
+              :y1="edge.y1"
+              :x2="edge.x2"
+              :y2="edge.y2"
               class="tree-view__edge"
             />
             <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
@@ -451,12 +469,11 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
                 :cy="node.y"
                 :r="treeLayout.nodeRadius"
                 class="tree-view__node"
-                :class="{
-                  'tree-view__node--root': node.isRoot,
-                  'tree-view__node--highlight': isNodeHighlighted(node.id),
-                }"
+                :class="{ 'tree-view__node--root': vizFlags.enableNodeColors && node.isRoot }"
               />
-              <text :x="node.x" :y="node.y + 4" class="tree-view__label">{{ node.value }}</text>
+              <text :x="node.x" :y="node.y + 4" class="tree-view__label">
+                {{ formatValue(node.value) }}
+              </text>
             </g>
           </svg>
         </div>
@@ -465,12 +482,12 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
         <div v-else-if="graphLayout" class="graph-view">
           <svg
             class="graph-view__svg"
-            :viewBox="`0 0 ${graphLayout.width} ${graphLayout.height}`"
+            :viewBox="`0 0 ${graphLayout.svgWidth} ${graphLayout.svgHeight}`"
             preserveAspectRatio="xMidYMid meet"
           >
             <defs>
               <marker
-                v-if="isDirected"
+                v-if="vizFlags.enableGraphArrows && isDirected"
                 id="arrow"
                 markerWidth="10"
                 markerHeight="10"
@@ -482,20 +499,19 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               </marker>
             </defs>
             <line
-              v-for="edge in graphLayout.edges"
-              :key="`ge-${edge.from}-${edge.to}`"
+              v-for="(edge, i) in graphLayout.edges"
+              :key="`ge-${i}`"
               :x1="edge.x1"
               :y1="edge.y1"
               :x2="edge.x2"
               :y2="edge.y2"
               class="graph-view__edge"
-              :class="{ 'graph-view__edge--highlight': isEdgeHighlighted(edge.from, edge.to) }"
-              :marker-end="isDirected ? 'url(#arrow)' : undefined"
+              :marker-end="vizFlags.enableGraphArrows && isDirected ? 'url(#arrow)' : undefined"
             />
-            <g v-if="isWeighted">
+            <g v-if="vizFlags.enableEdgeWeightLabels && isWeighted">
               <text
-                v-for="edge in graphLayout.edges"
-                :key="`gw-${edge.from}-${edge.to}`"
+                v-for="(edge, i) in graphLayout.edges"
+                :key="`gw-${i}`"
                 :x="(edge.x1 + edge.x2) / 2"
                 :y="(edge.y1 + edge.y2) / 2 - 6"
                 class="graph-view__weight"
@@ -507,11 +523,12 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
               <circle
                 :cx="node.x"
                 :cy="node.y"
-                r="16"
+                :r="graphLayout.nodeRadius"
                 class="graph-view__node"
-                :class="{ 'graph-view__node--highlight': isNodeHighlighted(node.id) }"
               />
-              <text :x="node.x" :y="node.y + 4" class="graph-view__label">{{ node.label }}</text>
+              <text :x="node.x" :y="node.y + 4" class="graph-view__label">
+                {{ node.label }}
+              </text>
             </g>
           </svg>
         </div>
@@ -590,11 +607,7 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   gap: var(--space-2);
 }
 
-.viz-panel__content > * {
-  animation: vizFadeIn var(--duration-viz) var(--ease);
-}
-
-/* ---- 线性结构通用网格 ---- */
+/* ---- 栈/队列/链表共用网格 ---- */
 
 .stack-view__items,
 .queue-view__items,
@@ -602,14 +615,11 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: var(--space-2);
-  position: relative;
 }
 
 .list-view__nodes {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
-
-/* ---- 线性结构条目 ---- */
 
 .stack-view__item,
 .queue-view__item,
@@ -619,10 +629,6 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background-color: var(--color-bg-surface);
-  transition:
-    border-color var(--duration-viz) var(--ease),
-    background-color var(--duration-viz) var(--ease),
-    box-shadow var(--duration-viz) var(--ease);
 }
 
 .stack-view__item--top,
@@ -648,53 +654,27 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   font-weight: var(--weight-medium);
 }
 
+.list-view__badge--tail {
+  right: auto;
+  left: 8px;
+}
+
 .stack-view__value,
 .queue-view__value,
 .list-view__value {
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
-  transition: color var(--duration-viz) var(--ease);
 }
 
 .list-view__meta {
   margin-top: 4px;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
 }
 
-.list-view__value--highlight {
-  color: var(--color-accent);
-}
-
-/* ---- TransitionGroup: viz-item (线性结构条目动画) ---- */
-
-.viz-item-enter-active,
-.viz-item-leave-active {
-  transition:
-    opacity var(--duration-viz) var(--ease),
-    transform var(--duration-viz) var(--ease);
-}
-
-.viz-item-enter-from {
-  opacity: 0;
-  transform: scale(0.92) translateY(8px);
-}
-
-.viz-item-leave-to {
-  opacity: 0;
-  transform: scale(0.92) translateY(-8px);
-}
-
-.viz-item-leave-active {
-  position: absolute;
-}
-
-.viz-item-move {
-  transition: transform var(--duration-viz) var(--ease);
-}
-
-/* ---- SVG 通用 ---- */
+/* ---- 树 SVG ---- */
 
 .tree-view__svg,
 .graph-view__svg {
@@ -705,36 +685,18 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   background-color: var(--color-bg-surface-alt);
 }
 
-/* ---- 树 ---- */
-
 .tree-view__edge {
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 1;
-  transition:
-    x1 var(--duration-viz) var(--ease),
-    y1 var(--duration-viz) var(--ease),
-    x2 var(--duration-viz) var(--ease),
-    y2 var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
 }
 
 .tree-view__node {
   fill: #ffffff;
   stroke: var(--color-border-strong);
   stroke-width: 1;
-  transition:
-    cx var(--duration-viz) var(--ease),
-    cy var(--duration-viz) var(--ease),
-    fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
 }
 
 .tree-view__node--root {
-  fill: var(--color-accent-wash);
-  stroke: var(--color-accent);
-}
-
-.tree-view__node--highlight {
   fill: var(--color-accent-wash);
   stroke: var(--color-accent);
 }
@@ -743,26 +705,13 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   font-size: 12px;
   fill: var(--color-text-primary);
   text-anchor: middle;
-  transition:
-    x var(--duration-viz) var(--ease),
-    y var(--duration-viz) var(--ease);
 }
 
-/* ---- 图 ---- */
+/* ---- 图 SVG ---- */
 
 .graph-view__edge {
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 1.2;
-  transition:
-    x1 var(--duration-viz) var(--ease),
-    y1 var(--duration-viz) var(--ease),
-    x2 var(--duration-viz) var(--ease),
-    y2 var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
-}
-
-.graph-view__edge--highlight {
-  stroke: var(--color-accent);
 }
 
 .graph-view__arrow {
@@ -773,6 +722,31 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
   fill: #ffffff;
   stroke: var(--color-border-strong);
   stroke-width: 1;
+}
+
+.graph-view__label {
+  font-size: 12px;
+  fill: var(--color-text-primary);
+  text-anchor: middle;
+}
+
+.graph-view__weight {
+  font-size: 11px;
+  fill: var(--color-accent);
+  text-anchor: middle;
+}
+
+/* ---- 动画（仅在 flag 开启时生效） ---- */
+
+.viz-panel--animated .tree-view__edge {
+  transition:
+    x1 var(--duration-viz) var(--ease),
+    y1 var(--duration-viz) var(--ease),
+    x2 var(--duration-viz) var(--ease),
+    y2 var(--duration-viz) var(--ease);
+}
+
+.viz-panel--animated .tree-view__node {
   transition:
     cx var(--duration-viz) var(--ease),
     cy var(--duration-viz) var(--ease),
@@ -780,44 +754,40 @@ function collectEdges(value: unknown, edges: Array<{ from: number; to: number }>
     stroke var(--duration-viz) var(--ease);
 }
 
-.graph-view__node--highlight {
-  fill: var(--color-accent-wash);
-  stroke: var(--color-accent);
-}
-
-.graph-view__label {
-  font-size: 12px;
-  fill: var(--color-text-primary);
-  text-anchor: middle;
+.viz-panel--animated .tree-view__label {
   transition:
     x var(--duration-viz) var(--ease),
     y var(--duration-viz) var(--ease);
 }
 
-.graph-view__weight {
-  font-size: 11px;
-  fill: var(--color-accent);
-  text-anchor: middle;
+.viz-panel--animated .graph-view__edge {
   transition:
-    x var(--duration-viz) var(--ease),
-    y var(--duration-viz) var(--ease);
+    x1 var(--duration-viz) var(--ease),
+    y1 var(--duration-viz) var(--ease),
+    x2 var(--duration-viz) var(--ease),
+    y2 var(--duration-viz) var(--ease);
+}
+
+.viz-panel--animated .graph-view__node {
+  transition:
+    cx var(--duration-viz) var(--ease),
+    cy var(--duration-viz) var(--ease),
+    fill var(--duration-viz) var(--ease),
+    stroke var(--duration-viz) var(--ease);
+}
+
+.viz-panel--animated .stack-view__item,
+.viz-panel--animated .queue-view__item,
+.viz-panel--animated .list-view__node {
+  transition:
+    border-color var(--duration-viz) var(--ease),
+    background-color var(--duration-viz) var(--ease);
 }
 
 @media (max-width: 1100px) {
   .tree-view__svg,
   .graph-view__svg {
     height: 260px;
-  }
-}
-
-@keyframes vizFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 </style>

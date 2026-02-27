@@ -1,41 +1,20 @@
 /**
- * 交互渲染状态类型
+ * 可视化渲染辅助类型
  *
  * @file src/types/viz.ts
  * @author WaterRun
- * @date 2026-02-12
- * @updated 2026-02-12
+ * @date 2026-02-27
  */
 
-import type { IrDocument, IrState, IrStep } from './ir'
-
 /**
- * 渲染模型
- *
- * @interface
- */
-export interface VizModel {
-  /** IR 文档 */
-  document: IrDocument
-  /** 状态列表 */
-  states: IrState[]
-  /** 步骤列表 */
-  steps: IrStep[]
-  /** 当前状态 ID */
-  currentStateId: number
-  /** 当前步骤 ID */
-  currentStepId: number | null
-}
-
-/**
- * 步骤摘要信息
+ * 步骤摘要信息（传递给 VizPanel 显示）
  *
  * @interface
  */
 export interface StepSummary {
   /** 操作名称 */
   op: string
-  /** 行号 */
+  /** 源码行号 */
   line?: number
   /** 备注 */
   note?: string
