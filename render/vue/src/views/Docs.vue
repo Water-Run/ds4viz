@@ -6,9 +6,11 @@
  */
 
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { LANGUAGES, LANGUAGE_LABELS } from '@/types/api'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
+import CodeEditor from '@/components/editor/CodeEditor.vue'
 import type { Language } from '@/types/api'
 
 /**
@@ -28,6 +30,8 @@ interface DocNode {
   /** 子节点 */
   children?: DocNode[]
 }
+
+const router = useRouter()
 
 /**
  * 选中语言（全局共享，切换一处则处处切换）
@@ -49,6 +53,11 @@ const expanded = ref<Record<string, boolean>>({
  * 内容区容器引用
  */
 const contentRef = ref<HTMLElement | null>(null)
+
+/**
+ * 已复制的代码块 ID
+ */
+const copiedId = ref<string>('')
 
 /**
  * 切换图标名称
@@ -207,398 +216,26 @@ fn main() -> ds4viz::Result<()> {
 }`,
         },
       },
-      {
-        id: 'api-slist',
-        title: 'SingleLinkedList',
-        content:
-          '单链表。支持 insertHead（头插）、insertTail（尾插）、insertAfter（指定节点后插入）、delete（删除节点）、deleteHead（删除头节点）、reverse（反转）操作。插入操作返回新节点 ID。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.single_linked_list(label="demo_slist") as slist:
-    node_a = slist.insert_head(10)
-    slist.insert_tail(20)
-    node_c = slist.insert_tail(30)
-    slist.insert_after(node_a, 15)
-    slist.delete(node_c)
-    slist.reverse()`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.singleLinkedList("demo_slist"), function(slist)
-    local node_a = slist:insertHead(10)
-    slist:insertTail(20)
-    local node_c = slist:insertTail(30)
-    slist:insertAfter(node_a, 15)
-    slist:delete(node_c)
-    slist:reverse()
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::single_linked_list("demo_slist", |slist| {
-        let node_a = slist.insert_head(10)?;
-        slist.insert_tail(20)?;
-        let node_c = slist.insert_tail(30)?;
-        slist.insert_after(node_a, 15)?;
-        slist.delete(node_c)?;
-        slist.reverse()?;
-        Ok(())
-    })
-}`,
-        },
-      },
-      {
-        id: 'api-dlist',
-        title: 'DoubleLinkedList',
-        content:
-          '双向链表。在单链表基础上增加 insertBefore（指定节点前插入）、deleteTail（删除尾节点）操作，并支持双向遍历。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.double_linked_list(label="demo_dlist") as dlist:
-    node_a = dlist.insert_head(10)
-    node_b = dlist.insert_tail(30)
-    dlist.insert_after(node_a, 20)
-    dlist.insert_before(node_b, 25)
-    dlist.delete_tail()
-    dlist.reverse()`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.doubleLinkedList("demo_dlist"), function(dlist)
-    local node_a = dlist:insertHead(10)
-    local node_b = dlist:insertTail(30)
-    dlist:insertAfter(node_a, 20)
-    dlist:insertBefore(node_b, 25)
-    dlist:deleteTail()
-    dlist:reverse()
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::double_linked_list("demo_dlist", |dlist| {
-        let node_a = dlist.insert_head(10)?;
-        let node_b = dlist.insert_tail(30)?;
-        dlist.insert_after(node_a, 20)?;
-        dlist.insert_before(node_b, 25)?;
-        dlist.delete_tail()?;
-        dlist.reverse()?;
-        Ok(())
-    })
-}`,
-        },
-      },
+      { id: 'api-slist', title: 'SingleLinkedList', content: '单链表。支持 insertHead（头插）、insertTail（尾插）、insertAfter（指定节点后插入）、delete（删除节点）、deleteHead（删除头节点）、reverse（反转）操作。插入操作返回新节点 ID。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.single_linked_list(label="demo_slist") as slist:\n    node_a = slist.insert_head(10)\n    slist.insert_tail(20)\n    node_c = slist.insert_tail(30)\n    slist.insert_after(node_a, 15)\n    slist.delete(node_c)\n    slist.reverse()`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.singleLinkedList("demo_slist"), function(slist)\n    local node_a = slist:insertHead(10)\n    slist:insertTail(20)\n    local node_c = slist:insertTail(30)\n    slist:insertAfter(node_a, 15)\n    slist:delete(node_c)\n    slist:reverse()\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::single_linked_list("demo_slist", |slist| {\n        let node_a = slist.insert_head(10)?;\n        slist.insert_tail(20)?;\n        let node_c = slist.insert_tail(30)?;\n        slist.insert_after(node_a, 15)?;\n        slist.delete(node_c)?;\n        slist.reverse()?;\n        Ok(())\n    })\n}` } },
+      { id: 'api-dlist', title: 'DoubleLinkedList', content: '双向链表。在单链表基础上增加 insertBefore（指定节点前插入）、deleteTail（删除尾节点）操作，并支持双向遍历。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.double_linked_list(label="demo_dlist") as dlist:\n    node_a = dlist.insert_head(10)\n    node_b = dlist.insert_tail(30)\n    dlist.insert_after(node_a, 20)\n    dlist.insert_before(node_b, 25)\n    dlist.delete_tail()\n    dlist.reverse()`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.doubleLinkedList("demo_dlist"), function(dlist)\n    local node_a = dlist:insertHead(10)\n    local node_b = dlist:insertTail(30)\n    dlist:insertAfter(node_a, 20)\n    dlist:insertBefore(node_b, 25)\n    dlist:deleteTail()\n    dlist:reverse()\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::double_linked_list("demo_dlist", |dlist| {\n        let node_a = dlist.insert_head(10)?;\n        let node_b = dlist.insert_tail(30)?;\n        dlist.insert_after(node_a, 20)?;\n        dlist.insert_before(node_b, 25)?;\n        dlist.delete_tail()?;\n        dlist.reverse()?;\n        Ok(())\n    })\n}` } },
     ],
   },
   {
     id: 'tree',
     title: '树结构',
     children: [
-      {
-        id: 'api-binary-tree',
-        title: 'BinaryTree',
-        content:
-          '二叉树。支持 insertRoot（插入根节点）、insertLeft / insertRight（插入左/右子节点）、delete（删除节点及其子树）、updateValue（更新节点值）操作。插入操作返回节点 ID。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.binary_tree(label="demo_tree") as tree:
-    root = tree.insert_root(1)
-    left = tree.insert_left(root, 2)
-    right = tree.insert_right(root, 3)
-    tree.insert_left(left, 4)
-    tree.insert_right(left, 5)
-    tree.insert_left(right, 6)
-    tree.update_value(right, 30)
-    tree.delete(left)`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.binaryTree("demo_tree"), function(tree)
-    local root = tree:insertRoot(1)
-    local left = tree:insertLeft(root, 2)
-    local right = tree:insertRight(root, 3)
-    tree:insertLeft(left, 4)
-    tree:insertRight(left, 5)
-    tree:insertLeft(right, 6)
-    tree:updateValue(right, 30)
-    tree:delete(left)
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::binary_tree("demo_tree", |tree| {
-        let root = tree.insert_root(1)?;
-        let left = tree.insert_left(root, 2)?;
-        let right = tree.insert_right(root, 3)?;
-        tree.insert_left(left, 4)?;
-        tree.insert_right(left, 5)?;
-        tree.insert_left(right, 6)?;
-        tree.update_value(right, 30)?;
-        tree.delete(left)?;
-        Ok(())
-    })
-}`,
-        },
-      },
-      {
-        id: 'api-bst',
-        title: 'BinarySearchTree',
-        content:
-          '二叉搜索树。支持 insert（插入，自动维护 BST 性质）和 delete（删除，自动处理叶子、单子、双子三种情况）操作。值类型限制为数值。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.binary_search_tree(label="demo_bst") as bst:
-    bst.insert(50)
-    bst.insert(30)
-    bst.insert(70)
-    bst.insert(20)
-    bst.insert(40)
-    bst.insert(60)
-    bst.insert(80)
-    bst.delete(30)
-    bst.insert(35)`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.binarySearchTree("demo_bst"), function(bst)
-    bst:insert(50)
-    bst:insert(30)
-    bst:insert(70)
-    bst:insert(20)
-    bst:insert(40)
-    bst:insert(60)
-    bst:insert(80)
-    bst:delete(30)
-    bst:insert(35)
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::binary_search_tree("demo_bst", |bst| {
-        bst.insert(50)?;
-        bst.insert(30)?;
-        bst.insert(70)?;
-        bst.insert(20)?;
-        bst.insert(40)?;
-        bst.insert(60)?;
-        bst.insert(80)?;
-        bst.delete(30)?;
-        bst.insert(35)?;
-        Ok(())
-    })
-}`,
-        },
-      },
-      {
-        id: 'api-heap',
-        title: 'Heap',
-        content:
-          '堆（优先队列）。支持 min（最小堆）和 max（最大堆）两种模式。insert 插入元素并自动上浮，extract 提取堆顶并自动下沉。内部以二叉树形式渲染。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-# 最小堆
-with dv.heap(label="demo_min_heap", heap_type="min") as h:
-    h.insert(15)
-    h.insert(10)
-    h.insert(20)
-    h.insert(5)
-    h.insert(30)
-    h.extract()
-    h.insert(2)
-    h.extract()`,
-          lua: `local ds4viz = require("ds4viz")
-
--- 最小堆
-ds4viz.withContext(ds4viz.heap("demo_min_heap", "min"), function(h)
-    h:insert(15)
-    h:insert(10)
-    h:insert(20)
-    h:insert(5)
-    h:insert(30)
-    h:extract()
-    h:insert(2)
-    h:extract()
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    // 最小堆
-    ds4viz::heap("demo_min_heap", HeapType::Min, |h| {
-        h.insert(15)?;
-        h.insert(10)?;
-        h.insert(20)?;
-        h.insert(5)?;
-        h.insert(30)?;
-        h.extract()?;
-        h.insert(2)?;
-        h.extract()?;
-        Ok(())
-    })
-}`,
-        },
-      },
+      { id: 'api-binary-tree', title: 'BinaryTree', content: '二叉树。支持 insertRoot（插入根节点）、insertLeft / insertRight（插入左/右子节点）、delete（删除节点及其子树）、updateValue（更新节点值）操作。插入操作返回节点 ID。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.binary_tree(label="demo_tree") as tree:\n    root = tree.insert_root(1)\n    left = tree.insert_left(root, 2)\n    right = tree.insert_right(root, 3)\n    tree.insert_left(left, 4)\n    tree.insert_right(left, 5)\n    tree.insert_left(right, 6)\n    tree.update_value(right, 30)\n    tree.delete(left)`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.binaryTree("demo_tree"), function(tree)\n    local root = tree:insertRoot(1)\n    local left = tree:insertLeft(root, 2)\n    local right = tree:insertRight(root, 3)\n    tree:insertLeft(left, 4)\n    tree:insertRight(left, 5)\n    tree:insertLeft(right, 6)\n    tree:updateValue(right, 30)\n    tree:delete(left)\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::binary_tree("demo_tree", |tree| {\n        let root = tree.insert_root(1)?;\n        let left = tree.insert_left(root, 2)?;\n        let right = tree.insert_right(root, 3)?;\n        tree.insert_left(left, 4)?;\n        tree.insert_right(left, 5)?;\n        tree.insert_left(right, 6)?;\n        tree.update_value(right, 30)?;\n        tree.delete(left)?;\n        Ok(())\n    })\n}` } },
+      { id: 'api-bst', title: 'BinarySearchTree', content: '二叉搜索树。支持 insert（插入，自动维护 BST 性质）和 delete（删除，自动处理叶子、单子、双子三种情况）操作。值类型限制为数值。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.binary_search_tree(label="demo_bst") as bst:\n    bst.insert(50)\n    bst.insert(30)\n    bst.insert(70)\n    bst.insert(20)\n    bst.insert(40)\n    bst.insert(60)\n    bst.insert(80)\n    bst.delete(30)\n    bst.insert(35)`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.binarySearchTree("demo_bst"), function(bst)\n    bst:insert(50)\n    bst:insert(30)\n    bst:insert(70)\n    bst:insert(20)\n    bst:insert(40)\n    bst:insert(60)\n    bst:insert(80)\n    bst:delete(30)\n    bst:insert(35)\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::binary_search_tree("demo_bst", |bst| {\n        bst.insert(50)?;\n        bst.insert(30)?;\n        bst.insert(70)?;\n        bst.insert(20)?;\n        bst.insert(40)?;\n        bst.insert(60)?;\n        bst.insert(80)?;\n        bst.delete(30)?;\n        bst.insert(35)?;\n        Ok(())\n    })\n}` } },
+      { id: 'api-heap', title: 'Heap', content: '堆（优先队列）。支持 min（最小堆）和 max（最大堆）两种模式。insert 插入元素并自动上浮，extract 提取堆顶并自动下沉。内部以二叉树形式渲染。', codeBlocks: { python: `import ds4viz as dv\n\n# 最小堆\nwith dv.heap(label="demo_min_heap", heap_type="min") as h:\n    h.insert(15)\n    h.insert(10)\n    h.insert(20)\n    h.insert(5)\n    h.insert(30)\n    h.extract()\n    h.insert(2)\n    h.extract()`, lua: `local ds4viz = require("ds4viz")\n\n-- 最小堆\nds4viz.withContext(ds4viz.heap("demo_min_heap", "min"), function(h)\n    h:insert(15)\n    h:insert(10)\n    h:insert(20)\n    h:insert(5)\n    h:insert(30)\n    h:extract()\n    h:insert(2)\n    h:extract()\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    // 最小堆\n    ds4viz::heap("demo_min_heap", HeapType::Min, |h| {\n        h.insert(15)?;\n        h.insert(10)?;\n        h.insert(20)?;\n        h.insert(5)?;\n        h.insert(30)?;\n        h.extract()?;\n        h.insert(2)?;\n        h.extract()?;\n        Ok(())\n    })\n}` } },
     ],
   },
   {
     id: 'graph',
     title: '图结构',
     children: [
-      {
-        id: 'api-graph-undirected',
-        title: 'GraphUndirected',
-        content:
-          '无向图。支持 addNode（添加节点）、addEdge（添加无向边，内部自动规范化方向）、removeNode（删除节点及关联边）、removeEdge（删除边）、updateNodeLabel（更新节点标签）操作。不允许自环。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.graph_undirected(label="demo_graph") as g:
-    g.add_node(0, "A")
-    g.add_node(1, "B")
-    g.add_node(2, "C")
-    g.add_node(3, "D")
-    g.add_edge(0, 1)
-    g.add_edge(0, 2)
-    g.add_edge(1, 2)
-    g.add_edge(2, 3)
-    g.remove_edge(0, 2)
-    g.remove_node(3)`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.graphUndirected("demo_graph"), function(g)
-    g:addNode(0, "A")
-    g:addNode(1, "B")
-    g:addNode(2, "C")
-    g:addNode(3, "D")
-    g:addEdge(0, 1)
-    g:addEdge(0, 2)
-    g:addEdge(1, 2)
-    g:addEdge(2, 3)
-    g:removeEdge(0, 2)
-    g:removeNode(3)
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::graph_undirected("demo_graph", |g| {
-        g.add_node(0, "A")?;
-        g.add_node(1, "B")?;
-        g.add_node(2, "C")?;
-        g.add_node(3, "D")?;
-        g.add_edge(0, 1)?;
-        g.add_edge(0, 2)?;
-        g.add_edge(1, 2)?;
-        g.add_edge(2, 3)?;
-        g.remove_edge(0, 2)?;
-        g.remove_node(3)?;
-        Ok(())
-    })
-}`,
-        },
-      },
-      {
-        id: 'api-graph-directed',
-        title: 'GraphDirected',
-        content:
-          '有向图。API 与无向图一致，区别在于 addEdge 保留方向信息（from → to）。可视化时以箭头标识方向。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.graph_directed(label="demo_digraph") as g:
-    g.add_node(0, "A")
-    g.add_node(1, "B")
-    g.add_node(2, "C")
-    g.add_node(3, "D")
-    g.add_edge(0, 1)
-    g.add_edge(1, 2)
-    g.add_edge(2, 3)
-    g.add_edge(3, 0)
-    g.remove_edge(3, 0)
-    g.add_edge(0, 2)`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.graphDirected("demo_digraph"), function(g)
-    g:addNode(0, "A")
-    g:addNode(1, "B")
-    g:addNode(2, "C")
-    g:addNode(3, "D")
-    g:addEdge(0, 1)
-    g:addEdge(1, 2)
-    g:addEdge(2, 3)
-    g:addEdge(3, 0)
-    g:removeEdge(3, 0)
-    g:addEdge(0, 2)
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::graph_directed("demo_digraph", |g| {
-        g.add_node(0, "A")?;
-        g.add_node(1, "B")?;
-        g.add_node(2, "C")?;
-        g.add_node(3, "D")?;
-        g.add_edge(0, 1)?;
-        g.add_edge(1, 2)?;
-        g.add_edge(2, 3)?;
-        g.add_edge(3, 0)?;
-        g.remove_edge(3, 0)?;
-        g.add_edge(0, 2)?;
-        Ok(())
-    })
-}`,
-        },
-      },
-      {
-        id: 'api-graph-weighted',
-        title: 'GraphWeighted',
-        content:
-          '带权图。addEdge 需要额外传入 weight 参数，支持 updateWeight 更新边权重。通过 directed 参数控制有向/无向。可视化时在边上标注权值。',
-        codeBlocks: {
-          python: `import ds4viz as dv
-
-with dv.graph_weighted(label="demo_weighted") as g:
-    g.add_node(0, "A")
-    g.add_node(1, "B")
-    g.add_node(2, "C")
-    g.add_node(3, "D")
-    g.add_edge(0, 1, 4.0)
-    g.add_edge(0, 2, 2.0)
-    g.add_edge(1, 3, 5.0)
-    g.add_edge(2, 3, 1.0)
-    g.update_weight(0, 1, 3.0)
-    g.remove_edge(2, 3)`,
-          lua: `local ds4viz = require("ds4viz")
-
-ds4viz.withContext(ds4viz.graphWeighted("demo_weighted"), function(g)
-    g:addNode(0, "A")
-    g:addNode(1, "B")
-    g:addNode(2, "C")
-    g:addNode(3, "D")
-    g:addEdge(0, 1, 4.0)
-    g:addEdge(0, 2, 2.0)
-    g:addEdge(1, 3, 5.0)
-    g:addEdge(2, 3, 1.0)
-    g:updateWeight(0, 1, 3.0)
-    g:removeEdge(2, 3)
-end)`,
-          rust: `use ds4viz::prelude::*;
-
-fn main() -> ds4viz::Result<()> {
-    ds4viz::graph_weighted("demo_weighted", false, |g| {
-        g.add_node(0, "A")?;
-        g.add_node(1, "B")?;
-        g.add_node(2, "C")?;
-        g.add_node(3, "D")?;
-        g.add_edge(0, 1, 4.0)?;
-        g.add_edge(0, 2, 2.0)?;
-        g.add_edge(1, 3, 5.0)?;
-        g.add_edge(2, 3, 1.0)?;
-        g.update_weight(0, 1, 3.0)?;
-        g.remove_edge(2, 3)?;
-        Ok(())
-    })
-}`,
-        },
-      },
+      { id: 'api-graph-undirected', title: 'GraphUndirected', content: '无向图。支持 addNode（添加节点）、addEdge（添加无向边，内部自动规范化方向）、removeNode（删除节点及关联边）、removeEdge（删除边）、updateNodeLabel（更新节点标签）操作。不允许自环。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.graph_undirected(label="demo_graph") as g:\n    g.add_node(0, "A")\n    g.add_node(1, "B")\n    g.add_node(2, "C")\n    g.add_node(3, "D")\n    g.add_edge(0, 1)\n    g.add_edge(0, 2)\n    g.add_edge(1, 2)\n    g.add_edge(2, 3)\n    g.remove_edge(0, 2)\n    g.remove_node(3)`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.graphUndirected("demo_graph"), function(g)\n    g:addNode(0, "A")\n    g:addNode(1, "B")\n    g:addNode(2, "C")\n    g:addNode(3, "D")\n    g:addEdge(0, 1)\n    g:addEdge(0, 2)\n    g:addEdge(1, 2)\n    g:addEdge(2, 3)\n    g:removeEdge(0, 2)\n    g:removeNode(3)\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::graph_undirected("demo_graph", |g| {\n        g.add_node(0, "A")?;\n        g.add_node(1, "B")?;\n        g.add_node(2, "C")?;\n        g.add_node(3, "D")?;\n        g.add_edge(0, 1)?;\n        g.add_edge(0, 2)?;\n        g.add_edge(1, 2)?;\n        g.add_edge(2, 3)?;\n        g.remove_edge(0, 2)?;\n        g.remove_node(3)?;\n        Ok(())\n    })\n}` } },
+      { id: 'api-graph-directed', title: 'GraphDirected', content: '有向图。API 与无向图一致，区别在于 addEdge 保留方向信息（from → to）。可视化时以箭头标识方向。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.graph_directed(label="demo_digraph") as g:\n    g.add_node(0, "A")\n    g.add_node(1, "B")\n    g.add_node(2, "C")\n    g.add_node(3, "D")\n    g.add_edge(0, 1)\n    g.add_edge(1, 2)\n    g.add_edge(2, 3)\n    g.add_edge(3, 0)\n    g.remove_edge(3, 0)\n    g.add_edge(0, 2)`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.graphDirected("demo_digraph"), function(g)\n    g:addNode(0, "A")\n    g:addNode(1, "B")\n    g:addNode(2, "C")\n    g:addNode(3, "D")\n    g:addEdge(0, 1)\n    g:addEdge(1, 2)\n    g:addEdge(2, 3)\n    g:addEdge(3, 0)\n    g:removeEdge(3, 0)\n    g:addEdge(0, 2)\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::graph_directed("demo_digraph", |g| {\n        g.add_node(0, "A")?;\n        g.add_node(1, "B")?;\n        g.add_node(2, "C")?;\n        g.add_node(3, "D")?;\n        g.add_edge(0, 1)?;\n        g.add_edge(1, 2)?;\n        g.add_edge(2, 3)?;\n        g.add_edge(3, 0)?;\n        g.remove_edge(3, 0)?;\n        g.add_edge(0, 2)?;\n        Ok(())\n    })\n}` } },
+      { id: 'api-graph-weighted', title: 'GraphWeighted', content: '带权图。addEdge 需要额外传入 weight 参数，支持 updateWeight 更新边权重。通过 directed 参数控制有向/无向。可视化时在边上标注权值。', codeBlocks: { python: `import ds4viz as dv\n\nwith dv.graph_weighted(label="demo_weighted") as g:\n    g.add_node(0, "A")\n    g.add_node(1, "B")\n    g.add_node(2, "C")\n    g.add_node(3, "D")\n    g.add_edge(0, 1, 4.0)\n    g.add_edge(0, 2, 2.0)\n    g.add_edge(1, 3, 5.0)\n    g.add_edge(2, 3, 1.0)\n    g.update_weight(0, 1, 3.0)\n    g.remove_edge(2, 3)`, lua: `local ds4viz = require("ds4viz")\n\nds4viz.withContext(ds4viz.graphWeighted("demo_weighted"), function(g)\n    g:addNode(0, "A")\n    g:addNode(1, "B")\n    g:addNode(2, "C")\n    g:addNode(3, "D")\n    g:addEdge(0, 1, 4.0)\n    g:addEdge(0, 2, 2.0)\n    g:addEdge(1, 3, 5.0)\n    g:addEdge(2, 3, 1.0)\n    g:updateWeight(0, 1, 3.0)\n    g:removeEdge(2, 3)\nend)`, rust: `use ds4viz::prelude::*;\n\nfn main() -> ds4viz::Result<()> {\n    ds4viz::graph_weighted("demo_weighted", false, |g| {\n        g.add_node(0, "A")?;\n        g.add_node(1, "B")?;\n        g.add_node(2, "C")?;\n        g.add_node(3, "D")?;\n        g.add_edge(0, 1, 4.0)?;\n        g.add_edge(0, 2, 2.0)?;\n        g.add_edge(1, 3, 5.0)?;\n        g.add_edge(2, 3, 1.0)?;\n        g.update_weight(0, 1, 3.0)?;\n        g.remove_edge(2, 3)?;\n        Ok(())\n    })\n}` } },
     ],
   },
 ])
@@ -613,7 +250,7 @@ const toggleNode = (id: string): void => {
 }
 
 /**
- * 滚动到指定文档节（顶部留出间距）
+ * 滚动到指定文档节
  *
  * @param id - 目标节点 id
  */
@@ -630,9 +267,6 @@ const scrollToSection = (id: string): void => {
 
 /**
  * 获取代码块的可用语言列表
- *
- * @param codeBlocks - 代码块映射
- * @returns 可用语言数组
  */
 const getCodeBlockLanguages = (codeBlocks: Partial<Record<Language, string>>): Language[] => {
   return Object.keys(codeBlocks) as Language[]
@@ -640,9 +274,6 @@ const getCodeBlockLanguages = (codeBlocks: Partial<Record<Language, string>>): L
 
 /**
  * 获取代码块的有效显示语言
- *
- * @param codeBlocks - 代码块映射
- * @returns 有效语言标识
  */
 const getEffectiveLanguage = (codeBlocks: Partial<Record<Language, string>>): Language => {
   if (codeBlocks[selectedLanguage.value] !== undefined) {
@@ -654,9 +285,6 @@ const getEffectiveLanguage = (codeBlocks: Partial<Record<Language, string>>): La
 
 /**
  * 获取语言对应的色点颜色
- *
- * @param language - 语言标识
- * @returns CSS 颜色值
  */
 const getLanguageDotColor = (language: Language): string => {
   const colors: Record<Language, string> = {
@@ -668,9 +296,7 @@ const getLanguageDotColor = (language: Language): string => {
 }
 
 /**
- * 处理代码块语言下拉切换（全局同步）
- *
- * @param event - 原生 change 事件
+ * 处理代码块语言下拉切换
  */
 const handleCodeBlockLangChange = (event: Event): void => {
   const target = event.target as HTMLSelectElement
@@ -678,8 +304,44 @@ const handleCodeBlockLangChange = (event: Event): void => {
 }
 
 /**
- * 初始化时同步编辑器页的语言选择
+ * 计算编辑器高度
  */
+const getEditorHeight = (codeBlocks: Partial<Record<Language, string>>): string => {
+  const code = codeBlocks[getEffectiveLanguage(codeBlocks)] ?? ''
+  const lines = code.split('\n').length
+  return `${Math.min(360, Math.max(60, lines * 20 + 24))}px`
+}
+
+/**
+ * 复制代码到剪贴板
+ */
+const handleCopyCode = async (code: string, sectionId: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(code)
+    copiedId.value = sectionId
+    window.setTimeout(() => {
+      if (copiedId.value === sectionId) {
+        copiedId.value = ''
+      }
+    }, 2000)
+  } catch {
+    /* clipboard 不可用 */
+  }
+}
+
+/**
+ * 在编辑器中打开
+ */
+const handleOpenInEditor = (code: string, language: Language): void => {
+  try {
+    sessionStorage.setItem('ds4viz_edit_code', code)
+    sessionStorage.setItem('ds4viz_edit_language', language)
+  } catch {
+    /* sessionStorage 不可用 */
+  }
+  router.push({ name: 'playground' })
+}
+
 onMounted(() => {
   const stored = localStorage.getItem('ds4viz_language') as Language | null
   if (stored && LANGUAGES.includes(stored)) {
@@ -729,6 +391,24 @@ onMounted(() => {
               class="doc-code-block"
             >
               <div class="doc-code-block__toolbar">
+                <div class="doc-code-block__actions">
+                  <button
+                    class="code-action-btn"
+                    :class="{ 'code-action-btn--copied': copiedId === child.id }"
+                    @click="handleCopyCode(child.codeBlocks![getEffectiveLanguage(child.codeBlocks!)] ?? '', child.id)"
+                  >
+                    <svg v-if="copiedId !== child.id" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" /></svg>
+                    <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                    <span>{{ copiedId === child.id ? '已复制' : '复制' }}</span>
+                  </button>
+                  <button
+                    class="code-action-btn code-action-btn--primary"
+                    @click="handleOpenInEditor(child.codeBlocks![getEffectiveLanguage(child.codeBlocks!)] ?? '', getEffectiveLanguage(child.codeBlocks!))"
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" /></svg>
+                    <span>在编辑器中打开</span>
+                  </button>
+                </div>
                 <div class="doc-code-block__lang-select">
                   <span
                     class="doc-code-block__dot"
@@ -749,7 +429,16 @@ onMounted(() => {
                   </select>
                 </div>
               </div>
-              <pre class="doc-code"><code>{{ child.codeBlocks[getEffectiveLanguage(child.codeBlocks)] }}</code></pre>
+              <div
+                class="doc-code-block__editor"
+                :style="{ height: getEditorHeight(child.codeBlocks) }"
+              >
+                <CodeEditor
+                  :model-value="child.codeBlocks[getEffectiveLanguage(child.codeBlocks)] ?? ''"
+                  :language="getEffectiveLanguage(child.codeBlocks)"
+                  :readonly="true"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -768,217 +457,47 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.docs-page__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
+.docs-page__header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.docs-page__title { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); }
+.docs-page__title :deep(.material-icon) { width: 18px; height: 18px; }
 
-.docs-page__title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-base);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-}
+.docs-page__body { display: grid; grid-template-columns: 200px 1fr; gap: var(--space-3); flex: 1; min-height: 0; overflow: hidden; }
 
-.docs-page__title :deep(.material-icon) {
-  width: 18px;
-  height: 18px;
-}
+.docs-page__toc { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-2); background-color: var(--color-bg-surface); overflow: auto; }
+.toc-section { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--space-2); }
+.toc-section__title { display: flex; align-items: center; gap: 4px; border: none; background: none; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text-primary); cursor: pointer; padding: 4px 0; border-radius: var(--radius-sm); transition: color var(--duration-fast) var(--ease); }
+.toc-section__title:hover { color: var(--color-accent); }
+.toc-section__title :deep(.material-icon) { width: 16px; height: 16px; }
+.toc-section__children { display: flex; flex-direction: column; gap: 2px; padding-left: 20px; }
+.toc-section__item { border: none; background: none; text-align: left; font-size: var(--text-xs); color: var(--color-text-tertiary); cursor: pointer; padding: 3px 6px; border-radius: var(--radius-sm); transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease); }
+.toc-section__item:hover { background-color: var(--color-bg-hover); color: var(--color-accent); }
 
-/* ---- 主体 ---- */
+.docs-page__content { border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-3); background-color: var(--color-bg-surface); overflow: auto; }
+.doc-section { margin-bottom: var(--space-4); scroll-margin-top: var(--space-3); }
+.doc-section__title { margin: 0 0 var(--space-1); font-size: 18px; font-weight: var(--weight-semibold); }
+.doc-section__desc { margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--color-text-body); line-height: var(--leading-relaxed); }
+.doc-subsection { margin-bottom: var(--space-3); scroll-margin-top: var(--space-3); }
+.doc-subsection__title { margin: 0 0 var(--space-1); font-size: 15px; font-weight: var(--weight-semibold); }
+.doc-subsection__desc { margin: 0 0 var(--space-1); font-size: var(--text-sm); color: var(--color-text-body); line-height: var(--leading-relaxed); }
 
-.docs-page__body {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: var(--space-3);
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
+.doc-code-block { position: relative; border: 1px solid var(--color-border); border-radius: var(--radius-md); background-color: var(--color-bg-surface-alt); overflow: hidden; }
+.doc-code-block__toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); padding: 6px 8px; border-bottom: 1px solid var(--color-border); background-color: var(--color-bg-surface); flex-wrap: wrap; }
+.doc-code-block__actions { display: flex; align-items: center; gap: var(--space-1); }
+.doc-code-block__lang-select { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; height: 28px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background-color: var(--color-bg-surface); }
+.doc-code-block__dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.doc-code-block__select { font-size: var(--text-xs); color: var(--color-text-primary); background: none; border: none; outline: none; cursor: pointer; font-family: inherit; }
+.doc-code-block__editor { display: flex; border-radius: 0; overflow: hidden; }
 
-/* ---- 目录侧栏 ---- */
-
-.docs-page__toc {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-2);
-  background-color: var(--color-bg-surface);
-  overflow: auto;
-}
-
-.toc-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: var(--space-2);
-}
-
-.toc-section__title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: none;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  padding: 4px 0;
-  border-radius: var(--radius-sm);
-  transition: color var(--duration-fast) var(--ease);
-}
-
-.toc-section__title:hover {
-  color: var(--color-accent);
-}
-
-.toc-section__title :deep(.material-icon) {
-  width: 16px;
-  height: 16px;
-}
-
-.toc-section__children {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: 20px;
-}
-
-.toc-section__item {
-  border: none;
-  background: none;
-  text-align: left;
-  font-size: var(--text-xs);
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: var(--radius-sm);
-  transition:
-    background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
-}
-
-.toc-section__item:hover {
-  background-color: var(--color-bg-hover);
-  color: var(--color-accent);
-}
-
-/* ---- 内容区 ---- */
-
-.docs-page__content {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3);
-  background-color: var(--color-bg-surface);
-  overflow: auto;
-}
-
-.doc-section {
-  margin-bottom: var(--space-4);
-  scroll-margin-top: var(--space-3);
-}
-
-.doc-section__title {
-  margin: 0 0 var(--space-1);
-  font-size: 18px;
-  font-weight: var(--weight-semibold);
-}
-
-.doc-section__desc {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text-body);
-  line-height: var(--leading-relaxed);
-}
-
-.doc-subsection {
-  margin-bottom: var(--space-3);
-  scroll-margin-top: var(--space-3);
-}
-
-.doc-subsection__title {
-  margin: 0 0 var(--space-1);
-  font-size: 15px;
-  font-weight: var(--weight-semibold);
-}
-
-.doc-subsection__desc {
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--color-text-body);
-  line-height: var(--leading-relaxed);
-}
-
-/* ---- 代码块容器 ---- */
-
-.doc-code-block {
-  position: relative;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg-surface-alt);
-  overflow: hidden;
-}
-
-.doc-code-block__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-bg-surface);
-}
-
-.doc-code-block__lang-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 28px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-control);
-  background-color: var(--color-bg-surface);
-}
-
-.doc-code-block__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.doc-code-block__select {
-  font-size: var(--text-xs);
-  color: var(--color-text-primary);
-  background: none;
-  border: none;
-  outline: none;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.doc-code {
-  margin: 0;
-  padding: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: 1.65;
-  color: var(--color-text-body);
-  overflow: auto;
-}
-
-/* ---- 响应式 ---- */
+/* ---- 统一操作按钮 ---- */
+.code-action-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background-color: var(--color-bg-surface); color: var(--color-text-body); font-size: var(--text-xs); font-family: inherit; cursor: pointer; transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease); }
+.code-action-btn:hover { background-color: var(--color-bg-hover); color: var(--color-text-primary); }
+.code-action-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.code-action-btn--copied { border-color: var(--color-success); color: var(--color-success); }
+.code-action-btn--primary { border-color: var(--color-accent); background-color: var(--color-accent); color: var(--color-accent-contrast); }
+.code-action-btn--primary:hover { background-color: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 
 @media (max-width: 1100px) {
-  .docs-page__body {
-    grid-template-columns: 1fr;
-  }
-
-  .docs-page__toc {
-    order: 2;
-  }
+  .docs-page__body { grid-template-columns: 1fr; }
+  .docs-page__toc { order: 2; }
 }
 </style>

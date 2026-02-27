@@ -373,6 +373,7 @@ watch(
         <div v-if="tomlContent" class="toml-section">
           <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
             <MaterialIcon :name="tomlExpanded ? 'expand_less' : 'expand_more'" :size="16" />
+            <MaterialIcon name="data_object" :size="16" />
             <span>TOML IR</span>
           </button>
           <Transition name="slide-fade">
