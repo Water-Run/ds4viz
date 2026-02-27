@@ -171,6 +171,7 @@ onBeforeUnmount(() => {
             class="sidebar__logo-img"
           />
           <span class="sidebar__brand">ds4viz</span>
+          <span class="sidebar__brand-tooltip">关于 ds4viz</span>
         </router-link>
         <button
           class="sidebar__toggle"
@@ -310,6 +311,9 @@ onBeforeUnmount(() => {
   height: 48px;
   padding: 0 10px;
   flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 10;
 }
 
 .sidebar--collapsed .sidebar__header {
@@ -326,6 +330,7 @@ onBeforeUnmount(() => {
   color: inherit;
   border-radius: var(--radius-control);
   transition: opacity var(--duration-fast) var(--ease);
+  position: relative;
 }
 
 .sidebar__brand-link:hover {
@@ -335,6 +340,33 @@ onBeforeUnmount(() => {
 .sidebar__brand-link:focus-visible {
   outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
+}
+
+.sidebar__brand-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  padding: 6px 14px;
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-hover);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-body);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.sidebar__brand-link:hover .sidebar__brand-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .sidebar__logo-img {

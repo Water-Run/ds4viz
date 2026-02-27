@@ -2,6 +2,9 @@
 /**
  * 编辑器页面
  *
+ * @file src/views/Playground.vue
+ * @author WaterRun
+ * @date 2026-02-27
  * @component Playground
  */
 
@@ -33,127 +36,45 @@ import TomlViewer from '@/components/viz/TomlViewer.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
-/**
- * 语言状态
- */
 const language = ref<Language>('python')
-
-/**
- * 代码内容
- */
 const code = ref<string>(getDefaultTemplate('python'))
-
-/**
- * 语言选择器强制刷新键
- *
- * 用户取消语言切换时递增，迫使组件重新挂载以重置原生 select 的视觉状态。
- */
 const languageSelectKey = ref<number>(0)
-
-/**
- * 模板加载中
- */
 const templateLoading = ref<boolean>(false)
-
-/**
- * 模板错误提示
- */
 const templateError = ref<string>('')
-
-/**
- * 执行状态
- */
 const running = ref<boolean>(false)
-
-/**
- * 执行错误信息
- */
 const executeError = ref<string>('')
-
-/**
- * 执行结果信息
- */
 const executionInfo = ref<string>('')
-
-/**
- * TOML 内容
- */
 const tomlContent = ref<string>('')
-
-/**
- * TOML 查看器展开状态
- */
 const tomlExpanded = ref<boolean>(false)
-
-/**
- * IR 文档
- */
 const irDoc = ref<IrDocument | null>(null)
-
-/**
- * 可视化模型
- */
 const vizModel = ref<VizModel | null>(null)
-
-/**
- * 自动播放状态
- */
 const isPlaying = ref<boolean>(false)
-
-/**
- * 自动播放定时器
- */
 const playTimer = ref<number | null>(null)
 
-/**
- * 当前状态
- */
 const currentState = computed<IrState | null>(() => {
   if (!vizModel.value) return null
   return getStateById(vizModel.value, vizModel.value.currentStateId)
 })
 
-/**
- * 当前步骤摘要
- */
 const stepSummary = computed(() => {
   if (!vizModel.value) return null
   return getStepSummary(vizModel.value)
 })
 
-/**
- * 当前步骤索引
- */
 const currentStepIndex = computed<number>(() => {
   if (!vizModel.value) return -1
   return getCurrentStepIndex(vizModel.value)
 })
 
-/**
- * 步骤总数
- */
 const totalSteps = computed<number>(() => vizModel.value?.steps.length ?? 0)
 
-/**
- * 是否可后退
- */
 const canStepBackward = computed<boolean>(() => currentStepIndex.value > 0)
 
-/**
- * 是否可前进
- */
 const canStepForward = computed<boolean>(() => {
   if (!vizModel.value) return false
   return currentStepIndex.value < totalSteps.value - 1
 })
 
-/**
- * 处理语言切换
- *
- * 仅在用户确认后才真正更新 language；取消时通过递增 key 重置选择器。
- *
- * @param value - 用户选择的目标语言
- */
 const handleLanguageChange = (value: Language): void => {
   if (code.value.trim().length > 0) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
@@ -167,13 +88,6 @@ const handleLanguageChange = (value: Language): void => {
   localStorage.setItem('ds4viz_language', value)
 }
 
-/**
- * 解析 TOML 内容并更新可视化模型
- *
- * 解析成功后自动导航到第一步以立即展示可视化结果。
- *
- * @param content - TOML 原始文本
- */
 const applyToml = (content: string): void => {
   const parsed = parseIrToml(content)
   if (!parsed.ok || !parsed.document) {
@@ -185,7 +99,6 @@ const applyToml = (content: string): void => {
   irDoc.value = parsed.document
   vizModel.value = buildVizModel(parsed.document)
 
-  /* 自动导航到第一步，使可视化立即可见 */
   if (vizModel.value.steps.length > 0) {
     vizModel.value.currentStepId = vizModel.value.steps[0].id
     vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, 0)
@@ -194,9 +107,6 @@ const applyToml = (content: string): void => {
   executeError.value = parsed.document.error?.message ?? ''
 }
 
-/**
- * 执行代码
- */
 const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
@@ -222,11 +132,6 @@ const handleRun = async (): Promise<void> => {
   }
 }
 
-/**
- * 加载模板代码
- *
- * @param templateId - 模板 ID
- */
 const loadTemplate = async (templateId: number): Promise<void> => {
   if (templateLoading.value) return
   templateError.value = ''
@@ -248,9 +153,6 @@ const loadTemplate = async (templateId: number): Promise<void> => {
   }
 }
 
-/**
- * 上传 TOML
- */
 const handleUploadToml = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -263,9 +165,6 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   input.value = ''
 }
 
-/**
- * 下载 TOML
- */
 const handleDownloadToml = (): void => {
   if (!tomlContent.value) return
   const blob = new Blob([tomlContent.value], { type: 'text/plain;charset=utf-8' })
@@ -279,9 +178,6 @@ const handleDownloadToml = (): void => {
   URL.revokeObjectURL(url)
 }
 
-/**
- * 停止自动播放并清除定时器
- */
 const stopPlay = (): void => {
   isPlaying.value = false
   if (playTimer.value !== null) {
@@ -290,9 +186,6 @@ const stopPlay = (): void => {
   }
 }
 
-/**
- * 跳转到第一步
- */
 const goFirst = (): void => {
   if (!vizModel.value || vizModel.value.steps.length === 0) return
   stopPlay()
@@ -300,9 +193,6 @@ const goFirst = (): void => {
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, 0)
 }
 
-/**
- * 上一步
- */
 const goPrev = (): void => {
   if (!vizModel.value) return
   stopPlay()
@@ -313,9 +203,6 @@ const goPrev = (): void => {
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, nextIndex)
 }
 
-/**
- * 下一步
- */
 const goNext = (): void => {
   if (!vizModel.value) return
   const index = currentStepIndex.value
@@ -325,9 +212,6 @@ const goNext = (): void => {
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, nextIndex)
 }
 
-/**
- * 跳转到最后一步
- */
 const goLast = (): void => {
   if (!vizModel.value || vizModel.value.steps.length === 0) return
   stopPlay()
@@ -336,9 +220,6 @@ const goLast = (): void => {
   vizModel.value.currentStateId = getStateIdByStepIndex(vizModel.value, lastIndex)
 }
 
-/**
- * 切换自动播放
- */
 const togglePlay = (): void => {
   if (!vizModel.value) return
   if (isPlaying.value) {
@@ -355,13 +236,28 @@ const togglePlay = (): void => {
   }, 220)
 }
 
-/**
- * 路由状态
- */
 const route = useRoute()
 const router = useRouter()
 
 onMounted(() => {
+  /* 从执行记录跳转：读取 sessionStorage 中的代码 */
+  try {
+    const editCode = sessionStorage.getItem('ds4viz_edit_code')
+    const editLang = sessionStorage.getItem('ds4viz_edit_language') as Language | null
+    if (editCode !== null) {
+      sessionStorage.removeItem('ds4viz_edit_code')
+      sessionStorage.removeItem('ds4viz_edit_language')
+      if (editLang && LANGUAGES.includes(editLang)) {
+        language.value = editLang
+        localStorage.setItem('ds4viz_language', editLang)
+      }
+      code.value = editCode
+      return
+    }
+  } catch {
+    /* sessionStorage 不可用 */
+  }
+
   const stored = localStorage.getItem('ds4viz_language') as Language | null
   if (stored && LANGUAGES.includes(stored)) {
     language.value = stored
@@ -369,9 +265,6 @@ onMounted(() => {
   }
 })
 
-/**
- * 组件卸载时清除自动播放定时器，防止回调操作已卸载的响应式数据
- */
 onBeforeUnmount(() => {
   stopPlay()
 })

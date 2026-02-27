@@ -5,10 +5,13 @@
  * 卡片列表 + 分类筛选 + 实时搜索 + 收藏切换 + 无限滚动。
  * 点击卡片跳转到编辑器页加载对应代码。
  *
+ * @file src/views/Templates.vue
+ * @author WaterRun
+ * @date 2026-02-27
  * @component Templates
  */
 
-import { onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
@@ -77,6 +80,42 @@ const favoriteError = ref<string>('')
  * 悬浮提示状态
  */
 const hoveredId = ref<number | null>(null)
+
+/**
+ * 我收藏的模板
+ */
+const favoritedItems = computed(() =>
+  items.value.filter((item) => item.isFavorited),
+)
+
+/**
+ * 其他模板
+ */
+const otherItems = computed(() =>
+  items.value.filter((item) => !item.isFavorited),
+)
+
+/**
+ * 是否存在已收藏项
+ */
+const hasFavorited = computed<boolean>(() => favoritedItems.value.length > 0)
+
+/**
+ * 内容切换动画 key
+ */
+const contentKey = computed<string>(
+  () => `${selectedCategory.value}/${keyword.value}`,
+)
+
+/**
+ * 空状态文案
+ */
+const emptyMessage = computed<string>(() => {
+  if (selectedCategory.value.length > 0 || isSearchMode.value) {
+    return '指定条件下无符合的模板内容'
+  }
+  return '暂无模板'
+})
 
 /**
  * 滚动内容区到顶部
@@ -317,60 +356,114 @@ onBeforeUnmount(() => {
           class="templates-page__empty"
         >
           <MaterialIcon name="folder_open" class="templates-page__empty-icon" :size="48" />
-          <p class="templates-page__empty-text">暂无模板</p>
+          <p class="templates-page__empty-text">{{ emptyMessage }}</p>
         </div>
 
-        <!-- 卡片网格 -->
+        <!-- 卡片内容 -->
         <template v-if="items.length > 0">
-          <div class="template-grid">
-            <article
-              v-for="item in items"
-              :key="item.id"
-              class="template-card"
-              @mouseenter="hoveredId = item.id"
-              @mouseleave="hoveredId = null"
-              @click="handleOpenTemplate(item.id)"
-            >
-              <div class="template-card__header">
-                <h3 class="template-card__title">
-                  {{ item.title }}
-                </h3>
-                <span class="template-card__category">
-                  {{ item.category }}
-                </span>
-              </div>
-              <p
-                class="template-card__desc"
-                :title="hoveredId === item.id ? item.description : undefined"
-              >
-                {{ item.description }}
-              </p>
-              <div class="template-card__footer">
-                <span class="template-card__time">
-                  {{ formatRelativeTime(item.createdAt) }}
-                </span>
-                <div class="template-card__actions">
-                  <button
-                    class="template-card__fav"
-                    :class="{
-                      'template-card__fav--active': item.isFavorited,
-                    }"
-                    :disabled="togglingIds.has(item.id)"
-                    :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
-                    @click.stop="handleToggleFavorite(item.id)"
+          <Transition name="tpl-fade" mode="out-in">
+            <div :key="contentKey" class="templates-page__grids">
+              <!-- 我收藏的 -->
+              <div v-if="hasFavorited" class="template-section">
+                <h3 class="template-section__title">我收藏的</h3>
+                <div class="template-grid">
+                  <article
+                    v-for="item in favoritedItems"
+                    :key="item.id"
+                    class="template-card"
+                    @mouseenter="hoveredId = item.id"
+                    @mouseleave="hoveredId = null"
+                    @click="handleOpenTemplate(item.id)"
                   >
-                    <MaterialIcon
-                      :name="item.isFavorited ? 'favorite' : 'favorite_border'"
-                      :size="18"
-                    />
-                    <span class="template-card__fav-count">
-                      {{ item.favoriteCount }}
-                    </span>
-                  </button>
+                    <div class="template-card__header">
+                      <h3 class="template-card__title">
+                        {{ item.title }}
+                      </h3>
+                      <span class="template-card__category">
+                        {{ item.category }}
+                      </span>
+                    </div>
+                    <p
+                      class="template-card__desc"
+                      :title="hoveredId === item.id ? item.description : undefined"
+                    >
+                      {{ item.description }}
+                    </p>
+                    <div class="template-card__footer">
+                      <span class="template-card__time">
+                        {{ formatRelativeTime(item.createdAt) }}
+                      </span>
+                      <div class="template-card__actions">
+                        <button
+                          class="template-card__fav template-card__fav--active"
+                          :disabled="togglingIds.has(item.id)"
+                          aria-label="取消收藏"
+                          @click.stop="handleToggleFavorite(item.id)"
+                        >
+                          <MaterialIcon name="favorite" :size="18" />
+                          <span class="template-card__fav-count">
+                            {{ item.favoriteCount }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </article>
                 </div>
+                <div class="template-section__divider" />
               </div>
-            </article>
-          </div>
+
+              <!-- 其他模板 -->
+              <div class="template-grid">
+                <article
+                  v-for="item in otherItems"
+                  :key="item.id"
+                  class="template-card"
+                  @mouseenter="hoveredId = item.id"
+                  @mouseleave="hoveredId = null"
+                  @click="handleOpenTemplate(item.id)"
+                >
+                  <div class="template-card__header">
+                    <h3 class="template-card__title">
+                      {{ item.title }}
+                    </h3>
+                    <span class="template-card__category">
+                      {{ item.category }}
+                    </span>
+                  </div>
+                  <p
+                    class="template-card__desc"
+                    :title="hoveredId === item.id ? item.description : undefined"
+                  >
+                    {{ item.description }}
+                  </p>
+                  <div class="template-card__footer">
+                    <span class="template-card__time">
+                      {{ formatRelativeTime(item.createdAt) }}
+                    </span>
+                    <div class="template-card__actions">
+                      <button
+                        class="template-card__fav"
+                        :class="{
+                          'template-card__fav--active': item.isFavorited,
+                        }"
+                        :disabled="togglingIds.has(item.id)"
+                        :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
+                        @click.stop="handleToggleFavorite(item.id)"
+                      >
+                        <MaterialIcon
+                          :name="item.isFavorited ? 'favorite' : 'favorite_border'"
+                          :size="18"
+                        />
+                        <span class="template-card__fav-count">
+                          {{ item.favoriteCount }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </Transition>
 
           <!-- 无限滚动哨兵 -->
           <div v-if="hasMore && !loading" ref="sentinel" class="sentinel" />
@@ -562,6 +655,12 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.templates-page__grids {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .templates-page__search-status {
   display: flex;
   align-items: center;
@@ -623,6 +722,28 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-tertiary);
+}
+
+/* ---- 收藏分区 ---- */
+
+.template-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.template-section__title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-panel-head);
+}
+
+.template-section__divider {
+  height: 1px;
+  background-color: var(--color-border);
 }
 
 /* ---- 卡片网格 ---- */
@@ -760,6 +881,25 @@ onBeforeUnmount(() => {
 
 .template-card__fav-count {
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- 内容切换动画 ---- */
+
+.tpl-fade-enter-active,
+.tpl-fade-leave-active {
+  transition:
+    opacity var(--duration-normal) var(--ease),
+    transform var(--duration-normal) var(--ease);
+}
+
+.tpl-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.tpl-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* ---- 哨兵 ---- */

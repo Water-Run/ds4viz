@@ -6,7 +6,7 @@
  *
  * @file src/views/About.vue
  * @author WaterRun
- * @date 2026-02-26
+ * @date 2026-02-27
  * @component About
  */
 </script>
@@ -103,7 +103,7 @@
   gap: 10px;
   height: 42px;
   padding: 0 18px;
-  margin-top: var(--space-3);
+  margin-top: calc(var(--space-3) * 4);
   border: 1px solid var(--color-border-strong);
   border-radius: 12px;
   color: var(--color-text-body);
@@ -136,7 +136,7 @@
 }
 
 .about-page__footer {
-  margin: var(--space-3) 0 0;
+  margin: calc(var(--space-3) * 4) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   text-align: center;

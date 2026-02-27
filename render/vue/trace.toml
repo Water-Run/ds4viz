@@ -1,0 +1,197 @@
+[meta]
+created_at = "2026-02-27T06:52:32Z"
+lang = "python"
+lang_version = "3.14.3"
+
+[package]
+name = "ds4viz"
+lang = "python"
+version = "0.1.0"
+
+[object]
+kind = "stack"
+label = "demo_stack"
+
+[[states]]
+id = 0
+
+[states.data]
+items = []
+top = -1
+
+[[states]]
+id = 1
+
+[states.data]
+items = [1]
+top = 0
+
+[[states]]
+id = 2
+
+[states.data]
+items = [1, 2]
+top = 1
+
+[[states]]
+id = 3
+
+[states.data]
+items = [1, 2, 3]
+top = 2
+
+[[states]]
+id = 4
+
+[states.data]
+items = [1, 2, 3, 4]
+top = 3
+
+[[states]]
+id = 5
+
+[states.data]
+items = [1, 2, 3, 4, 5]
+top = 4
+
+[[states]]
+id = 6
+
+[states.data]
+items = [1, 2, 3, 4]
+top = 3
+
+[[states]]
+id = 7
+
+[states.data]
+items = [1, 2, 3]
+top = 2
+
+[[states]]
+id = 8
+
+[states.data]
+items = [1, 2]
+top = 1
+
+[[states]]
+id = 9
+
+[states.data]
+items = []
+top = -1
+
+[[steps]]
+id = 0
+op = "push"
+before = 0
+after = 1
+
+[steps.args]
+value = 1
+
+[steps.code]
+line = 5
+
+[[steps]]
+id = 1
+op = "push"
+before = 1
+after = 2
+
+[steps.args]
+value = 2
+
+[steps.code]
+line = 6
+
+[[steps]]
+id = 2
+op = "push"
+before = 2
+after = 3
+
+[steps.args]
+value = 3
+
+[steps.code]
+line = 7
+
+[[steps]]
+id = 3
+op = "push"
+before = 3
+after = 4
+
+[steps.args]
+value = 4
+
+[steps.code]
+line = 8
+
+[[steps]]
+id = 4
+op = "push"
+before = 4
+after = 5
+
+[steps.args]
+value = 5
+
+[steps.code]
+line = 9
+
+[[steps]]
+id = 5
+op = "pop"
+before = 5
+after = 6
+ret = 5
+
+[steps.args]
+
+[steps.code]
+line = 11
+
+[[steps]]
+id = 6
+op = "pop"
+before = 6
+after = 7
+ret = 4
+
+[steps.args]
+
+[steps.code]
+line = 12
+
+[[steps]]
+id = 7
+op = "pop"
+before = 7
+after = 8
+ret = 3
+
+[steps.args]
+
+[steps.code]
+line = 13
+
+[[steps]]
+id = 8
+op = "clear"
+before = 8
+after = 9
+
+[steps.args]
+
+[steps.code]
+line = 15
+
+[result]
+final_state = 9
+
+[result.commit]
+op = "commit"
+line = 3
