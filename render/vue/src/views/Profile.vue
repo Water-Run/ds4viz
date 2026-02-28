@@ -428,44 +428,54 @@ onMounted(async () => {
             <MaterialIcon name="analytics" :size="24" /><p>暂无数据</p>
           </div>
           <div v-else class="stats-body">
-            <div class="stats-charts">
-              <div class="stats-chart">
-                <svg class="stats-chart__svg" viewBox="0 0 100 100">
-                  <path v-for="(slice, i) in langPieSlices" :key="`lp-${i}`" :d="slice.pathD" :fill="slice.color" />
-                </svg>
-                <div class="stats-chart__title">语言</div>
-                <div class="stats-chart__legend">
-                  <span v-for="(slice, i) in langPieSlices" :key="`ll-${i}`" class="legend-item">
-                    <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
-                    {{ slice.label }} {{ slice.percentage }}%
+            <div class="stats-row">
+              <div class="stats-charts">
+                <div class="stats-chart">
+                  <svg v-if="langPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
+                    <path v-for="(slice, i) in langPieSlices" :key="`lp-${i}`" :d="slice.pathD" :fill="slice.color" />
+                  </svg>
+                  <span v-else-if="langPieSlices.length === 1" class="stats-chart__single" :style="{ color: langPieSlices[0].color }">
+                    <span class="stats-chart__single-dot" :style="{ backgroundColor: langPieSlices[0].color }" />
+                    {{ langPieSlices[0].label }} 100%
                   </span>
+                  <div class="stats-chart__title">语言</div>
+                  <div v-if="langPieSlices.length > 1" class="stats-chart__legend">
+                    <span v-for="(slice, i) in langPieSlices" :key="`ll-${i}`" class="legend-item">
+                      <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                      {{ slice.label }} {{ slice.percentage }}%
+                    </span>
+                  </div>
+                </div>
+                <div class="stats-chart">
+                  <svg v-if="statusPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
+                    <path v-for="(slice, i) in statusPieSlices" :key="`sp-${i}`" :d="slice.pathD" :fill="slice.color" />
+                  </svg>
+                  <span v-else-if="statusPieSlices.length === 1" class="stats-chart__single" :style="{ color: statusPieSlices[0].color }">
+                    <span class="stats-chart__single-dot" :style="{ backgroundColor: statusPieSlices[0].color }" />
+                    {{ statusPieSlices[0].label }} 100%
+                  </span>
+                  <div class="stats-chart__title">状态</div>
+                  <div v-if="statusPieSlices.length > 1" class="stats-chart__legend">
+                    <span v-for="(slice, i) in statusPieSlices" :key="`sl-${i}`" class="legend-item">
+                      <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                      {{ slice.label }} {{ slice.percentage }}%
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div class="stats-chart">
-                <svg class="stats-chart__svg" viewBox="0 0 100 100">
-                  <path v-for="(slice, i) in statusPieSlices" :key="`sp-${i}`" :d="slice.pathD" :fill="slice.color" />
-                </svg>
-                <div class="stats-chart__title">状态</div>
-                <div class="stats-chart__legend">
-                  <span v-for="(slice, i) in statusPieSlices" :key="`sl-${i}`" class="legend-item">
-                    <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
-                    {{ slice.label }} {{ slice.percentage }}%
-                  </span>
+              <div class="stats-summary">
+                <div class="stats-summary__item">
+                  <span class="stats-summary__value">{{ allExecItems.length }}</span>
+                  <span class="stats-summary__label">总执行</span>
                 </div>
-              </div>
-            </div>
-            <div class="stats-summary">
-              <div class="stats-summary__item">
-                <span class="stats-summary__value">{{ allExecItems.length }}</span>
-                <span class="stats-summary__label">总执行</span>
-              </div>
-              <div class="stats-summary__item">
-                <span class="stats-summary__value">{{ avgExecTime }}</span>
-                <span class="stats-summary__label">平均耗时</span>
-              </div>
-              <div class="stats-summary__item">
-                <span class="stats-summary__value">{{ statsTotalFavorites }}</span>
-                <span class="stats-summary__label">收藏数</span>
+                <div class="stats-summary__item">
+                  <span class="stats-summary__value">{{ avgExecTime }}</span>
+                  <span class="stats-summary__label">平均耗时</span>
+                </div>
+                <div class="stats-summary__item">
+                  <span class="stats-summary__value">{{ statsTotalFavorites }}</span>
+                  <span class="stats-summary__label">收藏数</span>
+                </div>
               </div>
             </div>
           </div>
@@ -578,15 +588,18 @@ onMounted(async () => {
 .profile-col__list { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); overflow-y: auto; min-height: 0; }
 
 /* ---- 统计 ---- */
-.stats-body { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; min-height: 0; overflow-y: auto; }
-.stats-charts { display: flex; gap: var(--space-2); justify-content: center; }
+.stats-body { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-height: 0; }
+.stats-row { display: flex; align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
+.stats-charts { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; flex: 1; min-width: 0; }
 .stats-chart { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.stats-chart__svg { width: 80px; height: 80px; flex-shrink: 0; }
+.stats-chart__svg { width: 64px; height: 64px; flex-shrink: 0; }
 .stats-chart__title { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-primary); }
-.stats-chart__legend { display: flex; flex-direction: column; gap: 2px; }
+.stats-chart__legend { display: flex; flex-wrap: wrap; gap: 2px 8px; justify-content: center; }
+.stats-chart__single { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: var(--weight-semibold); height: 64px; }
+.stats-chart__single-dot { width: 10px; height: 10px; border-radius: 999px; flex-shrink: 0; }
 .legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-body); white-space: nowrap; }
 .legend-item__dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
-.stats-summary { display: flex; justify-content: center; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--color-border); }
+.stats-summary { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--space-2); border-left: 1px solid var(--color-border); flex-shrink: 0; }
 .stats-summary__item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .stats-summary__value { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); font-family: var(--font-mono); }
 .stats-summary__label { font-size: 11px; color: var(--color-text-tertiary); }
@@ -641,5 +654,7 @@ onMounted(async () => {
 @media (max-width: 860px) {
   .profile-columns { grid-template-columns: 1fr; }
   .profile-col-stack { flex-direction: column; }
+  .stats-row { flex-direction: column; align-items: stretch; }
+  .stats-summary { flex-direction: row; justify-content: center; gap: var(--space-3); padding-left: 0; border-left: none; padding-top: var(--space-1); border-top: 1px solid var(--color-border); }
 }
 </style>

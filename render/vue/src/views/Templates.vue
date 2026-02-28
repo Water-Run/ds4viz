@@ -7,7 +7,7 @@
  *
  * @file src/views/Templates.vue
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-02-28
  * @component Templates
  */
 
@@ -174,6 +174,12 @@ const handleSelectCategory = async (category: string): Promise<void> => {
 }
 
 onMounted(async () => {
+  /* 重置 store 状态以确保导航切换后数据一致 */
+  store.page = 1
+  store.selectedCategory = ''
+  store.keyword = ''
+  searchInput.value = ''
+
   observer = new IntersectionObserver(
     (entries) => {
       const entry = entries[0]

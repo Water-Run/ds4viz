@@ -9,7 +9,7 @@
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-02-28
  * @component Playground
  */
 
@@ -71,7 +71,20 @@ const isPlaying = ref<boolean>(false)
  */
 const playTimer = ref<number | null>(null)
 
+/**
+ * 可视化是否已开始浏览（用于初始页展示）
+ */
+const vizStarted = ref<boolean>(false)
+
 /* ---- 派生计算 ---- */
+
+/**
+ * 当前代码是否为默认模板（空白亦视为默认）
+ */
+const isDefaultCode = computed<boolean>(() => {
+  const trimmed = code.value.trim()
+  return trimmed.length === 0 || trimmed === getDefaultTemplate(language.value).trim()
+})
 
 /**
  * 总状态数
@@ -105,6 +118,13 @@ const highlightLine = computed<number | null>(() => {
 const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
 const canStepForward = computed<boolean>(() => currentStateIndex.value < totalStates.value - 1)
 
+/**
+ * 是否显示可视化就绪页（初始状态且尚未开始浏览）
+ */
+const showVizReady = computed<boolean>(() =>
+  irDoc.value !== null && !vizStarted.value && totalStates.value > 1 && currentStateIndex.value === 0,
+)
+
 /* ---- TOML 解析与应用 ---- */
 
 /**
@@ -116,10 +136,12 @@ const applyToml = (content: string): void => {
     executeError.value = parsed.errorMessage ?? 'TOML 解析失败'
     irDoc.value = null
     currentStateIndex.value = 0
+    vizStarted.value = false
     return
   }
   irDoc.value = parsed.document
   currentStateIndex.value = 0
+  vizStarted.value = false
   executeError.value = parsed.document.error?.message ?? ''
   logDebug('[playground] TOML applied, states =', parsed.document.states.length)
 }
@@ -127,7 +149,7 @@ const applyToml = (content: string): void => {
 /* ---- 语言与模板 ---- */
 
 const handleLanguageChange = (value: Language): void => {
-  if (code.value.trim().length > 0) {
+  if (!isDefaultCode.value) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
     if (!confirmed) {
       languageSelectKey.value += 1
@@ -142,7 +164,7 @@ const handleLanguageChange = (value: Language): void => {
 const loadTemplate = async (templateId: number): Promise<void> => {
   if (templateLoading.value) return
   templateError.value = ''
-  if (code.value.trim().length > 0) {
+  if (!isDefaultCode.value) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
     if (!confirmed) return
   }
@@ -268,6 +290,24 @@ const togglePlay = (): void => {
   }, 220)
 }
 
+/* ---- 就绪页操作 ---- */
+
+/**
+ * 从就绪页进入下一步
+ */
+const handleStartNext = (): void => {
+  vizStarted.value = true
+  goNext()
+}
+
+/**
+ * 从就绪页开始自动播放
+ */
+const handleStartPlay = (): void => {
+  vizStarted.value = true
+  togglePlay()
+}
+
 /* ---- 生命周期 ---- */
 
 const route = useRoute()
@@ -315,6 +355,15 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * 导航操作自动标记 vizStarted
+ */
+watch(currentStateIndex, (newVal, oldVal) => {
+  if (newVal !== oldVal && newVal > 0) {
+    vizStarted.value = true
+  }
+})
 </script>
 
 <template>
@@ -365,14 +414,39 @@ watch(
             </button>
           </div>
         </div>
+
+        <!-- 就绪页 -->
+        <div v-if="showVizReady" class="viz-ready">
+          <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
+          <p class="viz-ready__title">可视化结果已生成</p>
+          <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
+          <div class="viz-ready__actions">
+            <button class="viz-ready__btn" @click="handleStartNext">
+              <MaterialIcon name="chevron_right" :size="18" />
+              <span>下一步</span>
+            </button>
+            <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
+              <MaterialIcon name="play_arrow" :size="18" />
+              <span>自动播放</span>
+            </button>
+          </div>
+        </div>
+
         <VizPanel
+          v-else
           :kind="irDoc?.object.kind"
           :data="currentState?.data"
           :step="currentStepInfo"
         />
+
         <div v-if="tomlContent" class="toml-section">
           <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
-            <MaterialIcon :name="tomlExpanded ? 'expand_less' : 'expand_more'" :size="16" />
+            <MaterialIcon
+              name="expand_more"
+              :size="16"
+              class="toml-section__chevron"
+              :class="{ 'toml-section__chevron--open': tomlExpanded }"
+            />
             <MaterialIcon name="data_object" :size="16" />
             <span>TOML IR</span>
           </button>
@@ -584,6 +658,88 @@ watch(
   height: 18px;
 }
 
+/* ---- 就绪页 ---- */
+
+.viz-ready {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-height: 0;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg-surface-alt);
+  color: var(--color-text-tertiary);
+}
+
+.viz-ready__icon {
+  width: 40px;
+  height: 40px;
+  color: var(--color-accent);
+}
+
+.viz-ready__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+}
+
+.viz-ready__desc {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.viz-ready__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.viz-ready__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--control-height-sm);
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-body);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.viz-ready__btn:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-strong);
+}
+
+.viz-ready__btn :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
+.viz-ready__btn--primary {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.viz-ready__btn--primary:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* ---- TOML ---- */
+
 .toml-section {
   flex-shrink: 0;
   margin-top: var(--space-1);
@@ -610,6 +766,14 @@ watch(
 .toml-section__toggle :deep(.material-icon) {
   width: 16px;
   height: 16px;
+}
+
+.toml-section__chevron {
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.toml-section__chevron--open {
+  transform: rotate(180deg);
 }
 
 .toml-section__content {
