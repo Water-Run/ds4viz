@@ -1,8 +1,29 @@
 -- ============================================
--- 数据库初始化脚本
+-- 数据库完整重建脚本（开发用，会清空所有数据）
 -- ============================================
 
--- 1. users (用户表)
+-- 先删除触发器依赖的函数
+DROP TRIGGER IF EXISTS trigger_update_favorite_count ON user_favorites;
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+DROP TRIGGER IF EXISTS update_templates_updated_at ON templates;
+DROP FUNCTION IF EXISTS update_template_favorite_count();
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- 按依赖顺序删除表（CASCADE 保险起见）
+DROP TABLE IF EXISTS logs CASCADE;
+DROP TABLE IF EXISTS execution_cache CASCADE;
+DROP TABLE IF EXISTS executions CASCADE;
+DROP TABLE IF EXISTS user_favorites CASCADE;
+DROP TABLE IF EXISTS template_codes CASCADE;
+DROP TABLE IF EXISTS templates CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- ============================================
+-- 建表
+-- ============================================
+
+-- 1. users
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(32) UNIQUE NOT NULL,
@@ -15,7 +36,7 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_username ON users(username);
 
--- 2. sessions (会话表)
+-- 2. sessions
 CREATE TABLE sessions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -28,7 +49,7 @@ CREATE TABLE sessions (
 CREATE INDEX idx_sessions_token ON sessions(token);
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 
--- 3. templates (模板表)
+-- 3. templates
 CREATE TABLE templates (
     id SERIAL PRIMARY KEY,
     title VARCHAR(256) NOT NULL,
@@ -41,7 +62,7 @@ CREATE TABLE templates (
 
 CREATE INDEX idx_templates_category ON templates(category);
 
--- 4. template_codes (模板代码表)
+-- 4. template_codes
 CREATE TABLE template_codes (
     id SERIAL PRIMARY KEY,
     template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
@@ -54,7 +75,7 @@ CREATE TABLE template_codes (
 
 CREATE INDEX idx_template_codes_template_id ON template_codes(template_id);
 
--- 5. user_favorites (用户收藏表)
+-- 5. user_favorites
 CREATE TABLE user_favorites (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -65,7 +86,7 @@ CREATE TABLE user_favorites (
 
 CREATE INDEX idx_user_favorites_user_id ON user_favorites(user_id);
 
--- 6. executions (执行历史表)
+-- 6. executions
 CREATE TABLE executions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -83,7 +104,7 @@ CREATE TABLE executions (
 CREATE INDEX idx_executions_user_id ON executions(user_id);
 CREATE INDEX idx_executions_created_at ON executions(created_at);
 
--- 7. execution_cache (执行缓存表)
+-- 7. execution_cache
 CREATE TABLE execution_cache (
     id SERIAL PRIMARY KEY,
     code_hash VARCHAR(64) NOT NULL,
@@ -97,7 +118,7 @@ CREATE TABLE execution_cache (
 
 CREATE INDEX idx_execution_cache_lookup ON execution_cache(code_hash, language);
 
--- 8. logs (日志表)
+-- 8. logs
 CREATE TABLE logs (
     id SERIAL PRIMARY KEY,
     level VARCHAR(16) NOT NULL,
@@ -119,15 +140,14 @@ CREATE INDEX idx_logs_request_id ON logs(request_id);
 -- 触发器函数
 -- ============================================
 
--- 更新收藏计数
 CREATE OR REPLACE FUNCTION update_template_favorite_count()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        UPDATE templates SET favorite_count = favorite_count + 1 
+        UPDATE templates SET favorite_count = favorite_count + 1
         WHERE id = NEW.template_id;
     ELSIF TG_OP = 'DELETE' THEN
-        UPDATE templates SET favorite_count = favorite_count - 1 
+        UPDATE templates SET favorite_count = favorite_count - 1
         WHERE id = OLD.template_id;
     END IF;
     RETURN NULL;
@@ -138,7 +158,6 @@ CREATE TRIGGER trigger_update_favorite_count
 AFTER INSERT OR DELETE ON user_favorites
 FOR EACH ROW EXECUTE FUNCTION update_template_favorite_count();
 
--- 自动更新时间戳
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -147,10 +166,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_users_updated_at 
+CREATE TRIGGER update_users_updated_at
 BEFORE UPDATE ON users
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_templates_updated_at 
+CREATE TRIGGER update_templates_updated_at
 BEFORE UPDATE ON templates
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

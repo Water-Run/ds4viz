@@ -3,27 +3,60 @@ r"""
 
 :file: src/model/user.py
 :author: WaterRun
-:time: 2026-01-31
+:time: 2026-02-28
 """
 
+import re
 from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
-from exceptions import PasswordTooLongError
+# C# 标识符规则：以字母或下划线开头，后跟字母、数字、下划线（支持 Unicode 字母），不超过 64 字符
+_USERNAME_PATTERN: re.Pattern[str] = re.compile(
+    r'^[^\W\d]\w{0,63}$', re.UNICODE)
+
+# 密码允许的特殊字符（全部可打印 ASCII 非字母数字字符）
+_SPECIAL_CHARS: frozenset[str] = frozenset(
+    '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~')
 
 
-def _validate_password_bytes(password: str) -> str:
+def _validate_username_format(username: str) -> str:
     r"""
-    校验密码UTF-8字节长度不超过64
+    校验用户名符合 C# 标识符规则，且不超过 64 个字符
+
+    规则：以字母或下划线开头，后续字符仅含字母、数字、下划线；
+    支持 Unicode 字母（如中文），不允许连字符、空格、emoji 等。
+
+    :param username: 用户名
+    :return str: 原始用户名
+    :raise ValueError: 格式不合法
+    """
+    if not _USERNAME_PATTERN.match(username):
+        raise ValueError(
+            "用户名须以字母或下划线开头，仅含字母、数字、下划线，且不超过64个字符"
+        )
+    return username
+
+
+def _validate_password_strength(password: str) -> str:
+    r"""
+    校验密码强度：8-32 位，须同时包含大写字母、小写字母、数字和特殊字符
 
     :param password: 明文密码
     :return str: 原始密码
-    :raise PasswordTooLongError: 密码过长
+    :raise ValueError: 不满足强度要求
     """
-    if len(password.encode("utf-8")) > 64:
-        raise PasswordTooLongError("密码长度不能超过64字节")
+    if not (8 <= len(password) <= 32):
+        raise ValueError("密码长度须在8到32个字符之间")
+    if not any(c.isupper() for c in password):
+        raise ValueError("密码须包含至少一个大写字母")
+    if not any(c.islower() for c in password):
+        raise ValueError("密码须包含至少一个小写字母")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("密码须包含至少一个数字")
+    if not any(c in _SPECIAL_CHARS for c in password):
+        raise ValueError("密码须包含至少一个特殊字符")
     return password
 
 
@@ -42,19 +75,30 @@ class UserCreate(BaseModel):
     用户注册请求体
     """
 
-    username: str = Field(min_length=3, max_length=32, description="用户名")
-    password: str = Field(min_length=1, max_length=64, description="密码")
+    username: str = Field(min_length=1, max_length=64, description="用户名")
+    password: str = Field(min_length=8, max_length=32, description="密码")
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        r"""
+        校验用户名格式（C# 标识符规则）
+
+        :param value: 用户名
+        :return str: 校验后的用户名
+        """
+        return _validate_username_format(value)
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
         r"""
-        校验密码长度
+        校验密码强度
 
         :param value: 密码
         :return str: 校验后的密码
         """
-        return _validate_password_bytes(value)
+        return _validate_password_strength(value)
 
 
 class UserLogin(BaseModel):
@@ -94,18 +138,18 @@ class PasswordChange(BaseModel):
     """
 
     old_password: str = Field(description="原密码")
-    new_password: str = Field(min_length=1, max_length=64, description="新密码")
+    new_password: str = Field(min_length=8, max_length=32, description="新密码")
 
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, value: str) -> str:
         r"""
-        校验新密码长度
+        校验新密码强度
 
         :param value: 新密码
         :return str: 校验后的新密码
         """
-        return _validate_password_bytes(value)
+        return _validate_password_strength(value)
 
 
 class FavoriteItem(BaseModel):

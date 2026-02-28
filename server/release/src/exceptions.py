@@ -3,7 +3,7 @@ r"""
 
 :file: src/exceptions.py
 :author: WaterRun
-:time: 2026-01-31
+:time: 2026-02-28
 """
 
 
@@ -126,25 +126,6 @@ class PasswordMismatchError(ValidationError):
     """
 
     message = "原密码错误"
-    
-
-class PasswordTooLongError(ValueError, ValidationError):
-    r"""
-    密码过长（UTF-8字节长度超限）
-    """
-
-    message = "密码长度不能超过64字节"
-
-    def __init__(self, message: str | None = None) -> None:
-        r"""
-        初始化异常
-
-        :param message: 错误信息
-        """
-        final_message: str = message or self.__class__.message
-        ValueError.__init__(self, final_message)
-        self.message = final_message
-
 
 # ============================================
 # 模板相关异常

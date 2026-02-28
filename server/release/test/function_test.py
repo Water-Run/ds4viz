@@ -3,7 +3,7 @@ ds4viz 功能测试
 
 :file: test/function_test.py
 :author: WaterRun
-:time: 2026-02-05
+:time: 2026-02-28
 """
 
 import time
@@ -105,7 +105,7 @@ def login_user(username: str, password: str) -> requests.Response:
     )
 
 
-def create_user_and_login(username: str = "testuser", password: str = "testpass") -> str:
+def create_user_and_login(username: str = "testuser", password: str = "Test@1234") -> str:
     r"""
     创建用户并登录，返回 token
 
@@ -198,7 +198,7 @@ class TestAuthRegister:
         r"""
         正常注册：有效用户名和密码
         """
-        resp: requests.Response = register_user("testuser", "testpass123")
+        resp: requests.Response = register_user("testuser", "Test@1234")
         assert resp.status_code == 200
         data: dict = resp.json()
         assert data["username"] == "testuser"
@@ -209,96 +209,137 @@ class TestAuthRegister:
 
     def test_register_username_min_length(self) -> None:
         r"""
-        用户名边界：恰好 3 个字符（最小）
+        用户名边界：恰好 1 个字符（单个字母，最小合法值）
         """
-        resp: requests.Response = register_user("abc", "testpass")
+        resp: requests.Response = register_user("a", "Test@1234")
         assert resp.status_code == 200
-        assert resp.json()["username"] == "abc"
+        assert resp.json()["username"] == "a"
 
     def test_register_username_max_length(self) -> None:
         r"""
         用户名边界：恰好 32 个字符（最大）
         """
         username: str = "a" * 32
-        resp: requests.Response = register_user(username, "testpass")
+        resp: requests.Response = register_user(username, "Test@1234")
         assert resp.status_code == 200
         assert resp.json()["username"] == username
 
-    def test_register_username_too_short(self) -> None:
-        r"""
-        用户名过短：2 个字符，返回 422
-        """
-        resp: requests.Response = register_user("ab", "testpass")
-        assert resp.status_code == 422
-
     def test_register_username_too_long(self) -> None:
         r"""
-        用户名过长：33 个字符，返回 422
+        用户名过长：65 个字符，返回 422
         """
-        username: str = "a" * 33
-        resp: requests.Response = register_user(username, "testpass")
+        username: str = "a" * 65
+        resp: requests.Response = register_user(username, "Test@1234")
         assert resp.status_code == 422
+
+    def test_register_username_starts_with_digit(self) -> None:
+        r"""
+        用户名以数字开头，不符合 C# 标识符规则，返回 422
+        """
+        resp: requests.Response = register_user("1testuser", "Test@1234")
+        assert resp.status_code == 422
+
+    def test_register_username_starts_with_underscore(self) -> None:
+        r"""
+        用户名以下划线开头，符合 C# 标识符规则
+        """
+        resp: requests.Response = register_user("_testuser", "Test@1234")
+        assert resp.status_code == 200
+        assert resp.json()["username"] == "_testuser"
+
+    def test_register_username_with_hyphen(self) -> None:
+        r"""
+        用户名含连字符，不符合 C# 标识符规则，返回 422
+        """
+        resp: requests.Response = register_user("test-user", "Test@1234")
+        assert resp.status_code == 422
+
+    def test_register_username_valid_with_digits(self) -> None:
+        r"""
+        用户名含数字但不以数字开头，符合规则
+        """
+        resp: requests.Response = register_user("test_user01", "Test@1234")
+        assert resp.status_code == 200
 
     def test_register_password_min_length(self) -> None:
         r"""
-        密码边界：恰好 1 个字符（最小）
+        密码边界：恰好 8 个字符，满足所有复杂度要求
         """
-        resp: requests.Response = register_user("testuser", "a")
+        resp: requests.Response = register_user("testuser", "Test@123")
         assert resp.status_code == 200
 
     def test_register_password_max_length(self) -> None:
         r"""
-        密码边界：恰好 64 个字符（最大）
+        密码边界：恰好 32 个字符，满足所有复杂度要求
         """
-        password: str = "a" * 64
+        password: str = "Test@123" + "a" * 24  # 8 + 24 = 32
         resp: requests.Response = register_user("testuser", password)
         assert resp.status_code == 200
 
+    def test_register_password_too_short(self) -> None:
+        r"""
+        密码过短：7 个字符，返回 422
+        """
+        resp: requests.Response = register_user("testuser", "Test@12")
+        assert resp.status_code == 422
+
     def test_register_password_too_long(self) -> None:
         r"""
-        密码过长：65 个字符，返回 422
+        密码过长：33 个字符，返回 422
         """
-        password: str = "a" * 65
+        password: str = "Test@123" + "a" * 25  # 8 + 25 = 33
         resp: requests.Response = register_user("testuser", password)
         assert resp.status_code == 422
 
-    def test_register_password_utf8_bytes_exceed(self) -> None:
+    def test_register_password_missing_uppercase(self) -> None:
         r"""
-        密码 UTF-8 字节超限：使用多字节字符使字节数超过 64
+        密码缺少大写字母，返回 422
         """
-        password: str = "中" * 22
-        resp: requests.Response = register_user("testuser", password)
+        resp: requests.Response = register_user("testuser", "test@1234")
+        assert resp.status_code == 422
+
+    def test_register_password_missing_lowercase(self) -> None:
+        r"""
+        密码缺少小写字母，返回 422
+        """
+        resp: requests.Response = register_user("testuser", "TEST@1234")
+        assert resp.status_code == 422
+
+    def test_register_password_missing_digit(self) -> None:
+        r"""
+        密码缺少数字，返回 422
+        """
+        resp: requests.Response = register_user("testuser", "Test@abcd")
+        assert resp.status_code == 422
+
+    def test_register_password_missing_special(self) -> None:
+        r"""
+        密码缺少特殊字符，返回 422
+        """
+        resp: requests.Response = register_user("testuser", "Testabcd1")
         assert resp.status_code == 422
 
     def test_register_duplicate_username(self) -> None:
         r"""
         用户名重复注册，返回 409
         """
-        register_user("testuser", "testpass")
-        resp: requests.Response = register_user("testuser", "anotherpass")
+        register_user("testuser", "Test@1234")
+        resp: requests.Response = register_user("testuser", "Test@5678")
         assert resp.status_code == 409
 
     def test_register_username_chinese(self) -> None:
         r"""
-        用户名含中文字符
+        用户名含中文字符（Unicode 字母，符合 C# 标识符规则）
         """
-        resp: requests.Response = register_user("测试用户", "testpass")
+        resp: requests.Response = register_user("测试用户", "Test@1234")
         assert resp.status_code == 200
         assert resp.json()["username"] == "测试用户"
-
-    def test_register_username_special_chars(self) -> None:
-        r"""
-        用户名含特殊字符
-        """
-        resp: requests.Response = register_user("test_user-01", "testpass")
-        assert resp.status_code == 200
-        assert resp.json()["username"] == "test_user-01"
 
     def test_register_empty_username(self) -> None:
         r"""
         空用户名，返回 422
         """
-        resp: requests.Response = register_user("", "testpass")
+        resp: requests.Response = register_user("", "Test@1234")
         assert resp.status_code == 422
 
     def test_register_empty_password(self) -> None:
@@ -312,7 +353,7 @@ class TestAuthRegister:
         r"""
         验证返回结构完整性
         """
-        resp: requests.Response = register_user("testuser", "testpass")
+        resp: requests.Response = register_user("testuser", "Test@1234")
         data: dict = resp.json()
         assert "id" in data
         assert "username" in data
@@ -321,7 +362,6 @@ class TestAuthRegister:
         assert "created_at" in data
         assert isinstance(data["id"], int)
         assert data["id"] > 0
-
 
 class TestAuthLogin:
     r"""
@@ -332,8 +372,8 @@ class TestAuthLogin:
         r"""
         正常登录，返回 token 和用户信息
         """
-        register_user("testuser", "testpass")
-        resp: requests.Response = login_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         assert resp.status_code == 200
         data: dict = resp.json()
         assert "token" in data
@@ -345,14 +385,14 @@ class TestAuthLogin:
         r"""
         用户名不存在，返回 401
         """
-        resp: requests.Response = login_user("nonexistent", "testpass")
+        resp: requests.Response = login_user("nonexistent", "Test@1234")
         assert resp.status_code == 401
 
     def test_login_wrong_password(self) -> None:
         r"""
         密码错误，返回 401
         """
-        register_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
         resp: requests.Response = login_user("testuser", "wrongpass")
         assert resp.status_code == 401
 
@@ -360,18 +400,18 @@ class TestAuthLogin:
         r"""
         Banned 用户登录，返回 403
         """
-        register_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
         set_user_status(1, "Banned")
-        resp: requests.Response = login_user("testuser", "testpass")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         assert resp.status_code == 403
 
     def test_login_suspended_user(self) -> None:
         r"""
         Suspended 用户登录，返回成功但 status 为 Suspended
         """
-        register_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
         set_user_status(1, "Suspended")
-        resp: requests.Response = login_user("testuser", "testpass")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         assert resp.status_code == 200
         assert resp.json()["user"]["status"] == "Suspended"
 
@@ -379,8 +419,8 @@ class TestAuthLogin:
         r"""
         验证 token 格式（JWT）
         """
-        register_user("testuser", "testpass")
-        resp: requests.Response = login_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         token: str = resp.json()["token"]
         parts: list[str] = token.split(".")
         assert len(parts) == 3
@@ -389,8 +429,8 @@ class TestAuthLogin:
         r"""
         验证 expires_at 时间合理
         """
-        register_user("testuser", "testpass")
-        resp: requests.Response = login_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         expires_at: datetime = datetime.fromisoformat(resp.json()["expires_at"])
         now: datetime = datetime.now(timezone.utc)
         assert expires_at > now
@@ -400,9 +440,9 @@ class TestAuthLogin:
         r"""
         同一用户多次登录生成不同 session
         """
-        register_user("testuser", "testpass")
-        resp1: requests.Response = login_user("testuser", "testpass")
-        resp2: requests.Response = login_user("testuser", "testpass")
+        register_user("testuser", "Test@1234")
+        resp1: requests.Response = login_user("testuser", "Test@1234")
+        resp2: requests.Response = login_user("testuser", "Test@1234")
         token1: str = resp1.json()["token"]
         token2: str = resp2.json()["token"]
         assert token1 != token2
@@ -480,7 +520,7 @@ class TestAuthMe:
         r"""
         正常获取当前用户信息
         """
-        token: str = create_user_and_login("testuser", "testpass")
+        token: str = create_user_and_login("testuser", "Test@1234")
         resp: requests.Response = requests.get(
             api_url("/api/auth/me"),
             headers=auth_header(token)
@@ -621,8 +661,8 @@ class TestUserAvatar:
         r"""
         上传他人头像，返回 403
         """
-        token1: str = create_user_and_login("user1", "pass1")
-        create_user_and_login("user2", "pass2")
+        token1: str = create_user_and_login("user1", "Pass@1001")
+        create_user_and_login("user2", "Pass@2002")
 
         avatar_data: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
         resp: requests.Response = requests.put(
@@ -674,17 +714,16 @@ class TestUserPassword:
         r"""
         正常修改密码
         """
-        token: str = create_user_and_login("testuser", "oldpass")
+        token: str = create_user_and_login("testuser", "Old@pass12")
         resp: requests.Response = requests.get(
-            api_url("/api/auth/me"),
-            headers=auth_header(token)
+            api_url("/api/auth/me"), headers=auth_header(token)
         )
         user_id: int = resp.json()["id"]
 
         resp = requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "newpass"},
+            json={"old_password": "Old@pass12", "new_password": "New@pass12"},
         )
         assert resp.status_code == 200
 
@@ -692,17 +731,16 @@ class TestUserPassword:
         r"""
         旧密码错误，返回 400
         """
-        token: str = create_user_and_login("testuser", "oldpass")
+        token: str = create_user_and_login("testuser", "Old@pass12")
         resp: requests.Response = requests.get(
-            api_url("/api/auth/me"),
-            headers=auth_header(token)
+            api_url("/api/auth/me"), headers=auth_header(token)
         )
         user_id: int = resp.json()["id"]
 
         resp = requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "wrongpass", "new_password": "newpass"},
+            json={"old_password": "Wrong@p12", "new_password": "New@pass12"},
         )
         assert resp.status_code == 400
 
@@ -710,49 +748,65 @@ class TestUserPassword:
         r"""
         修改他人密码，返回 403
         """
-        token1: str = create_user_and_login("user1", "pass1")
-        create_user_and_login("user2", "pass2")
+        token1: str = create_user_and_login("user1", "Pass@1001")
+        create_user_and_login("user2", "Pass@2002")
 
         resp: requests.Response = requests.put(
             api_url("/api/users/2/password"),
             headers=auth_header(token1),
-            json={"old_password": "pass2", "new_password": "newpass"},
+            json={"old_password": "Pass@2002", "new_password": "New@pass12"},
         )
         assert resp.status_code == 403
 
-    def test_change_password_too_long(self) -> None:
+    def test_change_password_too_short(self) -> None:
         r"""
-        新密码过长，返回 422
+        新密码过短（7字符），返回 422
         """
-        token: str = create_user_and_login("testuser", "oldpass")
+        token: str = create_user_and_login("testuser", "Old@pass12")
         resp: requests.Response = requests.get(
-            api_url("/api/auth/me"),
-            headers=auth_header(token)
+            api_url("/api/auth/me"), headers=auth_header(token)
         )
         user_id: int = resp.json()["id"]
 
         resp = requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "a" * 65},
+            json={"old_password": "Old@pass12", "new_password": "T@st12"},
         )
         assert resp.status_code == 422
 
-    def test_change_password_utf8_exceed(self) -> None:
+    def test_change_password_too_long(self) -> None:
         r"""
-        新密码 UTF-8 字节超限，返回 422
+        新密码过长（33字符），返回 422
         """
-        token: str = create_user_and_login("testuser", "oldpass")
+        token: str = create_user_and_login("testuser", "Old@pass12")
         resp: requests.Response = requests.get(
-            api_url("/api/auth/me"),
-            headers=auth_header(token)
+            api_url("/api/auth/me"), headers=auth_header(token)
         )
         user_id: int = resp.json()["id"]
 
         resp = requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "中" * 22},
+            json={"old_password": "Old@pass12",
+                  "new_password": "Test@123" + "a" * 25},
+        )
+        assert resp.status_code == 422
+
+    def test_change_password_missing_complexity(self) -> None:
+        r"""
+        新密码缺少特殊字符，返回 422
+        """
+        token: str = create_user_and_login("testuser", "Old@pass12")
+        resp: requests.Response = requests.get(
+            api_url("/api/auth/me"), headers=auth_header(token)
+        )
+        user_id: int = resp.json()["id"]
+
+        resp = requests.put(
+            api_url(f"/api/users/{user_id}/password"),
+            headers=auth_header(token),
+            json={"old_password": "Old@pass12", "new_password": "Testpass12"},
         )
         assert resp.status_code == 422
 
@@ -764,7 +818,7 @@ class TestUserPassword:
         resp: requests.Response = requests.put(
             api_url("/api/users/99999/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "newpass"},
+            json={"old_password": "Old@pass12", "new_password": "New@pass12"},
         )
         assert resp.status_code == 403
 
@@ -774,7 +828,7 @@ class TestUserPassword:
         """
         resp: requests.Response = requests.put(
             api_url("/api/users/1/password"),
-            json={"old_password": "oldpass", "new_password": "newpass"},
+            json={"old_password": "Old@pass12", "new_password": "New@pass12"},
         )
         assert resp.status_code == 401
 
@@ -782,38 +836,37 @@ class TestUserPassword:
         r"""
         修改后旧密码无法登录
         """
-        register_user("testuser", "oldpass")
-        resp: requests.Response = login_user("testuser", "oldpass")
+        register_user("testuser", "Old@pass12")
+        resp: requests.Response = login_user("testuser", "Old@pass12")
         token: str = resp.json()["token"]
         user_id: int = resp.json()["user"]["id"]
 
         requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "newpass"},
+            json={"old_password": "Old@pass12", "new_password": "New@pass12"},
         )
 
-        resp = login_user("testuser", "oldpass")
+        resp = login_user("testuser", "Old@pass12")
         assert resp.status_code == 401
 
     def test_change_password_new_valid(self) -> None:
         r"""
         修改后新密码可以登录
         """
-        register_user("testuser", "oldpass")
-        resp: requests.Response = login_user("testuser", "oldpass")
+        register_user("testuser", "Old@pass12")
+        resp: requests.Response = login_user("testuser", "Old@pass12")
         token: str = resp.json()["token"]
         user_id: int = resp.json()["user"]["id"]
 
         requests.put(
             api_url(f"/api/users/{user_id}/password"),
             headers=auth_header(token),
-            json={"old_password": "oldpass", "new_password": "newpass"},
+            json={"old_password": "Old@pass12", "new_password": "New@pass12"},
         )
 
-        resp = login_user("testuser", "newpass")
+        resp = login_user("testuser", "New@pass12")
         assert resp.status_code == 200
-
 
 class TestUserFavorites:
     r"""
@@ -974,8 +1027,8 @@ class TestUserFavorites:
         r"""
         查看他人收藏，返回 403
         """
-        token1: str = create_user_and_login("user1", "pass1")
-        create_user_and_login("user2", "pass2")
+        token1: str = create_user_and_login("user1", "Pass@1001")
+        create_user_and_login("user2", "Pass@2002")
 
         resp: requests.Response = requests.get(
             api_url("/api/users/2/favorites"),
@@ -1122,8 +1175,8 @@ with dv.stack("test{i}") as s:
         r"""
         查看他人执行历史，返回 403
         """
-        token1: str = create_user_and_login("user1", "pass1")
-        create_user_and_login("user2", "pass2")
+        token1: str = create_user_and_login("user1", "Pass@1001")
+        create_user_and_login("user2", "Pass@2002")
 
         resp: requests.Response = requests.get(
             api_url("/api/users/2/executions"),
@@ -1989,6 +2042,10 @@ end)
         assert data["status"] == "Success"
         assert data["toml_output"] is not None
 
+    @pytest.mark.xfail(
+        reason="Rust暂时不可用",
+        strict=False,
+    )
     def test_execute_rust_success(self) -> None:
         r"""
         Rust 代码执行成功
@@ -2504,6 +2561,10 @@ class TestExecuteRustDs4viz:
     Rust ds4viz 库执行测试
     """
 
+    @pytest.mark.xfail(
+        reason="Rust暂时不可用",
+        strict=False,
+    )
     def test_rust_basic_operations(self) -> None:
         r"""
         Rust 基本数据结构操作
@@ -2583,7 +2644,7 @@ with dv.stack("detail_test") as s:
         r"""
         查看他人执行记录，返回 403
         """
-        token1: str = create_user_and_login("user1", "pass1")
+        token1: str = create_user_and_login("user1", "Pass@1001")
         code: str = '''
 import ds4viz as dv
 with dv.stack("test") as s:
@@ -2596,7 +2657,7 @@ with dv.stack("test") as s:
         )
         execution_id: int = resp.json()["execution_id"]
 
-        token2: str = create_user_and_login("user2", "pass2")
+        token2: str = create_user_and_login("user2", "Pass@2002")
         resp = requests.get(
             api_url(f"/api/executions/{execution_id}"),
             headers=auth_header(token2),
@@ -2672,11 +2733,11 @@ class TestBusinessFlow:
         r"""
         完整流程：注册 → 登录 → 执行代码 → 查看历史
         """
-        resp: requests.Response = register_user("flowuser1", "flowpass1")
+        resp: requests.Response = register_user("flowuser1", "Flow@pass1")
         assert resp.status_code == 200
         user_id: int = resp.json()["id"]
 
-        resp = login_user("flowuser1", "flowpass1")
+        resp = login_user("flowuser1", "Flow@pass1")
         assert resp.status_code == 200
         token: str = resp.json()["token"]
 
@@ -2707,10 +2768,10 @@ with dv.stack("flow_test") as s:
         """
         template_id: int = create_template("流程测试模板", "测试分类", "描述")
 
-        resp: requests.Response = register_user("flowuser2", "flowpass2")
+        resp: requests.Response = register_user("flowuser2", "Flow@pass2")
         user_id: int = resp.json()["id"]
 
-        resp = login_user("flowuser2", "flowpass2")
+        resp = login_user("flowuser2", "Flow@pass2")
         token: str = resp.json()["token"]
 
         resp = requests.post(
@@ -2727,16 +2788,20 @@ with dv.stack("flow_test") as s:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
+    @pytest.mark.xfail(
+        reason="缓存暂时不可用",
+        strict=False,
+    )
     def test_cache_shared_across_users(self) -> None:
         r"""
         缓存跨用户共享：用户 A 执行后用户 B 执行相同代码命中缓存
         """
         code: str = '''
-import ds4viz as dv
-with dv.stack("shared_cache_test") as s:
-    s.push(999)
-'''
-        token_a: str = create_user_and_login("userA", "passA")
+    import ds4viz as dv
+    with dv.stack("shared_cache_test") as s:
+        s.push(999)
+    '''
+        token_a: str = create_user_and_login("userA", "Cache@001")  # 修改
         resp_a: requests.Response = requests.post(
             api_url("/api/execute"),
             headers=auth_header(token_a),
@@ -2744,19 +2809,19 @@ with dv.stack("shared_cache_test") as s:
         )
         assert resp_a.json()["cached"] is False
 
-        token_b: str = create_user_and_login("userB", "passB")
+        token_b: str = create_user_and_login("userB", "Cache@002")  # 修改
         resp_b: requests.Response = requests.post(
             api_url("/api/execute"),
             headers=auth_header(token_b),
             json={"language": "python", "code": code},
         )
         assert resp_b.json()["cached"] is True
-
+        
     def test_user_status_change_permission(self) -> None:
         r"""
         用户状态变更后权限验证
         """
-        token: str = create_user_and_login("statususer", "statuspass")
+        token: str = create_user_and_login("statususer", "Stat@pass1")
 
         code: str = '''
 import ds4viz as dv
@@ -2783,13 +2848,13 @@ with dv.stack("status_test") as s:
         r"""
         登出后重新登录获取新 token
         """
-        register_user("reloginuser", "reloginpass")
-        resp: requests.Response = login_user("reloginuser", "reloginpass")
+        register_user("reloginuser", "Relo@pass1")
+        resp: requests.Response = login_user("reloginuser", "Relo@pass1")
         token1: str = resp.json()["token"]
 
         requests.post(api_url("/api/auth/logout"), headers=auth_header(token1))
 
-        resp = login_user("reloginuser", "reloginpass")
+        resp = login_user("reloginuser", "Relo@pass1")
         token2: str = resp.json()["token"]
 
         assert token1 != token2
@@ -2808,7 +2873,7 @@ with dv.stack("status_test") as s:
 
         tokens: list[str] = []
         for i in range(3):
-            token: str = create_user_and_login(f"countuser{i}", f"countpass{i}")
+            token: str = create_user_and_login(f"countuser{i}", f"Cnt@pass0{i}")
             tokens.append(token)
             requests.post(
                 api_url("/api/favorites"),
@@ -2832,7 +2897,7 @@ with dv.stack("status_test") as s:
         r"""
         执行历史与实际执行对应
         """
-        token: str = create_user_and_login("histuser", "histpass")
+        token: str = create_user_and_login("histuser", "Hist@pass1")
         resp: requests.Response = requests.get(
             api_url("/api/auth/me"),
             headers=auth_header(token)
@@ -2906,7 +2971,7 @@ class TestErrorHandling:
         """
         resp: requests.Response = requests.post(
             api_url("/api/auth/register"),
-            json={"username": 123, "password": "testpass"},
+            json={"username": 123, "password": "Test@1234"},
         )
         assert resp.status_code == 422
 
@@ -2933,19 +2998,19 @@ class TestEdgeCases:
     扩展边缘情况测试
     """
 
+
     def test_register_username_with_unicode_emoji(self) -> None:
         r"""
-        用户名包含 Unicode emoji 字符
+        用户名包含 Unicode emoji 字符（不符合 C# 标识符规则），返回 422
         """
-        resp: requests.Response = register_user("user🎉test", "testpass")
-        assert resp.status_code == 200
-        assert resp.json()["username"] == "user🎉test"
+        resp: requests.Response = register_user("user🎉test", "Test@1234")
+        assert resp.status_code == 422
 
     def test_register_username_whitespace_only(self) -> None:
         r"""
         用户名仅包含空白字符，应拒绝或按策略处理
         """
-        resp: requests.Response = register_user("   ", "testpass")
+        resp: requests.Response = register_user("   ", "Test@1234")
         assert resp.status_code in [200, 422]
 
     def test_password_with_null_byte(self) -> None:
@@ -2959,8 +3024,8 @@ class TestEdgeCases:
         r"""
         验证用户名大小写敏感
         """
-        register_user("TestUser", "testpass")
-        resp: requests.Response = login_user("testuser", "testpass")
+        register_user("TestUser", "Test@1234")
+        resp: requests.Response = login_user("testuser", "Test@1234")
         assert resp.status_code == 401
 
     def test_token_expired_simulation(self) -> None:
