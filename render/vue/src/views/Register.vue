@@ -3,18 +3,21 @@
  * 注册页
  *
  * 单页注册：用户名 + 密码 + 确认密码同屏，渐进入场动画。
+ * 实时校验用户名格式与密码复杂度，提交时振动高亮不合规字段。
  *
  * @file src/views/Register.vue
  * @author WaterRun
- * @date 2026-02-25
+ * @date 2026-02-28
  * @component Register
  */
 
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
 import { extractErrorMessage } from '@/utils/error'
+import { validateUsername, validatePassword } from '@/utils/validation'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -27,24 +30,67 @@ const loading = ref<boolean>(false)
 const showPassword = ref<boolean>(false)
 const showConfirmPassword = ref<boolean>(false)
 
+const shakeUsername = ref<boolean>(false)
+const shakePassword = ref<boolean>(false)
+const shakeConfirm = ref<boolean>(false)
+
+/**
+ * 用户名校验结果
+ */
+const usernameValidation = computed(() => validateUsername(username.value))
+
+/**
+ * 密码校验结果
+ */
+const passwordValidation = computed(() => validatePassword(password.value))
+
+/**
+ * 确认密码是否匹配
+ */
 const passwordsMatch = computed<boolean>(
   () => confirmPassword.value.length > 0 && password.value === confirmPassword.value,
 )
 
+/**
+ * 触发输入框振动动画
+ *
+ * @param target - 控制振动的 ref
+ */
+async function triggerShake(target: Ref<boolean>): Promise<void> {
+  target.value = false
+  await nextTick()
+  target.value = true
+  window.setTimeout(() => {
+    target.value = false
+  }, 420)
+}
+
 const handleRegister = async (): Promise<void> => {
   errorMessage.value = ''
-  if (!username.value.trim()) {
-    errorMessage.value = '请输入用户名'
+
+  const uv = usernameValidation.value
+  const pv = passwordValidation.value
+
+  if (!uv.valid) {
+    triggerShake(shakeUsername)
+    errorMessage.value = !uv.lengthOk
+      ? '用户名长度须为 1–64 个字符'
+      : '用户名须以字母或下划线开头，仅含字母、数字、下划线'
     return
   }
-  if (!password.value) {
-    errorMessage.value = '请输入密码'
+
+  if (!pv.valid) {
+    triggerShake(shakePassword)
+    errorMessage.value = '密码不满足复杂度要求'
     return
   }
+
   if (password.value !== confirmPassword.value) {
+    triggerShake(shakeConfirm)
     errorMessage.value = '两次输入的密码不一致'
     return
   }
+
   loading.value = true
   try {
     await authStore.register({ username: username.value, password: password.value })
@@ -115,12 +161,40 @@ const handleRegister = async (): Promise<void> => {
                   v-model="username"
                   type="text"
                   class="form-field__input"
+                  :class="{
+                    'form-field__input--shake': shakeUsername,
+                    'form-field__input--err': shakeUsername,
+                  }"
                   autocomplete="username"
                   autofocus
                   placeholder="输入用户名"
                   :disabled="loading"
                 />
               </div>
+              <Transition name="t-rules">
+                <div v-if="username.length > 0" class="form-rules">
+                  <span
+                    class="form-rules__item"
+                    :class="usernameValidation.lengthOk ? 'form-rules__item--ok' : 'form-rules__item--pending'"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor">
+                      <path v-if="usernameValidation.lengthOk" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+                      <path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" />
+                    </svg>
+                    1–64 字符
+                  </span>
+                  <span
+                    class="form-rules__item"
+                    :class="usernameValidation.formatOk ? 'form-rules__item--ok' : 'form-rules__item--pending'"
+                  >
+                    <svg viewBox="0 0 16 16" fill="currentColor">
+                      <path v-if="usernameValidation.formatOk" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+                      <path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" />
+                    </svg>
+                    字母或下划线开头，仅含字母、数字、下划线
+                  </span>
+                </div>
+              </Transition>
             </div>
 
             <!-- 密码 -->
@@ -137,6 +211,10 @@ const handleRegister = async (): Promise<void> => {
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   class="form-field__input form-field__input--trail"
+                  :class="{
+                    'form-field__input--shake': shakePassword,
+                    'form-field__input--err': shakePassword,
+                  }"
                   autocomplete="new-password"
                   :disabled="loading"
                   placeholder="设置密码"
@@ -170,6 +248,30 @@ const handleRegister = async (): Promise<void> => {
                   </svg>
                 </button>
               </div>
+              <Transition name="t-rules">
+                <div v-if="password.length > 0" class="form-rules">
+                  <span class="form-rules__item" :class="passwordValidation.lengthOk ? 'form-rules__item--ok' : 'form-rules__item--pending'">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path v-if="passwordValidation.lengthOk" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" /><path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" /></svg>
+                    8–32 字符
+                  </span>
+                  <span class="form-rules__item" :class="passwordValidation.hasUppercase ? 'form-rules__item--ok' : 'form-rules__item--pending'">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path v-if="passwordValidation.hasUppercase" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" /><path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" /></svg>
+                    大写字母
+                  </span>
+                  <span class="form-rules__item" :class="passwordValidation.hasLowercase ? 'form-rules__item--ok' : 'form-rules__item--pending'">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path v-if="passwordValidation.hasLowercase" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" /><path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" /></svg>
+                    小写字母
+                  </span>
+                  <span class="form-rules__item" :class="passwordValidation.hasDigit ? 'form-rules__item--ok' : 'form-rules__item--pending'">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path v-if="passwordValidation.hasDigit" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" /><path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" /></svg>
+                    数字
+                  </span>
+                  <span class="form-rules__item" :class="passwordValidation.hasSpecial ? 'form-rules__item--ok' : 'form-rules__item--pending'">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path v-if="passwordValidation.hasSpecial" d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" /><path v-else d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 7.5a.5.5 0 0 1 0-1h3a.5.5 0 0 1 0 1h-3z" /></svg>
+                    特殊字符
+                  </span>
+                </div>
+              </Transition>
             </div>
 
             <!-- 确认密码 -->
@@ -209,7 +311,8 @@ const handleRegister = async (): Promise<void> => {
                   class="form-field__input form-field__input--trail"
                   :class="{
                     'form-field__input--ok': confirmPassword.length > 0 && passwordsMatch,
-                    'form-field__input--err': confirmPassword.length > 0 && !passwordsMatch,
+                    'form-field__input--err': (confirmPassword.length > 0 && !passwordsMatch) || shakeConfirm,
+                    'form-field__input--shake': shakeConfirm,
                   }"
                   autocomplete="new-password"
                   :disabled="loading"
@@ -302,6 +405,15 @@ $success: #22c55e;
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  12% { transform: translateX(-6px); }
+  28% { transform: translateX(5px); }
+  44% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  76% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}
 
 .auth-page {
   min-height: 100dvh;
@@ -320,8 +432,8 @@ $success: #22c55e;
 
 .auth-card {
   position: relative; z-index: 1;
-  width: 100%; max-width: 960px; height: 560px;
-  padding: 52px 64px;
+  width: 100%; max-width: 960px; height: 600px;
+  padding: 48px 64px;
   background-color: $surface;
   border: 1px solid $border; border-radius: 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.06);
@@ -385,22 +497,22 @@ $success: #22c55e;
 }
 .auth-form__header {
   display: flex; justify-content: flex-end;
-  margin-bottom: 24px; flex-shrink: 0;
+  margin-bottom: 20px; flex-shrink: 0;
 }
 .auth-form__title {
   margin: 0; font-size: 22px; font-weight: 600;
   letter-spacing: -0.01em; color: $text-primary; line-height: 1;
 }
 .auth-form__fields {
-  display: flex; flex-direction: column; gap: 18px; flex: 1;
+  display: flex; flex-direction: column; gap: 14px; flex: 1;
 }
 .auth-form__footer {
   display: flex; align-items: center;
   justify-content: space-between;
-  flex-shrink: 0; padding-top: 20px;
+  flex-shrink: 0; padding-top: 16px;
 }
 
-.form-field { display: flex; flex-direction: column; gap: 8px; }
+.form-field { display: flex; flex-direction: column; gap: 6px; }
 .form-field__label {
   font-size: 13px; font-weight: 500; color: $text-body;
   display: flex; align-items: center; gap: 8px;
@@ -416,7 +528,7 @@ $success: #22c55e;
   transition: color 160ms $ease;
 }
 .form-field__input {
-  width: 100%; height: 50px;
+  width: 100%; height: 48px;
   padding: 0 14px 0 44px;
   border: 1px solid $border-strong; border-radius: 12px;
   background-color: $surface;
@@ -441,6 +553,11 @@ $success: #22c55e;
   border-color: $error;
   box-shadow: 0 0 0 3px rgba(239,68,68,0.08);
 }
+.form-field__input--shake {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: shake 420ms $ease;
+  }
+}
 .form-field__trail {
   position: absolute; right: 8px;
   width: 34px; height: 34px;
@@ -452,6 +569,19 @@ $success: #22c55e;
   &:hover { color: $text-body; background-color: rgba(0,0,0,0.05); }
   &:focus-visible { outline: 2px solid $accent; outline-offset: 1px; }
 }
+
+.form-rules {
+  display: flex; flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 2px;
+}
+.form-rules__item {
+  display: inline-flex; align-items: center;
+  gap: 3px; font-size: 11px; font-weight: 500;
+  svg { width: 12px; height: 12px; flex-shrink: 0; }
+}
+.form-rules__item--ok { color: $success; }
+.form-rules__item--pending { color: $text-muted; }
 
 .match-badge {
   margin-left: auto;
@@ -526,6 +656,12 @@ $success: #22c55e;
 }
 .t-match-enter-from, .t-match-leave-to {
   opacity: 0; transform: translateY(-2px);
+}
+.t-rules-enter-active, .t-rules-leave-active {
+  transition: opacity 160ms $ease, max-height 200ms $ease;
+}
+.t-rules-enter-from, .t-rules-leave-to {
+  opacity: 0;
 }
 
 @media (max-width: 820px) {

@@ -2,15 +2,16 @@
 /**
  * 用户页面
  *
- * 顶部用户信息 + 左右分栏（收藏/执行记录）。
+ * 顶部用户信息 + 左右分栏（收藏 | 统计+执行记录）。
  *
  * @file src/views/Profile.vue
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-02-28
  * @component Profile
  */
 
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
@@ -20,6 +21,7 @@ import { getUserAvatarUrl } from '@/api/users'
 import { unfavoriteTemplateApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
 import { formatDateTime, formatDuration } from '@/utils/time'
+import { validatePassword } from '@/utils/validation'
 import { LANGUAGE_LABELS, LANGUAGES } from '@/types/api'
 import type { Language } from '@/types/api'
 import Pagination from '@/components/common/Pagination.vue'
@@ -31,7 +33,8 @@ import TemplateDetailPanel from '@/components/common/TemplateDetailPanel.vue'
 
 import type { FavoriteItem, ExecutionHistoryItem } from '@/api/users'
 
-/** 默认头像颜色调色板 */
+/* ---- 常量 ---- */
+
 const AVATAR_COLORS: readonly string[] = ['#0078d4','#0e7c6b','#7c3aed','#c2410c','#0369a1','#6d28d9','#b45309','#059669','#dc2626','#4f46e5']
 
 interface StatusStyle { color: string; bg: string }
@@ -45,11 +48,73 @@ const DEFAULT_STATUS_STYLE: StatusStyle = { color: 'var(--color-text-tertiary)',
 
 const EXEC_STATUS_COLORS: Record<string, string> = { success: 'var(--color-success)', error: 'var(--color-error)', timeout: 'var(--color-warning)' }
 
+const LANG_COLORS: Record<string, string> = { python: '#3572a5', lua: '#000080', rust: '#dea584' }
+const STATUS_CHART_COLORS: Record<string, string> = { success: '#22c55e', error: '#ef4444', timeout: '#f59e0b' }
+
+/* ---- 工具函数 ---- */
+
 function getAvatarColor(username: string): string { let h = 0; for (let i = 0; i < username.length; i += 1) { h = ((h << 5) - h + username.charCodeAt(i)) | 0 }; return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length] }
 function getAvatarInitial(username: string): string { return username.length > 0 ? username.charAt(0).toUpperCase() : '-' }
 function getLineCount(code: string): number { return code.split('\n').length }
 function getExecStatusColor(status: string): string { return EXEC_STATUS_COLORS[status.toLowerCase()] ?? 'var(--color-text-tertiary)' }
 function getExecStatusBg(status: string): string { const k = status.toLowerCase(); if (k === 'success') return 'var(--color-success-muted)'; if (k === 'error') return 'var(--color-error-muted)'; if (k === 'timeout') return 'var(--color-warning-muted)'; return 'var(--color-bg-hover)' }
+
+/**
+ * 触发输入框振动动画
+ */
+async function triggerShake(target: Ref<boolean>): Promise<void> {
+  target.value = false
+  await nextTick()
+  target.value = true
+  window.setTimeout(() => { target.value = false }, 420)
+}
+
+/* ---- 饼图计算 ---- */
+
+interface PieSlice {
+  label: string
+  value: number
+  color: string
+  percentage: number
+  pathD: string
+}
+
+function computePieSlices(items: Array<{ label: string; value: number; color: string }>): PieSlice[] {
+  const filtered = items.filter((i) => i.value > 0)
+  const total = filtered.reduce((sum, i) => sum + i.value, 0)
+  if (total === 0) return []
+
+  const cx = 50
+  const cy = 50
+  const r = 40
+  const slices: PieSlice[] = []
+  let startAngle = -Math.PI / 2
+
+  for (const item of filtered) {
+    const percentage = Math.round((item.value / total) * 100)
+    const sliceAngle = (item.value / total) * 2 * Math.PI
+    const endAngle = startAngle + sliceAngle
+
+    let pathD: string
+    if (filtered.length === 1) {
+      pathD = `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`
+    } else {
+      const x1 = cx + r * Math.cos(startAngle)
+      const y1 = cy + r * Math.sin(startAngle)
+      const x2 = cx + r * Math.cos(endAngle)
+      const y2 = cy + r * Math.sin(endAngle)
+      const largeArc = sliceAngle > Math.PI ? 1 : 0
+      pathD = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+    }
+
+    slices.push({ label: item.label, value: item.value, color: item.color, percentage, pathD })
+    startAngle = endAngle
+  }
+
+  return slices
+}
+
+/* ---- 核心状态 ---- */
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -62,6 +127,7 @@ const passwordError = ref<string>('')
 const passwordSuccess = ref<string>('')
 const oldPassword = ref<string>('')
 const newPassword = ref<string>('')
+const shakeNewPassword = ref<boolean>(false)
 
 const favorites = ref<FavoriteItem[]>([])
 const favoritesTotal = ref<number>(0)
@@ -79,6 +145,15 @@ const expandedExecId = ref<number | null>(null)
 const copiedExecId = ref<number | null>(null)
 const selectedFavoriteId = ref<number | null>(null)
 
+/* ---- 统计状态 ---- */
+
+const statsLoading = ref<boolean>(true)
+const statsError = ref<string>('')
+const allExecItems = ref<ExecutionHistoryItem[]>([])
+const statsTotalFavorites = ref<number>(0)
+
+/* ---- 派生计算 ---- */
+
 const currentUser = computed(() => authStore.currentUser)
 
 const hasCustomAvatar = computed<boolean>(() => currentUser.value !== null && currentUser.value.avatarUrl !== null && !avatarLoadFailed.value)
@@ -92,7 +167,54 @@ const currentPlaygroundLanguage = computed<Language>(() => { const s = localStor
 const favoritesTotalPages = computed(() => Math.max(1, Math.ceil(favoritesTotal.value / 10)))
 const executionsTotalPages = computed(() => Math.max(1, Math.ceil(executionsTotal.value / 10)))
 
+/**
+ * 新密码校验结果
+ */
+const newPwdValidation = computed(() => validatePassword(newPassword.value))
+
+/* ---- 统计派生 ---- */
+
+const langDistributionData = computed(() => {
+  const map = new Map<string, number>()
+  for (const item of allExecItems.value) {
+    const lang = item.language
+    map.set(lang, (map.get(lang) ?? 0) + 1)
+  }
+  return Array.from(map.entries()).map(([lang, count]) => ({
+    label: LANGUAGE_LABELS[lang as Language] ?? lang,
+    value: count,
+    color: LANG_COLORS[lang] ?? '#999',
+  }))
+})
+
+const statusDistributionData = computed(() => {
+  const map = new Map<string, number>()
+  for (const item of allExecItems.value) {
+    const status = item.status.toLowerCase()
+    map.set(status, (map.get(status) ?? 0) + 1)
+  }
+  return Array.from(map.entries()).map(([status, count]) => ({
+    label: status.charAt(0).toUpperCase() + status.slice(1),
+    value: count,
+    color: STATUS_CHART_COLORS[status] ?? '#999',
+  }))
+})
+
+const langPieSlices = computed(() => computePieSlices(langDistributionData.value))
+const statusPieSlices = computed(() => computePieSlices(statusDistributionData.value))
+
+const avgExecTime = computed<string>(() => {
+  const items = allExecItems.value.filter((i) => i.executionTime !== null)
+  if (items.length === 0) return '--'
+  const sum = items.reduce((acc, i) => acc + (i.executionTime ?? 0), 0)
+  return formatDuration(Math.round(sum / items.length))
+})
+
+/* ---- Watch ---- */
+
 watch(() => currentUser.value?.avatarUrl, () => { avatarLoadFailed.value = false })
+
+/* ---- 数据加载 ---- */
 
 const loadFavorites = async (): Promise<void> => {
   if (!currentUser.value) return
@@ -106,10 +228,59 @@ const loadExecutions = async (): Promise<void> => {
   try { const r = await fetchExecutionHistoryApi(currentUser.value.id, { page: executionsPage.value, limit: 10 }); executions.value = r.items; executionsTotal.value = r.total } catch (e: unknown) { executionsError.value = extractErrorMessage(e) } finally { executionsLoading.value = false }
 }
 
+/**
+ * 拉取全部执行记录与收藏总数用于统计（非阻塞）
+ */
+const loadStats = async (): Promise<void> => {
+  if (!currentUser.value) return
+  statsLoading.value = true
+  statsError.value = ''
+  try {
+    const allExecs: ExecutionHistoryItem[] = []
+    let page = 1
+    const limit = 100
+    let hasMore = true
+    while (hasMore) {
+      const r = await fetchExecutionHistoryApi(currentUser.value.id, { page, limit })
+      allExecs.push(...r.items)
+      hasMore = allExecs.length < r.total
+      page += 1
+    }
+    allExecItems.value = allExecs
+
+    const favResult = await fetchFavoritesApi(currentUser.value.id, { page: 1, limit: 1 })
+    statsTotalFavorites.value = favResult.total
+  } catch (e: unknown) {
+    statsError.value = extractErrorMessage(e)
+  } finally {
+    statsLoading.value = false
+  }
+}
+
+/* ---- 事件处理 ---- */
+
 const handleAvatarChange = async (event: Event): Promise<void> => { const input = event.target as HTMLInputElement; const file = input.files?.[0]; if (!file || !currentUser.value) return; avatarUploading.value = true; avatarError.value = ''; try { const r = await uploadAvatarApi(currentUser.value.id, file); authStore.setCurrentUser({ ...currentUser.value, avatarUrl: r.avatarUrl }) } catch (e: unknown) { avatarError.value = extractErrorMessage(e) } finally { avatarUploading.value = false; input.value = '' } }
 const handleAvatarError = (): void => { avatarLoadFailed.value = true }
 
-const handlePasswordChange = async (): Promise<void> => { passwordError.value = ''; passwordSuccess.value = ''; try { await authStore.changePassword({ oldPassword: oldPassword.value, newPassword: newPassword.value }); passwordSuccess.value = '密码已更新'; oldPassword.value = ''; newPassword.value = '' } catch (e: unknown) { passwordError.value = extractErrorMessage(e) } }
+const handlePasswordChange = async (): Promise<void> => {
+  passwordError.value = ''
+  passwordSuccess.value = ''
+
+  if (!newPwdValidation.value.valid) {
+    triggerShake(shakeNewPassword)
+    passwordError.value = '新密码不满足复杂度要求'
+    return
+  }
+
+  try {
+    await authStore.changePassword({ oldPassword: oldPassword.value, newPassword: newPassword.value })
+    passwordSuccess.value = '密码已更新'
+    oldPassword.value = ''
+    newPassword.value = ''
+  } catch (e: unknown) {
+    passwordError.value = extractErrorMessage(e)
+  }
+}
 
 const handleFavoritesPage = async (page: number): Promise<void> => { favoritesPage.value = page; selectedFavoriteId.value = null; await loadFavorites() }
 const handleExecutionsPage = async (page: number): Promise<void> => { executionsPage.value = page; expandedExecId.value = null; await loadExecutions() }
@@ -143,7 +314,10 @@ const handleUnfavoriteFromCard = async (templateId: number, event: Event): Promi
   } catch (e: unknown) { favoritesError.value = extractErrorMessage(e) }
 }
 
-onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) })
+onMounted(async () => {
+  await Promise.all([loadFavorites(), loadExecutions()])
+  loadStats()
+})
 </script>
 
 <template>
@@ -155,7 +329,7 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
       </div>
     </header>
 
-    <!-- ── 用户信息（无卡片背景） ── -->
+    <!-- ── 用户信息 ── -->
     <section class="profile-hero">
       <div class="profile-hero__avatar">
         <img v-if="hasCustomAvatar" :src="avatarSrc" alt="avatar" class="profile-hero__avatar-img" @error="handleAvatarError" />
@@ -173,8 +347,23 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
       <Transition name="slide-fade">
         <div v-if="showPasswordForm" class="pwd-form">
           <input v-model="oldPassword" type="password" class="pwd-form__input" placeholder="旧密码" />
-          <input v-model="newPassword" type="password" class="pwd-form__input" placeholder="新密码" />
-          <button class="pwd-form__submit" :disabled="!oldPassword.length || !newPassword.length" @click="handlePasswordChange">确认修改</button>
+          <input
+            v-model="newPassword"
+            type="password"
+            class="pwd-form__input"
+            :class="{ 'pwd-form__input--shake': shakeNewPassword, 'pwd-form__input--err': shakeNewPassword }"
+            placeholder="新密码"
+          />
+          <Transition name="slide-fade">
+            <div v-if="newPassword.length > 0" class="pwd-rules">
+              <span :class="newPwdValidation.lengthOk ? 'pwd-rules__ok' : 'pwd-rules__pending'">8–32字符</span>
+              <span :class="newPwdValidation.hasUppercase ? 'pwd-rules__ok' : 'pwd-rules__pending'">大写</span>
+              <span :class="newPwdValidation.hasLowercase ? 'pwd-rules__ok' : 'pwd-rules__pending'">小写</span>
+              <span :class="newPwdValidation.hasDigit ? 'pwd-rules__ok' : 'pwd-rules__pending'">数字</span>
+              <span :class="newPwdValidation.hasSpecial ? 'pwd-rules__ok' : 'pwd-rules__pending'">特殊字符</span>
+            </div>
+          </Transition>
+          <button class="pwd-form__submit" :disabled="!oldPassword.length || !newPwdValidation.valid" @click="handlePasswordChange">确认修改</button>
           <ErrorBanner :message="passwordError" @dismiss="passwordError = ''" />
           <p v-if="passwordSuccess" class="pwd-form__success">{{ passwordSuccess }}</p>
         </div>
@@ -226,55 +415,122 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
         <Pagination v-if="favoritesTotal > 10" :page="favoritesPage" :total-pages="favoritesTotalPages" @change="handleFavoritesPage" />
       </section>
 
-      <!-- 执行记录 -->
-      <section class="profile-col">
-        <h3 class="profile-col__title"><MaterialIcon name="history" :size="16" /><span>执行记录</span></h3>
-        <ErrorBanner :message="executionsError" @dismiss="executionsError = ''" />
-        <div v-if="executionsLoading" class="profile-col__center"><Loading /></div>
-        <div v-else-if="executions.length === 0" class="profile-col__center profile-col__empty">
-          <MaterialIcon name="schedule" :size="24" /><p>暂无记录</p>
-        </div>
-        <div v-else class="profile-col__list">
-          <div v-for="item in executions" :key="item.id" class="exec-item" :class="{ 'exec-item--expanded': expandedExecId === item.id }">
-            <button class="exec-item__summary" @click="toggleExecExpand(item.id)">
-              <span class="exec-item__lang">{{ LANGUAGE_LABELS[item.language as Language] ?? item.language }}</span>
-              <span class="exec-item__status" :style="{ color: getExecStatusColor(item.status), backgroundColor: getExecStatusBg(item.status) }">{{ item.status }}</span>
-              <span class="exec-item__duration">{{ item.executionTime !== null ? formatDuration(item.executionTime) : '--' }}</span>
-              <span class="exec-item__lines">{{ getLineCount(item.code) }} 行</span>
-              <span class="exec-item__time">{{ formatDateTime(item.createdAt) }}</span>
-              <MaterialIcon :name="expandedExecId === item.id ? 'expand_less' : 'expand_more'" :size="16" class="exec-item__chevron" />
-            </button>
-            <Transition name="slide-fade">
-              <div v-if="expandedExecId === item.id" class="exec-item__detail">
-                <div class="exec-item__editor"><CodeEditor :model-value="item.code" :language="(item.language as Language)" :readonly="true" /></div>
-                <div class="exec-item__actions">
-                  <button class="code-action-btn" :class="{ 'code-action-btn--copied': copiedExecId === item.id }" @click.stop="handleCopyCode(item)">
-                    <svg v-if="copiedExecId !== item.id" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" /></svg>
-                    <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
-                    <span>{{ copiedExecId === item.id ? '已复制' : '复制代码' }}</span>
-                  </button>
-                  <button class="code-action-btn code-action-btn--primary" @click.stop="handleEditInPlayground(item)">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" /></svg>
-                    <span>在编辑器中打开</span>
-                  </button>
+      <!-- 右列：统计 + 执行记录 -->
+      <div class="profile-col-stack">
+        <!-- 统计数据 -->
+        <section class="profile-col">
+          <h3 class="profile-col__title"><MaterialIcon name="bar_chart" :size="16" /><span>统计数据</span></h3>
+          <ErrorBanner :message="statsError" @dismiss="statsError = ''" />
+          <div v-if="statsLoading" class="profile-col__center">
+            <Loading message="正在提取统计数据中..." />
+          </div>
+          <div v-else-if="allExecItems.length === 0" class="profile-col__center profile-col__empty">
+            <MaterialIcon name="analytics" :size="24" /><p>暂无数据</p>
+          </div>
+          <div v-else class="stats-body">
+            <div class="stats-charts">
+              <div class="stats-chart">
+                <svg class="stats-chart__svg" viewBox="0 0 100 100">
+                  <path v-for="(slice, i) in langPieSlices" :key="`lp-${i}`" :d="slice.pathD" :fill="slice.color" />
+                </svg>
+                <div class="stats-chart__title">语言</div>
+                <div class="stats-chart__legend">
+                  <span v-for="(slice, i) in langPieSlices" :key="`ll-${i}`" class="legend-item">
+                    <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                    {{ slice.label }} {{ slice.percentage }}%
+                  </span>
                 </div>
               </div>
-            </Transition>
+              <div class="stats-chart">
+                <svg class="stats-chart__svg" viewBox="0 0 100 100">
+                  <path v-for="(slice, i) in statusPieSlices" :key="`sp-${i}`" :d="slice.pathD" :fill="slice.color" />
+                </svg>
+                <div class="stats-chart__title">状态</div>
+                <div class="stats-chart__legend">
+                  <span v-for="(slice, i) in statusPieSlices" :key="`sl-${i}`" class="legend-item">
+                    <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                    {{ slice.label }} {{ slice.percentage }}%
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="stats-summary">
+              <div class="stats-summary__item">
+                <span class="stats-summary__value">{{ allExecItems.length }}</span>
+                <span class="stats-summary__label">总执行</span>
+              </div>
+              <div class="stats-summary__item">
+                <span class="stats-summary__value">{{ avgExecTime }}</span>
+                <span class="stats-summary__label">平均耗时</span>
+              </div>
+              <div class="stats-summary__item">
+                <span class="stats-summary__value">{{ statsTotalFavorites }}</span>
+                <span class="stats-summary__label">收藏数</span>
+              </div>
+            </div>
           </div>
-        </div>
-        <Pagination v-if="executionsTotal > 10" :page="executionsPage" :total-pages="executionsTotalPages" @change="handleExecutionsPage" />
-      </section>
+        </section>
+
+        <!-- 执行记录 -->
+        <section class="profile-col">
+          <h3 class="profile-col__title"><MaterialIcon name="history" :size="16" /><span>执行记录</span></h3>
+          <ErrorBanner :message="executionsError" @dismiss="executionsError = ''" />
+          <div v-if="executionsLoading" class="profile-col__center"><Loading /></div>
+          <div v-else-if="executions.length === 0" class="profile-col__center profile-col__empty">
+            <MaterialIcon name="schedule" :size="24" /><p>暂无记录</p>
+          </div>
+          <div v-else class="profile-col__list">
+            <div v-for="item in executions" :key="item.id" class="exec-item" :class="{ 'exec-item--expanded': expandedExecId === item.id }">
+              <button class="exec-item__summary" @click="toggleExecExpand(item.id)">
+                <span class="exec-item__lang">{{ LANGUAGE_LABELS[item.language as Language] ?? item.language }}</span>
+                <span class="exec-item__status" :style="{ color: getExecStatusColor(item.status), backgroundColor: getExecStatusBg(item.status) }">{{ item.status }}</span>
+                <span class="exec-item__duration">{{ item.executionTime !== null ? formatDuration(item.executionTime) : '--' }}</span>
+                <span class="exec-item__lines">{{ getLineCount(item.code) }} 行</span>
+                <span class="exec-item__time">{{ formatDateTime(item.createdAt) }}</span>
+                <MaterialIcon :name="expandedExecId === item.id ? 'expand_less' : 'expand_more'" :size="16" class="exec-item__chevron" />
+              </button>
+              <Transition name="slide-fade">
+                <div v-if="expandedExecId === item.id" class="exec-item__detail">
+                  <div class="exec-item__editor"><CodeEditor :model-value="item.code" :language="(item.language as Language)" :readonly="true" /></div>
+                  <div class="exec-item__actions">
+                    <button class="code-action-btn" :class="{ 'code-action-btn--copied': copiedExecId === item.id }" @click.stop="handleCopyCode(item)">
+                      <svg v-if="copiedExecId !== item.id" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" /></svg>
+                      <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" /></svg>
+                      <span>{{ copiedExecId === item.id ? '已复制' : '复制代码' }}</span>
+                    </button>
+                    <button class="code-action-btn code-action-btn--primary" @click.stop="handleEditInPlayground(item)">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" /></svg>
+                      <span>在编辑器中打开</span>
+                    </button>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+          </div>
+          <Pagination v-if="executionsTotal > 10" :page="executionsPage" :total-pages="executionsTotalPages" @change="handleExecutionsPage" />
+        </section>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  12% { transform: translateX(-6px); }
+  28% { transform: translateX(5px); }
+  44% { transform: translateX(-4px); }
+  60% { transform: translateX(3px); }
+  76% { transform: translateX(-2px); }
+  90% { transform: translateX(1px); }
+}
+
 .profile-page { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); height: 100%; overflow-y: auto; }
 .profile-page__header { display: flex; align-items: center; flex-shrink: 0; }
 .profile-page__title { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); }
 .profile-page__title :deep(.material-icon) { width: 18px; height: 18px; }
 
-/* ---- 用户信息（无卡片） ---- */
+/* ---- 用户信息 ---- */
 .profile-hero { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); flex-shrink: 0; padding: var(--space-4) var(--space-2) var(--space-3); width: 100%; }
 
 .profile-hero__avatar { position: relative; width: 96px; height: 96px; }
@@ -292,15 +548,26 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
 .profile-hero__pwd-link:hover { color: var(--color-accent-hover); }
 
 .pwd-form { display: flex; flex-direction: column; gap: var(--space-1); width: 100%; max-width: 280px; }
-.pwd-form__input { height: var(--control-height-md); border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); padding: 0 12px; font-size: var(--text-sm); color: var(--color-text-primary); transition: border-color var(--duration-fast) var(--ease); }
+.pwd-form__input { height: var(--control-height-md); border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); padding: 0 12px; font-size: var(--text-sm); color: var(--color-text-primary); transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease); }
 .pwd-form__input:focus { border-color: var(--color-accent); }
+.pwd-form__input--err { border-color: var(--color-error); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08); }
+.pwd-form__input--shake { animation: shake 420ms cubic-bezier(0.2, 0, 0, 1); }
 .pwd-form__submit { height: var(--control-height-md); border-radius: var(--radius-control); border: none; background-color: var(--color-accent); color: var(--color-accent-contrast); font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; transition: background-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease); }
 .pwd-form__submit:hover:not(:disabled) { background-color: var(--color-accent-hover); transform: translateY(-1px); }
 .pwd-form__submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .pwd-form__success { margin: 0; font-size: var(--text-xs); color: var(--color-success); text-align: center; }
 
+.pwd-rules { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.pwd-rules span { font-size: 11px; font-weight: 500; }
+.pwd-rules__ok { color: var(--color-success); }
+.pwd-rules__pending { color: var(--color-text-tertiary); }
+
 /* ---- 左右分栏 ---- */
 .profile-columns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); flex: 1; min-height: 0; width: 100%; }
+
+.profile-col-stack { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; }
+.profile-col-stack > .profile-col { flex: 1; min-height: 0; }
+
 .profile-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background-color: var(--color-bg-surface); padding: var(--space-2); gap: var(--space-1); }
 .profile-col__title { margin: 0; display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-text-primary); flex-shrink: 0; }
 .profile-col__title :deep(.material-icon) { width: 16px; height: 16px; }
@@ -309,6 +576,20 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
 .profile-col__empty p { margin: 0; font-size: var(--text-xs); }
 .profile-col__empty :deep(.material-icon) { width: 24px; height: 24px; }
 .profile-col__list { flex: 1; display: flex; flex-direction: column; gap: var(--space-1); overflow-y: auto; min-height: 0; }
+
+/* ---- 统计 ---- */
+.stats-body { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; min-height: 0; overflow-y: auto; }
+.stats-charts { display: flex; gap: var(--space-2); justify-content: center; }
+.stats-chart { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.stats-chart__svg { width: 80px; height: 80px; flex-shrink: 0; }
+.stats-chart__title { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-primary); }
+.stats-chart__legend { display: flex; flex-direction: column; gap: 2px; }
+.legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--color-text-body); white-space: nowrap; }
+.legend-item__dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+.stats-summary { display: flex; justify-content: center; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--color-border); }
+.stats-summary__item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.stats-summary__value { font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); font-family: var(--font-mono); }
+.stats-summary__label { font-size: 11px; color: var(--color-text-tertiary); }
 
 /* ---- 收藏卡片 ---- */
 .fav-card { padding: var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-md); background-color: var(--color-bg-surface-alt); flex-shrink: 0; cursor: pointer; transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease); }
@@ -353,7 +634,12 @@ onMounted(async () => { await Promise.all([loadFavorites(), loadExecutions()]) }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+@media (prefers-reduced-motion: reduce) {
+  .pwd-form__input--shake { animation: none; }
+}
+
 @media (max-width: 860px) {
   .profile-columns { grid-template-columns: 1fr; }
+  .profile-col-stack { flex-direction: column; }
 }
 </style>

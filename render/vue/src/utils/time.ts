@@ -1,29 +1,63 @@
 /**
  * 时间格式化工具函数
  *
+ * 后端存储 UTC 时间，前端显示时转换为用户当前时区并附加偏移标识。
+ *
  * @file src/utils/time.ts
  * @author WaterRun
- * @date 2026-02-10
+ * @date 2026-02-28
  */
 
 /**
- * ISO 8601 时间字符串转本地日期时间
+ * 确保 ISO 字符串包含时区标记
  *
- * @param iso - ISO 8601 格式时间字符串
+ * 后端返回的 UTC 时间可能不含 Z 后缀，
+ * 需要补充以确保浏览器按 UTC 解析。
+ *
+ * @param iso - 原始 ISO 字符串
+ * @returns 带时区标记的 ISO 字符串
+ */
+function ensureUtcSuffix(iso: string): string {
+    if (iso.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(iso)) {
+        return iso
+    }
+    return `${iso}Z`
+}
+
+/**
+ * 获取当前时区的 UTC 偏移标识
+ *
+ * @returns 形如 "UTC+8" 或 "UTC-5:30" 的字符串
+ */
+function getUtcOffsetLabel(): string {
+    const offsetMinutes = -new Date().getTimezoneOffset()
+    const sign = offsetMinutes >= 0 ? '+' : '-'
+    const hours = Math.floor(Math.abs(offsetMinutes) / 60)
+    const minutes = Math.abs(offsetMinutes) % 60
+    if (minutes === 0) {
+        return `UTC${sign}${hours}`
+    }
+    return `UTC${sign}${hours}:${String(minutes).padStart(2, '0')}`
+}
+
+/**
+ * ISO 8601 时间字符串转本地日期时间（附带时区标识）
+ *
+ * @param iso - ISO 8601 格式时间字符串（UTC）
  * @returns 格式化后的本地时间，解析失败时原样返回
  *
  * @example
  * ```typescript
- * formatDateTime('2025-08-01T14:30:00Z')
- * // → '2025/08/01 14:30'
+ * formatDateTime('2025-08-01T06:30:00')
+ * // → '2025/08/01 14:30 (UTC+8)'
  * ```
  */
 export function formatDateTime(iso: string): string {
-    const date = new Date(iso)
+    const date = new Date(ensureUtcSuffix(iso))
     if (Number.isNaN(date.getTime())) {
         return iso
     }
-    return date.toLocaleString('zh-CN', {
+    const formatted = date.toLocaleString('zh-CN', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -31,24 +65,25 @@ export function formatDateTime(iso: string): string {
         minute: '2-digit',
         hour12: false,
     })
+    return `${formatted} (${getUtcOffsetLabel()})`
 }
 
 /**
  * ISO 8601 时间字符串转相对时间描述
  *
- * 30 天内使用相对表述（如 "3 分钟前"），超出后回退到完整日期。
+ * 30 天内使用相对表述（如 "3 分钟前"），超出后回退到完整日期（附时区标识）。
  *
- * @param iso - ISO 8601 格式时间字符串
+ * @param iso - ISO 8601 格式时间字符串（UTC）
  * @returns 相对时间描述或完整日期
  *
  * @example
  * ```typescript
- * formatRelativeTime('2026-02-10T12:00:00Z')
- * // → '3 分钟前'（假设当前时间为 12:03）
+ * formatRelativeTime('2026-02-28T12:00:00')
+ * // → '3 分钟前'
  * ```
  */
 export function formatRelativeTime(iso: string): string {
-    const target = new Date(iso).getTime()
+    const target = new Date(ensureUtcSuffix(iso)).getTime()
     if (Number.isNaN(target)) {
         return iso
     }
