@@ -1,15 +1,12 @@
 <script setup lang="ts">
 /**
- * 编辑器页面（重构可视化集成）
+ * 编辑器页面
  *
- * 核心修复：
- * - irDoc 使用 shallowRef，parsed document 已 markRaw
- * - 导航状态为独立 ref<number>，不嵌套在响应式对象中
- * - 消除深层响应式代理导致的渲染卡死
+ * 集成可视化 flag：skipReadyPage / autoPlayOnGenerate / playbackInterval。
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-02-28
+ * @date 2026-03-02
  * @component Playground
  */
 
@@ -49,67 +46,33 @@ const executionInfo = ref<string>('')
 const tomlContent = ref<string>('')
 const tomlExpanded = ref<boolean>(false)
 
-/* ---- 可视化状态（关键修复：shallowRef + 独立游标） ---- */
+/* ---- 可视化状态 ---- */
 
-/**
- * 解析后的 IR 文档（markRaw 标记，不会被 Vue 深层代理）
- */
 const irDoc = shallowRef<IrDocument | null>(null)
-
-/**
- * 当前状态索引（0-based，导航即为增减此值）
- */
 const currentStateIndex = ref<number>(0)
-
-/**
- * 自动播放状态
- */
 const isPlaying = ref<boolean>(false)
-
-/**
- * 自动播放定时器
- */
 const playTimer = ref<number | null>(null)
-
-/**
- * 可视化是否已开始浏览（用于初始页展示）
- */
 const vizStarted = ref<boolean>(false)
 
 /* ---- 派生计算 ---- */
 
-/**
- * 当前代码是否为默认模板（空白亦视为默认）
- */
 const isDefaultCode = computed<boolean>(() => {
   const trimmed = code.value.trim()
   return trimmed.length === 0 || trimmed === getDefaultTemplate(language.value).trim()
 })
 
-/**
- * 总状态数
- */
 const totalStates = computed<number>(() => irDoc.value?.states.length ?? 0)
 
-/**
- * 当前状态快照
- */
 const currentState = computed(() => {
   if (!irDoc.value) return null
   return getStateByIndex(irDoc.value, currentStateIndex.value)
 })
 
-/**
- * 当前步骤摘要（用于 VizPanel 显示操作信息及代码行高亮）
- */
 const currentStepInfo = computed<StepSummary | null>(() => {
   if (!irDoc.value) return null
   return getStepSummaryForState(irDoc.value, currentStateIndex.value)
 })
 
-/**
- * 代码行高亮行号（受 flag 控制）
- */
 const highlightLine = computed<number | null>(() => {
   if (!vizFlags.enableCodeLineHighlight) return null
   return currentStepInfo.value?.line ?? null
@@ -119,17 +82,18 @@ const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
 const canStepForward = computed<boolean>(() => currentStateIndex.value < totalStates.value - 1)
 
 /**
- * 是否显示可视化就绪页（初始状态且尚未开始浏览）
+ * 是否显示就绪页（受 skipReadyPage flag 控制）
  */
 const showVizReady = computed<boolean>(() =>
-  irDoc.value !== null && !vizStarted.value && totalStates.value > 1 && currentStateIndex.value === 0,
+  irDoc.value !== null
+  && !vizStarted.value
+  && !vizFlags.skipReadyPage
+  && totalStates.value > 1
+  && currentStateIndex.value === 0,
 )
 
 /* ---- TOML 解析与应用 ---- */
 
-/**
- * 解析 TOML 并更新可视化状态
- */
 const applyToml = (content: string): void => {
   const parsed = parseIrToml(content)
   if (!parsed.ok || !parsed.document) {
@@ -144,6 +108,15 @@ const applyToml = (content: string): void => {
   vizStarted.value = false
   executeError.value = parsed.document.error?.message ?? ''
   logDebug('[playground] TOML applied, states =', parsed.document.states.length)
+
+  if (vizFlags.skipReadyPage) {
+    vizStarted.value = true
+  }
+
+  if (vizFlags.autoPlayOnGenerate && totalStates.value > 1) {
+    vizStarted.value = true
+    startPlay()
+  }
 }
 
 /* ---- 语言与模板 ---- */
@@ -237,32 +210,10 @@ const handleDownloadToml = (): void => {
 
 /* ---- 步骤导航 ---- */
 
-const goFirst = (): void => {
-  stopPlay()
-  currentStateIndex.value = 0
-  logDebug('[playground] goFirst')
-}
-
-const goPrev = (): void => {
-  stopPlay()
-  if (currentStateIndex.value > 0) {
-    currentStateIndex.value -= 1
-  }
-}
-
-const goNext = (): void => {
-  if (currentStateIndex.value < totalStates.value - 1) {
-    currentStateIndex.value += 1
-  }
-}
-
-const goLast = (): void => {
-  stopPlay()
-  if (totalStates.value > 0) {
-    currentStateIndex.value = totalStates.value - 1
-    logDebug('[playground] goLast, index =', currentStateIndex.value)
-  }
-}
+const goFirst = (): void => { stopPlay(); currentStateIndex.value = 0 }
+const goPrev = (): void => { stopPlay(); if (currentStateIndex.value > 0) currentStateIndex.value -= 1 }
+const goNext = (): void => { if (currentStateIndex.value < totalStates.value - 1) currentStateIndex.value += 1 }
+const goLast = (): void => { stopPlay(); if (totalStates.value > 0) currentStateIndex.value = totalStates.value - 1 }
 
 /* ---- 自动播放 ---- */
 
@@ -274,39 +225,34 @@ const stopPlay = (): void => {
   }
 }
 
-const togglePlay = (): void => {
+const startPlay = (): void => {
   if (!irDoc.value) return
-  if (isPlaying.value) {
-    stopPlay()
-    return
-  }
   isPlaying.value = true
+  const interval = Math.max(50, vizFlags.playbackInterval)
   playTimer.value = window.setInterval(() => {
-    if (!canStepForward.value) {
-      stopPlay()
-      return
-    }
+    if (!canStepForward.value) { stopPlay(); return }
     goNext()
-  }, 220)
+  }, interval)
+}
+
+const togglePlay = (): void => {
+  if (isPlaying.value) { stopPlay(); return }
+  startPlay()
 }
 
 /* ---- 就绪页操作 ---- */
 
-/**
- * 从就绪页进入下一步
- */
-const handleStartNext = (): void => {
-  vizStarted.value = true
-  goNext()
-}
+const handleStartNext = (): void => { vizStarted.value = true; goNext() }
+const handleStartPlay = (): void => { vizStarted.value = true; startPlay() }
 
-/**
- * 从就绪页开始自动播放
- */
-const handleStartPlay = (): void => {
-  vizStarted.value = true
-  togglePlay()
-}
+/* ---- 播放间隔变更时重启定时器 ---- */
+
+watch(() => vizFlags.playbackInterval, () => {
+  if (isPlaying.value) {
+    stopPlay()
+    startPlay()
+  }
+})
 
 /* ---- 生命周期 ---- */
 
@@ -338,9 +284,7 @@ onMounted(() => {
   }
 })
 
-onBeforeUnmount(() => {
-  stopPlay()
-})
+onBeforeUnmount(() => { stopPlay() })
 
 watch(
   () => route.query.templateId,
@@ -356,13 +300,8 @@ watch(
   { immediate: true },
 )
 
-/**
- * 导航操作自动标记 vizStarted
- */
 watch(currentStateIndex, (newVal, oldVal) => {
-  if (newVal !== oldVal && newVal > 0) {
-    vizStarted.value = true
-  }
+  if (newVal !== oldVal && newVal > 0) vizStarted.value = true
 })
 </script>
 
@@ -432,21 +371,13 @@ watch(currentStateIndex, (newVal, oldVal) => {
           </div>
         </div>
 
-        <VizPanel
-          v-else
-          :kind="irDoc?.object.kind"
-          :data="currentState?.data"
-          :step="currentStepInfo"
-        />
+        <VizPanel v-else :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
+          :label="irDoc?.object.label" :remarks="irDoc?.remarks" />
 
         <div v-if="tomlContent" class="toml-section">
           <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
-            <MaterialIcon
-              name="expand_more"
-              :size="16"
-              class="toml-section__chevron"
-              :class="{ 'toml-section__chevron--open': tomlExpanded }"
-            />
+            <MaterialIcon name="expand_more" :size="16" class="toml-section__chevron"
+              :class="{ 'toml-section__chevron--open': tomlExpanded }" />
             <MaterialIcon name="data_object" :size="16" />
             <span>TOML IR</span>
           </button>
@@ -464,11 +395,8 @@ watch(currentStateIndex, (newVal, oldVal) => {
             <span class="panel-toolbar__label">代码</span>
           </div>
           <div class="panel-toolbar__controls">
-            <LanguageSelect
-              :key="languageSelectKey"
-              :model-value="language"
-              @update:model-value="handleLanguageChange"
-            />
+            <LanguageSelect :key="languageSelectKey" :model-value="language"
+              @update:model-value="handleLanguageChange" />
             <button class="run-btn" :disabled="running || templateLoading" @click="handleRun">
               <MaterialIcon name="play_arrow" :size="18" />
               <span>{{ running ? '运行中' : '运行' }}</span>
@@ -602,7 +530,6 @@ watch(currentStateIndex, (newVal, oldVal) => {
 
 .icon-btn:hover {
   background-color: var(--color-bg-hover);
-  border-color: var(--color-border-strong);
 }
 
 .icon-btn :deep(.material-icon) {
@@ -719,7 +646,6 @@ watch(currentStateIndex, (newVal, oldVal) => {
 
 .viz-ready__btn:hover {
   background-color: var(--color-bg-hover);
-  border-color: var(--color-border-strong);
 }
 
 .viz-ready__btn :deep(.material-icon) {

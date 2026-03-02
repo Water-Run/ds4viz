@@ -1,73 +1,101 @@
 /**
  * 可视化功能开关管理
  *
- * 所有可选可视化功能的运行时开关，支持动态切换。
- * 默认配置为最小化渲染 + 控制台调试，便于定位问题。
- *
- * 如需修改默认值：直接修改下方 DEFAULT_FLAGS 对象。
- * 如需运行时切换：在浏览器控制台执行
- *   window.__ds4vizFlags.set('enableNodeColors', true)
- * 或在代码中调用 setFlag / setFlags。
+ * 所有可视化功能的运行时开关，支持动态切换与 localStorage 持久化。
  *
  * @file src/utils/viz-flags.ts
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-02
  */
 
-import { reactive, readonly } from 'vue'
+import { reactive, readonly, watch } from 'vue'
 
 /**
- * 可视化功能开关定义
+ * 可视化功能开关状态
  *
  * @interface
  */
-export interface VizFlags {
-    /** 节点色彩（TOP/FRONT/HEAD/ROOT 等特殊节点着色） */
-    enableNodeColors: boolean
-    /** 步骤切换时的平滑过渡动画 */
+export interface VizFlagsState {
+    /** 显示 TOML remarks 元数据（标题/作者/备注） */
+    showMetadata: boolean
+    /** 帧间 PPT 平滑过渡动画 */
     enableSmoothTransitions: boolean
-    /** 编辑器中当前步骤对应行高亮 */
+    /** 联动编辑器代码行高亮 */
     enableCodeLineHighlight: boolean
-    /** 向 console 输出解析/渲染/导航调试信息 */
+    /** 自适应画布缩放/平移 */
+    enableAutoFit: boolean
+    /** 变更强化（虚线移除 + 高亮新增） */
+    enableDiffHighlight: boolean
+    /** 控制台调试日志 */
     enableConsoleDebug: boolean
-    /** TOP / FRONT / REAR / HEAD / TAIL 等位置标记 */
-    enableStepBadges: boolean
-    /** 有向图箭头渲染 */
-    enableGraphArrows: boolean
-    /** 带权图权值标签 */
-    enableEdgeWeightLabels: boolean
+    /** 跳过就绪页 */
+    skipReadyPage: boolean
+    /** 生成后自动播放 */
+    autoPlayOnGenerate: boolean
+    /** 自动播放间隔（毫秒，0–10000，步进 100） */
+    playbackInterval: number
+}
+
+/** 向后兼容别名 */
+export type VizFlags = VizFlagsState
+
+/** localStorage 键名 */
+const STORAGE_KEY = 'ds4viz_viz_flags'
+
+/**
+ * 默认开关配置
+ */
+const DEFAULT_FLAGS: VizFlagsState = {
+    showMetadata: true,
+    enableSmoothTransitions: true,
+    enableCodeLineHighlight: true,
+    enableAutoFit: true,
+    enableDiffHighlight: true,
+    enableConsoleDebug: false,
+    skipReadyPage: false,
+    autoPlayOnGenerate: false,
+    playbackInterval: 500,
 }
 
 /**
- * 默认开关配置（最小化 + 调试模式）
+ * 从 localStorage 恢复配置
  *
- * ┌─────────────────────────────┬─────────┬──────────────────────────┐
- * │ Flag                        │ Default │ 说明                     │
- * ├─────────────────────────────┼─────────┼──────────────────────────┤
- * │ enableNodeColors            │ false   │ 关闭以排除 CSS 渲染干扰  │
- * │ enableSmoothTransitions     │ false   │ 关闭以排除动画卡顿       │
- * │ enableCodeLineHighlight     │ false   │ 关闭以排除 Monaco 问题   │
- * │ enableConsoleDebug          │ true    │ 开启以观察运行时流程      │
- * │ enableStepBadges            │ true    │ 纯文本标记，无性能影响    │
- * │ enableGraphArrows           │ true    │ 基础 SVG marker          │
- * │ enableEdgeWeightLabels      │ true    │ 基础 SVG text            │
- * └─────────────────────────────┴─────────┴──────────────────────────┘
+ * @returns 存储的部分配置，解析失败时返回空对象
  */
-const DEFAULT_FLAGS: VizFlags = {
-    enableNodeColors: false,
-    enableSmoothTransitions: false,
-    enableCodeLineHighlight: false,
-    enableConsoleDebug: true,
-    enableStepBadges: true,
-    enableGraphArrows: true,
-    enableEdgeWeightLabels: true,
+function loadFromStorage(): Partial<VizFlagsState> {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (raw !== null) {
+            return JSON.parse(raw) as Partial<VizFlagsState>
+        }
+    } catch {
+        /* localStorage 不可用或数据损坏 */
+    }
+    return {}
 }
 
-/** 内部可变状态 */
-const _flags = reactive<VizFlags>({ ...DEFAULT_FLAGS })
+/**
+ * 持久化配置到 localStorage
+ *
+ * @param flags - 完整配置对象
+ */
+function saveToStorage(flags: VizFlagsState): void {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(flags))
+    } catch {
+        /* localStorage 不可用 */
+    }
+}
+
+/** 合并持久化值与默认值 */
+const stored = loadFromStorage()
+const _flags = reactive<VizFlagsState>({ ...DEFAULT_FLAGS, ...stored })
 
 /** 只读响应式代理，供组件模板绑定 */
-export const vizFlags = readonly(_flags) as Readonly<VizFlags>
+export const vizFlags = readonly(_flags) as Readonly<VizFlagsState>
+
+/** 配置变更时自动持久化 */
+watch(_flags, (v) => saveToStorage({ ...v }), { deep: true })
 
 /**
  * 获取指定开关当前值
@@ -75,7 +103,7 @@ export const vizFlags = readonly(_flags) as Readonly<VizFlags>
  * @param key - 开关名称
  * @returns 当前值
  */
-export function getFlag(key: keyof VizFlags): boolean {
+export function getFlag<K extends keyof VizFlagsState>(key: K): VizFlagsState[K] {
     return _flags[key]
 }
 
@@ -85,8 +113,8 @@ export function getFlag(key: keyof VizFlags): boolean {
  * @param key - 开关名称
  * @param value - 新值
  */
-export function setFlag(key: keyof VizFlags, value: boolean): void {
-    _flags[key] = value
+export function setFlag<K extends keyof VizFlagsState>(key: K, value: VizFlagsState[K]): void {
+    ; (_flags as VizFlagsState)[key] = value
     logDebug(`[viz-flags] ${key} = ${String(value)}`)
 }
 
@@ -95,10 +123,10 @@ export function setFlag(key: keyof VizFlags, value: boolean): void {
  *
  * @param partial - 需要修改的开关子集
  */
-export function setFlags(partial: Partial<VizFlags>): void {
+export function setFlags(partial: Partial<VizFlagsState>): void {
     for (const [key, value] of Object.entries(partial)) {
         if (key in _flags) {
-            _flags[key as keyof VizFlags] = value as boolean
+            ; (_flags as Record<string, unknown>)[key] = value
         }
     }
     logDebug('[viz-flags] batch update', partial)
@@ -115,8 +143,6 @@ export function resetFlags(): void {
 /**
  * 条件调试日志
  *
- * 仅在 enableConsoleDebug 为 true 时输出到 console.log。
- *
  * @param args - 与 console.log 参数一致
  */
 export function logDebug(...args: unknown[]): void {
@@ -125,9 +151,7 @@ export function logDebug(...args: unknown[]): void {
     }
 }
 
-/* ----------------------------------------------------------------
- *  开发时控制台快捷入口
- * ---------------------------------------------------------------- */
+/* ---- 开发时控制台快捷入口 ---- */
 
 if (typeof window !== 'undefined') {
     const win = window as unknown as Record<string, unknown>
