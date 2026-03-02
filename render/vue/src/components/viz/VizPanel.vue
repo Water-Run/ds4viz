@@ -87,9 +87,6 @@ const WARNING_COLOR = 'var(--color-warning)'
  *  文本测量与自适应
  * ================================================================ */
 
-/**
- * 计算文本有效长度（CJK 字符计 2）
- */
 function getEffectiveLength(text: string): number {
   let len = 0
   for (let i = 0; i < text.length; i += 1) {
@@ -98,9 +95,6 @@ function getEffectiveLength(text: string): number {
   return len
 }
 
-/**
- * 计算节点宽度缩放因子（上限 2 倍 = 面积 4 倍）
- */
 function computeNodeScale(values: IrValue[], baseChars: number): number {
   if (values.length === 0) return 1
   const maxLen = Math.max(...values.map((v) => getEffectiveLength(String(v))))
@@ -108,9 +102,6 @@ function computeNodeScale(values: IrValue[], baseChars: number): number {
   return Math.min(2, maxLen / baseChars)
 }
 
-/**
- * 将文本拆分为显示行（支持截断）
- */
 function splitDisplayLines(value: IrValue, maxCharsPerLine: number, maxLines: number): string[] {
   const text = String(value)
   const effLen = getEffectiveLength(text)
@@ -249,7 +240,7 @@ const graphData = computed<GraphStateData | GraphWeightedStateData | null>(() =>
 })
 
 /* ================================================================
- *  ViewBox / Zoom / Pan / 双击回中
+ *  ViewBox / Zoom / Pan / 双击回中 / 缩放提示
  * ================================================================ */
 
 interface VB { x: number; y: number; w: number; h: number }
@@ -258,13 +249,47 @@ const vb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
 const idealVb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
 let animFrame: number | null = null
 
+/** 用户是否手动缩放/平移过（用于显示还原提示） */
+const userManualZoom = ref<boolean>(false)
+
 const effectiveViewBox = computed<string>(() => {
   if (isStructureEmpty.value) return '0 0 300 200'
   return `${vb.value.x} ${vb.value.y} ${vb.value.w} ${vb.value.h}`
 })
 
+/**
+ * 是否显示缩放还原提示
+ */
+const showZoomHint = computed<boolean>(() => {
+  return userManualZoom.value && !isEmpty.value && !isStructureEmpty.value
+})
+
 const isPanning = ref<boolean>(false)
 const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({ cx: 0, cy: 0, vx: 0, vy: 0 })
+
+/**
+ * 插值动画至目标视口
+ *
+ * @param target - 目标 ViewBox
+ * @param duration - 动画时长（毫秒）
+ */
+const animateToVb = (target: VB, duration: number = 200): void => {
+  if (animFrame !== null) window.cancelAnimationFrame(animFrame)
+  const from = { ...vb.value }
+  const start = performance.now()
+  const animate = (now: number): void => {
+    const t = Math.min(1, (now - start) / duration)
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+    vb.value = {
+      x: from.x + (target.x - from.x) * ease,
+      y: from.y + (target.y - from.y) * ease,
+      w: from.w + (target.w - from.w) * ease,
+      h: from.h + (target.h - from.h) * ease,
+    }
+    if (t < 1) { animFrame = window.requestAnimationFrame(animate) } else { animFrame = null }
+  }
+  animFrame = window.requestAnimationFrame(animate)
+}
 
 const onWheel = (e: WheelEvent): void => {
   const svg = e.currentTarget as SVGSVGElement
@@ -275,6 +300,7 @@ const onWheel = (e: WheelEvent): void => {
   const nw = vb.value.w * factor
   const nh = vb.value.h * factor
   vb.value = { x: vb.value.x + (vb.value.w - nw) * mx, y: vb.value.y + (vb.value.h - nh) * my, w: nw, h: nh }
+  userManualZoom.value = true
 }
 
 const onPanStart = (e: PointerEvent): void => {
@@ -292,7 +318,16 @@ const onPanMove = (e: PointerEvent): void => {
   vb.value = { ...vb.value, x: panOrigin.value.vx - dx, y: panOrigin.value.vy - dy }
 }
 
-const onPanEnd = (): void => { isPanning.value = false }
+const onPanEnd = (): void => {
+  if (isPanning.value) {
+    const dx = Math.abs(vb.value.x - panOrigin.value.vx)
+    const dy = Math.abs(vb.value.y - panOrigin.value.vy)
+    if (dx > 1 || dy > 1) {
+      userManualZoom.value = true
+    }
+  }
+  isPanning.value = false
+}
 
 const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): void => {
   const w = Math.max(200, maxX - minX + PAD * 2)
@@ -300,7 +335,8 @@ const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): voi
   const target: VB = { x: minX - PAD, y: minY - PAD, w, h }
   idealVb.value = { ...target }
   if (vizFlags.enableAutoFit) {
-    vb.value = { ...target }
+    animateToVb(target, 180)
+    userManualZoom.value = false
   }
 }
 
@@ -308,23 +344,8 @@ const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): voi
  * 双击回中：动画插值到理想视口
  */
 const handleDblClick = (): void => {
-  if (animFrame !== null) window.cancelAnimationFrame(animFrame)
-  const from = { ...vb.value }
-  const to = { ...idealVb.value }
-  const duration = 200
-  const start = performance.now()
-  const animate = (now: number): void => {
-    const t = Math.min(1, (now - start) / duration)
-    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
-    vb.value = {
-      x: from.x + (to.x - from.x) * ease,
-      y: from.y + (to.y - from.y) * ease,
-      w: from.w + (to.w - from.w) * ease,
-      h: from.h + (to.h - from.h) * ease,
-    }
-    if (t < 1) { animFrame = window.requestAnimationFrame(animate) } else { animFrame = null }
-  }
-  animFrame = window.requestAnimationFrame(animate)
+  animateToVb({ ...idealVb.value }, 200)
+  userManualZoom.value = false
 }
 
 /* ================================================================
@@ -348,9 +369,6 @@ function fullVal(v: IrValue): string { return typeof v === 'string' ? `"${v}"` :
  *  Diff 高亮（对称渐进渐退）
  * ================================================================ */
 
-/**
- * 计算 ghost 持续时长
- */
 function getGhostDuration(): number {
   if (props.autoPlaying) {
     return Math.max(150, Math.min(2000, vizFlags.playbackInterval * 0.5))
@@ -765,14 +783,12 @@ onBeforeUnmount(() => {
 
           <!-- ═══════ 图形化空状态 ═══════ -->
           <g v-if="isStructureEmpty">
-            <!-- Stack -->
             <g v-if="emptyType === 'stack'" transform="translate(90,20)">
               <ellipse cx="60" cy="10" rx="50" ry="10" class="viz-empty-shape" />
               <line x1="10" y1="10" x2="10" y2="100" class="viz-empty-shape" />
               <line x1="110" y1="10" x2="110" y2="100" class="viz-empty-shape" />
               <ellipse cx="60" cy="100" rx="50" ry="10" class="viz-empty-shape" />
             </g>
-            <!-- Queue -->
             <g v-else-if="emptyType === 'queue'" transform="translate(50,60)">
               <rect x="0" y="0" width="50" height="36" rx="4" class="viz-empty-shape" />
               <rect x="70" y="0" width="50" height="36" rx="4" class="viz-empty-shape" />
@@ -780,13 +796,11 @@ onBeforeUnmount(() => {
               <line x1="54" y1="18" x2="66" y2="18" class="viz-empty-shape" />
               <line x1="124" y1="18" x2="136" y2="18" class="viz-empty-shape" />
             </g>
-            <!-- List -->
             <g v-else-if="emptyType === 'list'" transform="translate(55,60)">
               <rect x="0" y="0" width="70" height="40" rx="6" class="viz-empty-shape" />
               <line x1="74" y1="20" x2="116" y2="20" class="viz-empty-shape" marker-end="url(#viz-arrow)" />
               <rect x="120" y="0" width="70" height="40" rx="6" class="viz-empty-shape" />
             </g>
-            <!-- Tree -->
             <g v-else-if="emptyType === 'tree'" transform="translate(80,30)">
               <circle cx="70" cy="16" r="16" class="viz-empty-shape" />
               <line x1="58" y1="28" x2="36" y2="62" class="viz-empty-shape" />
@@ -794,7 +808,6 @@ onBeforeUnmount(() => {
               <circle cx="30" cy="78" r="16" class="viz-empty-shape" />
               <circle cx="110" cy="78" r="16" class="viz-empty-shape" />
             </g>
-            <!-- Graph -->
             <g v-else transform="translate(80,24)">
               <circle cx="70" cy="16" r="16" class="viz-empty-shape" />
               <circle cx="24" cy="120" r="16" class="viz-empty-shape" />
@@ -829,7 +842,6 @@ onBeforeUnmount(() => {
                   <tspan :x="stackLayout.cx" :dy="LINE_H">{{ it.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <!-- 标签 -->
               <template v-for="(lbl, li) in it.labels" :key="`sl-${i}-${li}`">
                 <text v-if="lbl.position === 'top'" :x="stackLayout.cx + stackLayout.cylRx + 8" :y="it.y + 4"
                   class="viz-badge" :style="{ fill: lbl.color }" text-anchor="start">{{ lbl.text }}</text>
@@ -855,7 +867,6 @@ onBeforeUnmount(() => {
               <line v-if="i < queueLayout.items.length - 1" :x1="it.x + queueLayout.boxW + 4"
                 :y1="PAD + 20 + queueLayout.boxH / 2" :x2="queueLayout.items[i + 1].x - 4"
                 :y2="PAD + 20 + queueLayout.boxH / 2" class="viz-arrow" marker-end="url(#viz-arrow)" />
-              <!-- 标签（碰撞规避） -->
               <template v-for="(lbl, li) in it.labels" :key="`qlbl-${i}-${li}`">
                 <text v-if="lbl.position === 'top'" :x="it.x + queueLayout.boxW / 2" :y="PAD + 12" class="viz-badge"
                   :style="{ fill: lbl.color }">{{ lbl.text }}</text>
@@ -889,7 +900,6 @@ onBeforeUnmount(() => {
               </text>
               <text :x="nd.x + slistLayout.nodeW / 2" :y="PAD + 20 + slistLayout.nodeH / 2 + 14" class="viz-ptr">#{{
                 nd.id }}</text>
-              <!-- 标签 -->
               <template v-for="(lbl, li) in nd.labels" :key="`snlbl-${nd.id}-${li}`">
                 <text v-if="lbl.position === 'top'" :x="nd.x + slistLayout.nodeW / 2" :y="PAD + 12" class="viz-badge"
                   :style="{ fill: lbl.color }">{{ lbl.text }}</text>
@@ -932,7 +942,6 @@ onBeforeUnmount(() => {
               </text>
               <text :x="nd.x + dlistLayout.nodeW / 2" :y="PAD + 20 + dlistLayout.nodeH / 2 + 14" class="viz-ptr">#{{
                 nd.id }}</text>
-              <!-- 标签（碰撞规避） -->
               <template v-for="(lbl, li) in nd.labels" :key="`dnlbl-${nd.id}-${li}`">
                 <text v-if="lbl.position === 'top'" :x="nd.x + dlistLayout.nodeW / 2" :y="PAD + 12" class="viz-badge"
                   :style="{ fill: lbl.color }">{{ lbl.text }}</text>
@@ -1013,6 +1022,13 @@ onBeforeUnmount(() => {
           </div>
         </Transition>
       </template>
+
+      <!-- 缩放还原提示 -->
+      <Transition name="fade">
+        <div v-if="showZoomHint" class="viz-panel__zoom-hint">
+          双击画布还原缩放定位
+        </div>
+      </Transition>
 
       <!-- 设置齿轮 -->
       <VizSettings />
@@ -1128,8 +1144,26 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
-/* ---- Tooltip（白底结构化） ---- */
+/* ---- 缩放还原提示 ---- */
+.viz-panel__zoom-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 16px;
+  border-radius: var(--radius-full);
+  background-color: rgba(0, 0, 0, 0.48);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
 
+/* ---- Tooltip ---- */
 .viz-tooltip {
   position: absolute;
   padding: 8px 12px;
@@ -1164,7 +1198,6 @@ onBeforeUnmount(() => {
 }
 
 /* ---- 空状态图形 ---- */
-
 .viz-empty-shape {
   fill: none;
   stroke: var(--color-text-tertiary);
@@ -1181,7 +1214,6 @@ onBeforeUnmount(() => {
 }
 
 /* ---- 公共 SVG 样式 ---- */
-
 .viz-val {
   font-size: 13px;
   font-family: var(--font-mono);
@@ -1244,8 +1276,6 @@ onBeforeUnmount(() => {
   stroke-dasharray: 3 2;
 }
 
-/* ---- Stack Cylinder ---- */
-
 .viz-cyl-body {
   fill: var(--color-bg-surface);
   stroke: none;
@@ -1277,8 +1307,6 @@ onBeforeUnmount(() => {
   stroke: var(--color-accent);
 }
 
-/* ---- Queue / Box ---- */
-
 .viz-box {
   fill: var(--color-bg-surface);
   stroke: var(--color-border-strong);
@@ -1289,8 +1317,6 @@ onBeforeUnmount(() => {
   fill: var(--color-accent-wash);
   stroke: var(--color-accent);
 }
-
-/* ---- List Node Rect ---- */
 
 .viz-node-rect {
   fill: var(--color-bg-surface);
@@ -1303,8 +1329,6 @@ onBeforeUnmount(() => {
   stroke: var(--color-accent);
 }
 
-/* ---- Tree Node ---- */
-
 .viz-tree-node {
   fill: var(--color-bg-surface);
   stroke: var(--color-border-strong);
@@ -1316,13 +1340,9 @@ onBeforeUnmount(() => {
   stroke: var(--color-accent);
 }
 
-/* ---- Graph Node ---- */
-
 .viz-graph-node {
   stroke-width: 1.5;
 }
-
-/* ---- Diff: Added（对称渐进） ---- */
 
 .viz-node--added {
   transform-box: fill-box;
@@ -1341,8 +1361,6 @@ onBeforeUnmount(() => {
     transform: scale(1);
   }
 }
-
-/* ---- Diff: Ghost（对称渐退） ---- */
 
 .viz-ghost {
   fill: none;
@@ -1370,45 +1388,28 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ---- Smooth Transitions ---- */
-
 .viz-panel--smooth .viz-tree-node,
 .viz-panel--smooth .viz-graph-node {
-  transition:
-    cx var(--duration-viz) var(--ease),
-    cy var(--duration-viz) var(--ease),
-    x var(--duration-viz) var(--ease),
-    y var(--duration-viz) var(--ease),
-    r var(--duration-viz) var(--ease),
-    fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
+  transition: cx var(--duration-viz) var(--ease), cy var(--duration-viz) var(--ease), x var(--duration-viz) var(--ease), y var(--duration-viz) var(--ease), r var(--duration-viz) var(--ease), fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-edge,
 .viz-panel--smooth .viz-edge--dashed,
 .viz-panel--smooth .viz-arrow {
-  transition:
-    x1 var(--duration-viz) var(--ease),
-    y1 var(--duration-viz) var(--ease),
-    x2 var(--duration-viz) var(--ease),
-    y2 var(--duration-viz) var(--ease);
+  transition: x1 var(--duration-viz) var(--ease), y1 var(--duration-viz) var(--ease), x2 var(--duration-viz) var(--ease), y2 var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-val,
 .viz-panel--smooth .viz-ptr,
 .viz-panel--smooth .viz-badge {
-  transition:
-    x var(--duration-viz) var(--ease),
-    y var(--duration-viz) var(--ease);
+  transition: x var(--duration-viz) var(--ease), y var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-cyl-body,
 .viz-panel--smooth .viz-cyl-top,
 .viz-panel--smooth .viz-box,
 .viz-panel--smooth .viz-node-rect {
-  transition:
-    fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
+  transition: fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
 }
 
 @media (max-width: 1100px) {

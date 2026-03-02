@@ -11,6 +11,7 @@ import { useRouter, useRoute } from 'vue-router'
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import { useAuthStore } from '@/stores/auth'
+import { getUserAvatarUrl } from '@/api/users'
 
 /**
  * 导航项
@@ -77,6 +78,9 @@ const initializing = ref<boolean>(true)
 /** 是否为移动端视口 */
 const isMobile = ref<boolean>(false)
 
+/** 头像加载失败标记 */
+const avatarLoadFailed = ref<boolean>(false)
+
 /** MediaQueryList 引用 */
 let mediaQuery: MediaQueryList | null = null
 
@@ -99,6 +103,31 @@ const userInitial = computed<string>(() => {
 const userAvatarColor = computed<string>(() => {
   return getAvatarColor(currentUser.value?.username ?? '')
 })
+
+/** 是否拥有自定义头像 */
+const hasCustomAvatar = computed<boolean>(() => {
+  return currentUser.value !== null
+    && currentUser.value.avatarUrl !== null
+    && !avatarLoadFailed.value
+})
+
+/** 头像图片 URL */
+const avatarSrc = computed<string>(() => {
+  if (!currentUser.value || currentUser.value.avatarUrl === null) return ''
+  return getUserAvatarUrl(currentUser.value.id)
+})
+
+/** 头像变更时重置失败标记 */
+watch(() => currentUser.value?.avatarUrl, () => {
+  avatarLoadFailed.value = false
+})
+
+/**
+ * 头像加载失败回退
+ */
+const handleAvatarError = (): void => {
+  avatarLoadFailed.value = true
+}
 
 /**
  * 响应视口变化
@@ -165,31 +194,18 @@ onBeforeUnmount(() => {
     <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
       <div class="sidebar__header">
         <router-link v-show="!collapsed" to="/about" class="sidebar__brand-link">
-          <img
-            src="/ds4viz/logo.png"
-            alt="ds4viz"
-            class="sidebar__logo-img"
-          />
+          <img src="/ds4viz/logo.png" alt="ds4viz" class="sidebar__logo-img" />
           <span class="sidebar__brand">ds4viz</span>
           <span class="sidebar__brand-tooltip">关于 ds4viz</span>
         </router-link>
-        <button
-          class="sidebar__toggle"
-          :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'"
-          @click="toggleSidebar"
-        >
+        <button class="sidebar__toggle" :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'" @click="toggleSidebar">
           <MaterialIcon :name="collapsed ? 'menu' : 'menu_open'" :size="20" />
         </button>
       </div>
 
       <nav class="sidebar__nav">
-        <router-link
-          v-for="item in navItems"
-          :key="item.to"
-          :to="item.to"
-          class="nav-item"
-          :title="collapsed ? item.label : undefined"
-        >
+        <router-link v-for="item in navItems" :key="item.to" :to="item.to" class="nav-item"
+          :title="collapsed ? item.label : undefined">
           <MaterialIcon :name="item.icon" class="nav-item__icon" :size="20" />
           <span v-show="!collapsed" class="nav-item__label">{{ item.label }}</span>
         </router-link>
@@ -197,11 +213,12 @@ onBeforeUnmount(() => {
 
       <div class="sidebar__footer">
         <router-link to="/profile" class="sidebar__user" title="个人资料">
-          <div
-            class="sidebar__avatar"
-            :style="{ backgroundColor: userAvatarColor }"
-          >
-            {{ userInitial }}
+          <div class="sidebar__avatar-wrap">
+            <img v-if="hasCustomAvatar" :src="avatarSrc" alt="avatar" class="sidebar__avatar-img"
+              @error="handleAvatarError" />
+            <div v-else class="sidebar__avatar" :style="{ backgroundColor: userAvatarColor }">
+              {{ userInitial }}
+            </div>
           </div>
           <span v-show="!collapsed" class="sidebar__username">
             {{ currentUser?.username ?? '' }}
@@ -216,11 +233,7 @@ onBeforeUnmount(() => {
 
     <!-- 移动端遮罩层 -->
     <Transition name="fade">
-      <div
-        v-if="isMobile && !collapsed"
-        class="sidebar-overlay"
-        @click="closeMobileSidebar"
-      />
+      <div v-if="isMobile && !collapsed" class="sidebar-overlay" @click="closeMobileSidebar" />
     </Transition>
 
     <main class="app-layout__main">
@@ -273,8 +286,6 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-/* ---- 遮罩层 ---- */
-
 .sidebar-overlay {
   position: fixed;
   inset: 0;
@@ -282,11 +293,8 @@ onBeforeUnmount(() => {
   background-color: rgba(0, 0, 0, 0.3);
 }
 
-/* ---- 侧栏 ---- */
-
 .sidebar {
   --_sidebar-w: 176px;
-
   position: sticky;
   top: 0;
   height: 100dvh;
@@ -357,9 +365,7 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   opacity: 0;
   transform: translateY(-4px);
-  transition:
-    opacity var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease);
+  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
   pointer-events: none;
   z-index: 10;
 }
@@ -399,9 +405,7 @@ onBeforeUnmount(() => {
   color: var(--color-text-secondary);
   border-radius: var(--radius-control);
   cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
 
 .sidebar__toggle:hover {
@@ -430,9 +434,7 @@ onBeforeUnmount(() => {
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .nav-item:hover {
@@ -495,6 +497,20 @@ onBeforeUnmount(() => {
   background: var(--color-accent-wash);
 }
 
+.sidebar__avatar-wrap {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.sidebar__avatar-img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
 .sidebar__avatar {
   width: 26px;
   height: 26px;
@@ -534,9 +550,7 @@ onBeforeUnmount(() => {
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .sidebar__logout:hover {

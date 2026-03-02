@@ -6,7 +6,7 @@
  *
  * @file src/views/About.vue
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-02
  * @component About
  */
 </script>
@@ -53,27 +53,27 @@
   justify-content: center;
   height: 100%;
   padding: var(--space-3);
-  padding-bottom: 10%;
+  padding-bottom: 8%;
 }
 
 .about-page__content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 520px;
+  max-width: 480px;
   width: 100%;
 }
 
 .about-page__logo {
-  width: 192px;
-  height: 192px;
+  width: 160px;
+  height: 160px;
   object-fit: contain;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .about-page__title {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.03em;
   color: var(--color-text-primary);
@@ -81,8 +81,8 @@
 }
 
 .about-page__slogan {
-  margin: 6px 0 0;
-  font-size: 15px;
+  margin: 4px 0 0;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-text-body);
   line-height: 1.5;
@@ -94,7 +94,7 @@
   color: var(--color-text-tertiary);
   line-height: var(--leading-relaxed);
   text-align: center;
-  max-width: 460px;
+  max-width: 440px;
 }
 
 .about-page__github {
@@ -103,7 +103,7 @@
   gap: 10px;
   height: 42px;
   padding: 0 18px;
-  margin-top: calc(var(--space-3) * 4);
+  margin-top: var(--space-5);
   border: 1px solid var(--color-border-strong);
   border-radius: 12px;
   color: var(--color-text-body);
@@ -136,7 +136,7 @@
 }
 
 .about-page__footer {
-  margin: calc(var(--space-3) * 4) 0 0;
+  margin: var(--space-5) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
   text-align: center;
