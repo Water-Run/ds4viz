@@ -354,25 +354,27 @@ watch(currentStateIndex, (newVal, oldVal) => {
           </div>
         </div>
 
-        <!-- 就绪页 -->
-        <div v-if="showVizReady" class="viz-ready">
-          <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
-          <p class="viz-ready__title">可视化结果已生成</p>
-          <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
-          <div class="viz-ready__actions">
-            <button class="viz-ready__btn" @click="handleStartNext">
-              <MaterialIcon name="chevron_right" :size="18" />
-              <span>下一步</span>
-            </button>
-            <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
-              <MaterialIcon name="play_arrow" :size="18" />
-              <span>自动播放</span>
-            </button>
+        <!-- 就绪页 / 可视化面板 -->
+        <Transition name="fade" mode="out-in">
+          <div v-if="showVizReady" key="ready" class="viz-ready">
+            <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
+            <p class="viz-ready__title">可视化结果已生成</p>
+            <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
+            <div class="viz-ready__actions">
+              <button class="viz-ready__btn" @click="handleStartNext">
+                <MaterialIcon name="chevron_right" :size="18" />
+                <span>下一步</span>
+              </button>
+              <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
+                <MaterialIcon name="play_arrow" :size="18" />
+                <span>自动播放</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        <VizPanel v-else :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
-          :label="irDoc?.object.label" :remarks="irDoc?.remarks" :auto-playing="isPlaying" />
+          <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
+            :label="irDoc?.object.label" :remarks="irDoc?.remarks" :auto-playing="isPlaying" />
+        </Transition>
 
         <div v-if="tomlContent" class="toml-section">
           <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">

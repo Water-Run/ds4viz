@@ -2,7 +2,8 @@
 /**
  * 代码编辑器组件
  *
- * 行高亮受 vizFlags.enableCodeLineHighlight 控制。
+ * 行高亮由父组件通过 highlightLine prop 控制，
+ * null 或 ≤0 时清除高亮。
  *
  * @component CodeEditor
  * @example
@@ -17,7 +18,6 @@ import type { editor } from 'monaco-editor'
 
 import type { Language } from '@/types/api'
 import { registerDs4vizCompletions } from '@/utils/monaco'
-import { vizFlags, logDebug } from '@/utils/viz-flags'
 
 /**
  * 组件属性定义
@@ -104,15 +104,16 @@ const handleChange = (value: string | undefined): void => {
 }
 
 /**
- * 应用行高亮（受 enableCodeLineHighlight flag 控制）
+ * 应用行高亮
+ *
+ * @param line - 行号，null/undefined/≤0 时清除
  */
 const applyHighlight = (line: number | null | undefined): void => {
   if (!editorRef.value || !monacoRef.value) return
 
-  if (!vizFlags.enableCodeLineHighlight || !line || line < 1) {
+  if (!line || line < 1) {
     if (decorationIds.value.length > 0) {
       decorationIds.value = editorRef.value.deltaDecorations(decorationIds.value, [])
-      logDebug('[editor] cleared line highlight')
     }
     return
   }
@@ -127,7 +128,6 @@ const applyHighlight = (line: number | null | undefined): void => {
       },
     },
   ])
-  logDebug('[editor] highlight line', line)
 }
 
 /**
@@ -144,12 +144,9 @@ const handleMount = (
 }
 
 /**
- * 同时监听 highlightLine 和 flag 变化
+ * 监听 highlightLine 变化
  */
-watch(
-  [() => props.highlightLine, () => vizFlags.enableCodeLineHighlight],
-  ([line]) => applyHighlight(line),
-)
+watch(() => props.highlightLine, (line) => applyHighlight(line))
 
 onBeforeUnmount(() => {
   editorRef.value = null
@@ -160,15 +157,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="code-editor">
-    <VueMonacoEditor
-      :value="modelValue"
-      class="code-editor__instance"
-      :language="editorLanguage"
-      :theme="'vs'"
-      :options="editorOptions"
-      @mount="handleMount"
-      @change="handleChange"
-    />
+    <VueMonacoEditor :value="modelValue" class="code-editor__instance" :language="editorLanguage" :theme="'vs'"
+      :options="editorOptions" @mount="handleMount" @change="handleChange" />
   </div>
 </template>
 

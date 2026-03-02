@@ -84,6 +84,37 @@ const ACCENT_COLOR = 'var(--color-accent)'
 const WARNING_COLOR = 'var(--color-warning)'
 
 /* ================================================================
+ *  Ghost / Diff 缓存类型
+ * ================================================================ */
+
+/**
+ * 缓存的位置与形态信息
+ */
+interface CachedPosition {
+  /** 形状类型 */
+  shape: 'rect' | 'circle' | 'ellipse'
+  /** x 坐标（circle/ellipse 为中心，rect 为左上角） */
+  x: number
+  /** y 坐标（circle/ellipse 为中心，rect 为左上角） */
+  y: number
+  /** 圆半径 */
+  r?: number
+  /** 椭圆水平半径 */
+  rx?: number
+  /** 椭圆垂直半径 */
+  ry?: number
+  /** 矩形宽度 */
+  w?: number
+  /** 矩形高度 */
+  h?: number
+}
+
+/**
+ * Ghost 元素（带标识键）
+ */
+type GhostItem = CachedPosition & { key: string }
+
+/* ================================================================
  *  文本测量与自适应
  * ================================================================ */
 
@@ -249,7 +280,7 @@ const vb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
 const idealVb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
 let animFrame: number | null = null
 
-/** 用户是否手动缩放/平移过（用于显示还原提示） */
+/** 用户是否手动缩放/平移过 */
 const userManualZoom = ref<boolean>(false)
 
 const effectiveViewBox = computed<string>(() => {
@@ -257,9 +288,6 @@ const effectiveViewBox = computed<string>(() => {
   return `${vb.value.x} ${vb.value.y} ${vb.value.w} ${vb.value.h}`
 })
 
-/**
- * 是否显示缩放还原提示
- */
 const showZoomHint = computed<boolean>(() => {
   return userManualZoom.value && !isEmpty.value && !isStructureEmpty.value
 })
@@ -267,12 +295,6 @@ const showZoomHint = computed<boolean>(() => {
 const isPanning = ref<boolean>(false)
 const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({ cx: 0, cy: 0, vx: 0, vy: 0 })
 
-/**
- * 插值动画至目标视口
- *
- * @param target - 目标 ViewBox
- * @param duration - 动画时长（毫秒）
- */
 const animateToVb = (target: VB, duration: number = 200): void => {
   if (animFrame !== null) window.cancelAnimationFrame(animFrame)
   const from = { ...vb.value }
@@ -340,9 +362,6 @@ const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): voi
   }
 }
 
-/**
- * 双击回中：动画插值到理想视口
- */
 const handleDblClick = (): void => {
   animateToVb({ ...idealVb.value }, 200)
   userManualZoom.value = false
@@ -380,11 +399,11 @@ const ghostDurationMs = computed<string>(() => getGhostDuration() + 'ms')
 
 let prevIds: Set<string> = new Set()
 const addedIds = shallowRef<Set<string>>(new Set())
-const removedKeys = shallowRef<Array<{ key: string; x: number; y: number; r?: number; w?: number; h?: number }>>([])
+const removedKeys = shallowRef<GhostItem[]>([])
 let ghostTimer: number | null = null
-const prevPositionCache = new Map<string, { x: number; y: number; r?: number; w?: number; h?: number }>()
+const prevPositionCache = new Map<string, CachedPosition>()
 
-function computeDiff(currentKeys: Map<string, { x: number; y: number; r?: number; w?: number; h?: number }>): void {
+function computeDiff(currentKeys: Map<string, CachedPosition>): void {
   if (!vizFlags.enableDiffHighlight) {
     addedIds.value = new Set()
     removedKeys.value = []
@@ -395,7 +414,7 @@ function computeDiff(currentKeys: Map<string, { x: number; y: number; r?: number
   }
   const curSet = new Set(currentKeys.keys())
   const added = new Set<string>()
-  const removed: typeof removedKeys.value = []
+  const removed: GhostItem[] = []
   for (const k of curSet) { if (!prevIds.has(k)) added.add(k) }
   for (const k of prevIds) {
     if (!curSet.has(k)) {
@@ -461,10 +480,10 @@ watch(() => stackData.value, (d) => {
   const svgH = n * cylItemH + CYL_RY * 2 + PAD * 2 + 20
   const cx = svgW / 2
   const baseY = svgH - PAD - CYL_RY
-  const positions = new Map<string, { x: number; y: number }>()
+  const positions = new Map<string, CachedPosition>()
   const items: StackLayoutItem[] = d.items.map((v, i) => {
     const y = baseY - (i + 0.5) * cylItemH
-    positions.set(`s-${i}`, { x: cx, y })
+    positions.set(`s-${i}`, { shape: 'ellipse', x: cx, y, rx: cylRx, ry: CYL_RY })
     const roles: Array<{ text: string; color: string }> = []
     if (i === d.top) roles.push({ text: 'TOP', color: ACCENT_COLOR })
     return { value: v, y, isTop: i === d.top, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(v, maxChars, 2), labels: buildLabels(roles) }
@@ -499,10 +518,10 @@ watch(() => queueData.value, (d) => {
   })
   const svgW = n * boxW + (n - 1) * BOX_GAP + PAD * 2
   const svgH = boxH + PAD * 2 + 24 + (hasBottomLabel ? 36 : 0)
-  const positions = new Map<string, { x: number; y: number; w: number; h: number }>()
+  const positions = new Map<string, CachedPosition>()
   const items: QueueLayoutItem[] = d.items.map((v, i) => {
     const x = PAD + i * (boxW + BOX_GAP)
-    positions.set(`q-${i}`, { x, y: PAD + 20, w: boxW, h: boxH })
+    positions.set(`q-${i}`, { shape: 'rect', x, y: PAD + 20, w: boxW, h: boxH })
     const roles: Array<{ text: string; color: string }> = []
     if (i === d.front) roles.push({ text: 'FRONT', color: ACCENT_COLOR })
     if (i === d.rear) roles.push({ text: 'REAR', color: WARNING_COLOR })
@@ -533,10 +552,10 @@ watch(() => slistOrdered.value, (ordered) => {
   const n = ordered.length
   const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
   const svgH = nodeH + PAD * 2 + 24 + 36
-  const positions = new Map<string, { x: number; y: number; w: number; h: number }>()
+  const positions = new Map<string, CachedPosition>()
   const nodes: ListLayoutNode[] = ordered.map((nd, i) => {
     const x = PAD + i * (nodeW + NODE_GAP)
-    positions.set(`n-${nd.id}`, { x, y: PAD + 20, w: nodeW, h: nodeH })
+    positions.set(`n-${nd.id}`, { shape: 'rect', x, y: PAD + 20, w: nodeW, h: nodeH })
     const roles: Array<{ text: string; color: string }> = []
     if (nd.id === slistData.value!.head) roles.push({ text: 'HEAD', color: ACCENT_COLOR })
     return { id: nd.id, value: nd.value, x, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(nd.value, maxChars, 2), labels: buildLabels(roles), isTail: nd.next === -1 }
@@ -564,10 +583,10 @@ watch(() => dlistOrdered.value, (ordered) => {
   const n = ordered.length
   const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
   const svgH = nodeH + PAD * 2 + 24 + 36
-  const positions = new Map<string, { x: number; y: number; w: number; h: number }>()
+  const positions = new Map<string, CachedPosition>()
   const nodes: ListLayoutNode[] = ordered.map((nd, i) => {
     const x = PAD + i * (nodeW + NODE_GAP)
-    positions.set(`n-${nd.id}`, { x, y: PAD + 20, w: nodeW, h: nodeH })
+    positions.set(`n-${nd.id}`, { shape: 'rect', x, y: PAD + 20, w: nodeW, h: nodeH })
     const roles: Array<{ text: string; color: string }> = []
     if (nd.id === dlistData.value!.head) roles.push({ text: 'HEAD', color: ACCENT_COLOR })
     if (nd.id === dlistData.value!.tail) roles.push({ text: 'TAIL', color: WARNING_COLOR })
@@ -621,10 +640,14 @@ watch(() => treeData.value, (d) => {
   })
   let maxX = 0; let maxY = 0
   posMap.forEach((p) => { if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y })
-  const positions = new Map<string, { x: number; y: number; r: number }>()
+  const positions = new Map<string, CachedPosition>()
   const nodes: TreeLayoutNode[] = d.nodes.filter((n) => posMap.has(n.id)).map((n) => {
     const p = posMap.get(n.id)!
-    positions.set(`t-${n.id}`, { x: p.x, y: p.y, r: treeR })
+    if (isHeap.value) {
+      positions.set(`t-${n.id}`, { shape: 'rect', x: p.x - treeR, y: p.y - treeR, w: treeR * 2, h: treeR * 2 })
+    } else {
+      positions.set(`t-${n.id}`, { shape: 'circle', x: p.x, y: p.y, r: treeR })
+    }
     return { id: n.id, value: n.value, x: p.x, y: p.y, isRoot: n.id === d.root, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(n.value, maxChars, 1), left: n.left, right: n.right }
   })
   const edges: TreeLayoutEdge[] = []
@@ -674,11 +697,11 @@ watch(() => graphData.value, (d) => {
   const svgW = 500; const svgH = 380; const cx = svgW / 2; const cy = svgH / 2
   const cR = Math.min(140, 34 * Math.max(3, d.nodes.length))
   const pMap = new Map<number, { x: number; y: number }>()
-  const positions = new Map<string, { x: number; y: number; r: number }>()
+  const positions = new Map<string, CachedPosition>()
   const nodes: GLayoutNode[] = d.nodes.map((n: GraphNode, i: number) => {
     const angle = (2 * Math.PI * i) / Math.max(1, d.nodes.length) - Math.PI / 2
     const x = cx + cR * Math.cos(angle); const y = cy + cR * Math.sin(angle)
-    pMap.set(n.id, { x, y }); positions.set(`g-${n.id}`, { x, y, r: graphR })
+    pMap.set(n.id, { x, y }); positions.set(`g-${n.id}`, { shape: 'circle', x, y, r: graphR })
     return { id: n.id, label: n.label, x, y, color: NODE_PALETTE[Math.abs(n.id) % NODE_PALETTE.length], diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(n.label, maxChars, 1) }
   })
   const edges: GLayoutEdge[] = []
@@ -733,6 +756,24 @@ function graphTipLines(nd: GLayoutNode): TipLine[] {
 }
 
 /* ================================================================
+ *  配置实时化
+ * ================================================================ */
+
+watch(() => vizFlags.enableAutoFit, (enabled) => {
+  if (enabled) {
+    animateToVb({ ...idealVb.value }, 200)
+    userManualZoom.value = false
+  }
+})
+
+watch(() => vizFlags.enableDiffHighlight, (enabled) => {
+  if (!enabled) {
+    addedIds.value = new Set()
+    removedKeys.value = []
+  }
+})
+
+/* ================================================================
  *  生命周期
  * ================================================================ */
 
@@ -766,10 +807,10 @@ onBeforeUnmount(() => {
     </div>
 
     <div ref="canvasRef" class="viz-panel__body">
-      <VizPlaceholder v-if="isEmpty" />
+      <Transition name="fade" mode="out-in">
+        <VizPlaceholder v-if="isEmpty" key="empty" />
 
-      <template v-else>
-        <svg class="viz-panel__svg" :viewBox="effectiveViewBox" preserveAspectRatio="xMidYMid meet"
+        <svg v-else key="canvas" class="viz-panel__svg" :viewBox="effectiveViewBox" preserveAspectRatio="xMidYMid meet"
           :style="{ '--ghost-ms': ghostDurationMs }" @wheel.prevent="onWheel" @pointerdown="onPanStart"
           @pointermove="onPanMove" @pointerup="onPanEnd" @pointerleave="onPanEnd" @dblclick="handleDblClick">
           <defs>
@@ -984,7 +1025,7 @@ onBeforeUnmount(() => {
               <g v-for="h in treeLayout.heapArray" :key="`ha-${h.index}`">
                 <rect :x="h.x" :y="treeLayout.heapArrayY" :width="34" :height="28" rx="4" class="viz-box" />
                 <text :x="h.x + 17" :y="treeLayout.heapArrayY + 18" class="viz-val viz-val--sm">{{ h.displayLines[0]
-                  }}</text>
+                }}</text>
                 <text :x="h.x + 17" :y="treeLayout.heapArrayY + 42" class="viz-ptr">{{ h.index }}</text>
               </g>
             </g>
@@ -1007,21 +1048,23 @@ onBeforeUnmount(() => {
 
           <!-- ═══════ Ghost 元素（移除渐退） ═══════ -->
           <template v-for="g in removedKeys" :key="`ghost-${g.key}`">
-            <circle v-if="g.r" :cx="g.x" :cy="g.y" :r="g.r" class="viz-ghost viz-ghost--circle" />
+            <circle v-if="g.shape === 'circle'" :cx="g.x" :cy="g.y" :r="g.r" class="viz-ghost viz-ghost--circle" />
+            <ellipse v-else-if="g.shape === 'ellipse'" :cx="g.x" :cy="g.y" :rx="g.rx" :ry="g.ry"
+              class="viz-ghost viz-ghost--circle" />
             <rect v-else :x="g.x" :y="g.y" :width="g.w ?? 72" :height="g.h ?? 44" rx="6" class="viz-ghost" />
           </template>
         </svg>
+      </Transition>
 
-        <!-- Tooltip -->
-        <Transition name="fade">
-          <div v-if="tip.show" class="viz-tooltip" :style="tipStyle">
-            <div v-for="(line, li) in tip.lines" :key="li" class="viz-tooltip__row">
-              <span class="viz-tooltip__label">{{ line.label }}</span>
-              <span class="viz-tooltip__value">{{ line.value }}</span>
-            </div>
+      <!-- Tooltip -->
+      <Transition name="fade">
+        <div v-if="tip.show" class="viz-tooltip" :style="tipStyle">
+          <div v-for="(line, li) in tip.lines" :key="li" class="viz-tooltip__row">
+            <span class="viz-tooltip__label">{{ line.label }}</span>
+            <span class="viz-tooltip__value">{{ line.value }}</span>
           </div>
-        </Transition>
-      </template>
+        </div>
+      </Transition>
 
       <!-- 缩放还原提示 -->
       <Transition name="fade">
@@ -1388,6 +1431,8 @@ onBeforeUnmount(() => {
   }
 }
 
+/* ---- 平滑过渡 ---- */
+
 .viz-panel--smooth .viz-tree-node,
 .viz-panel--smooth .viz-graph-node {
   transition: cx var(--duration-viz) var(--ease), cy var(--duration-viz) var(--ease), x var(--duration-viz) var(--ease), y var(--duration-viz) var(--ease), r var(--duration-viz) var(--ease), fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
@@ -1410,6 +1455,11 @@ onBeforeUnmount(() => {
 .viz-panel--smooth .viz-box,
 .viz-panel--smooth .viz-node-rect {
   transition: fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
+}
+
+/* 新增元素禁用位移过渡，避免从默认坐标飞入 */
+.viz-panel--smooth .viz-node--added {
+  transition: none;
 }
 
 @media (max-width: 1100px) {
