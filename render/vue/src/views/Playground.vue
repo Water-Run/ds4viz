@@ -372,7 +372,7 @@ watch(currentStateIndex, (newVal, oldVal) => {
         </div>
 
         <VizPanel v-else :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
-          :label="irDoc?.object.label" :remarks="irDoc?.remarks" />
+          :label="irDoc?.object.label" :remarks="irDoc?.remarks" :auto-playing="isPlaying" />
 
         <div v-if="tomlContent" class="toml-section">
           <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">

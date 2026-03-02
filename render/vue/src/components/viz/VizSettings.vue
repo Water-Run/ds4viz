@@ -2,7 +2,7 @@
 /**
  * 可视化设置浮动面板
  *
- * 固定于可视化面板左下角的齿轮按钮，点击展开设置面板。
+ * 固定于可视化面板左下角的齿轮按钮，悬浮展开设置面板。
  *
  * @file src/components/viz/VizSettings.vue
  * @author WaterRun
@@ -10,7 +10,7 @@
  * @component VizSettings
  */
 
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import { vizFlags, setFlag, resetFlags } from '@/utils/viz-flags'
 import type { VizFlagsState } from '@/utils/viz-flags'
 
@@ -20,14 +20,9 @@ import type { VizFlagsState } from '@/utils/viz-flags'
 const isOpen = ref<boolean>(false)
 
 /**
- * 面板 DOM 引用
+ * 延迟关闭定时器
  */
-const panelRef = ref<HTMLDivElement | null>(null)
-
-/**
- * 触发按钮 DOM 引用
- */
-const toggleRef = ref<HTMLButtonElement | null>(null)
+const closeTimer = ref<number | null>(null)
 
 /**
  * 布尔开关定义
@@ -56,13 +51,39 @@ const booleanItems: BoolItem[] = [
 ]
 
 /**
- * 点击外部关闭面板
+ * 取消延迟关闭
  */
-const onClickOutside = (e: MouseEvent): void => {
-    if (!isOpen.value) return
-    const target = e.target as Node
-    if (panelRef.value?.contains(target) || toggleRef.value?.contains(target)) return
-    isOpen.value = false
+const cancelClose = (): void => {
+    if (closeTimer.value !== null) {
+        window.clearTimeout(closeTimer.value)
+        closeTimer.value = null
+    }
+}
+
+/**
+ * 鼠标进入区域时展开
+ */
+const handlePointerEnter = (): void => {
+    cancelClose()
+    isOpen.value = true
+}
+
+/**
+ * 鼠标离开区域时延迟关闭
+ */
+const handlePointerLeave = (): void => {
+    cancelClose()
+    closeTimer.value = window.setTimeout(() => {
+        isOpen.value = false
+        closeTimer.value = null
+    }, 300)
+}
+
+/**
+ * 点击切换（备选交互）
+ */
+const handleToggleClick = (): void => {
+    isOpen.value = !isOpen.value
 }
 
 /**
@@ -82,14 +103,13 @@ const handleIntervalInput = (e: Event): void => {
     setFlag('playbackInterval', Math.max(0, Math.min(10000, val)))
 }
 
-onMounted(() => document.addEventListener('pointerdown', onClickOutside))
-onUnmounted(() => document.removeEventListener('pointerdown', onClickOutside))
+onUnmounted(() => cancelClose())
 </script>
 
 <template>
-    <div class="viz-settings">
-        <button ref="toggleRef" class="viz-settings__toggle" :class="{ 'viz-settings__toggle--open': isOpen }"
-            :title="isOpen ? '关闭设置' : '可视化设置'" @click="isOpen = !isOpen">
+    <div class="viz-settings" @pointerenter="handlePointerEnter" @pointerleave="handlePointerLeave">
+        <button class="viz-settings__toggle" :class="{ 'viz-settings__toggle--open': isOpen }"
+            :title="isOpen ? '关闭设置' : '可视化设置'" @click="handleToggleClick">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                 stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3" />
@@ -99,7 +119,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', onClickOutside))
         </button>
 
         <Transition name="settings-slide">
-            <div v-if="isOpen" ref="panelRef" class="viz-settings__panel">
+            <div v-if="isOpen" class="viz-settings__panel">
                 <div class="viz-settings__header">
                     <span class="viz-settings__title">可视化设置</span>
                 </div>
