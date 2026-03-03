@@ -1,3 +1,4 @@
+<!-- src/components/editor/CodeEditor.vue -->
 <script setup lang="ts">
 /**
  * 代码编辑器组件
@@ -25,25 +26,14 @@ import type { editor } from 'monaco-editor'
 import type { Language } from '@/types/api'
 import { registerDs4vizCompletions } from '@/utils/monaco'
 
-/**
- * 组件属性定义
- */
 interface Props {
-  /** 代码内容 */
   modelValue: string
-  /** 当前语言 */
   language: Language
-  /** 是否只读 */
   readonly?: boolean
-  /** 高亮行号（null 或 <= 0 时清除） */
   highlightLine?: number | null
 }
 
-/**
- * 组件事件定义
- */
 interface Emits {
-  /** 代码变更 */
   (event: 'update:modelValue', value: string): void
 }
 
@@ -53,39 +43,13 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits<Emits>()
 
-/**
- * Monaco 编辑器实例（raw）
- */
 const editorRef = shallowRef<editor.IStandaloneCodeEditor | null>(null)
-
-/**
- * Monaco 模块实例（raw）
- */
 const monacoRef = shallowRef<typeof import('monaco-editor') | null>(null)
-
-/**
- * 行高亮装饰集合（raw）
- */
 const decorationsRef = shallowRef<editor.IEditorDecorationsCollection | null>(null)
-
-/**
- * 上次已应用的高亮行号（用于同值短路）
- */
 const lastAppliedLine = shallowRef<number | null>(null)
-
-/**
- * 待应用的高亮行号
- */
 const pendingLine = shallowRef<number | null>(null)
-
-/**
- * requestAnimationFrame 句柄
- */
 const rafId = shallowRef<number | null>(null)
 
-/**
- * Monaco 语言映射
- */
 const editorLanguage = computed<string>(() => {
   if (props.language === 'python') return 'python'
   if (props.language === 'lua') return 'lua'
@@ -93,18 +57,12 @@ const editorLanguage = computed<string>(() => {
   return 'plaintext'
 })
 
-/**
- * Monaco 编辑器静态配置
- */
 const EDITOR_MINIMAP = { enabled: false } as const
 const EDITOR_SCROLLBAR = {
   verticalScrollbarSize: 6,
   horizontalScrollbarSize: 6,
 } as const
 
-/**
- * Monaco 编辑器配置
- */
 const editorOptions = computed(() => ({
   fontFamily: 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
   fontSize: 13,
@@ -120,18 +78,10 @@ const editorOptions = computed(() => ({
   scrollbar: EDITOR_SCROLLBAR,
 }))
 
-/**
- * 处理编辑器内容变更
- *
- * @param value - Monaco 返回的新值
- */
 const handleChange = (value: string | undefined): void => {
   emit('update:modelValue', value ?? '')
 }
 
-/**
- * 取消已调度的高亮更新帧
- */
 const cancelScheduledHighlight = (): void => {
   if (rafId.value !== null) {
     window.cancelAnimationFrame(rafId.value)
@@ -139,11 +89,6 @@ const cancelScheduledHighlight = (): void => {
   }
 }
 
-/**
- * 立即应用高亮（无调度）
- *
- * @param requestedLine - 请求高亮行号
- */
 const applyHighlightNow = (requestedLine: number | null): void => {
   const editorInstance = editorRef.value
   const monacoInstance = monacoRef.value
@@ -177,11 +122,6 @@ const applyHighlightNow = (requestedLine: number | null): void => {
   lastAppliedLine.value = safeLine
 }
 
-/**
- * 调度高亮应用（rAF 合帧）
- *
- * @param line - 待高亮行号
- */
 const scheduleHighlight = (line: number | null): void => {
   pendingLine.value = line
   if (rafId.value !== null) return
@@ -192,19 +132,12 @@ const scheduleHighlight = (line: number | null): void => {
   })
 }
 
-/**
- * 处理编辑器挂载
- *
- * @param editorInstance - Monaco 编辑器实例
- * @param monacoInstance - Monaco 模块实例
- */
 const handleMount = (
   editorInstance: editor.IStandaloneCodeEditor,
   monacoInstance: typeof import('monaco-editor'),
 ): void => {
   editorRef.value = markRaw(editorInstance)
   monacoRef.value = markRaw(monacoInstance)
-
   decorationsRef.value = markRaw(editorInstance.createDecorationsCollection())
 
   registerDs4vizCompletions(monacoInstance)
@@ -213,9 +146,6 @@ const handleMount = (
   scheduleHighlight(props.highlightLine ?? null)
 }
 
-/**
- * 监听高亮行变化
- */
 watch(
   () => props.highlightLine,
   (line) => {
@@ -223,9 +153,6 @@ watch(
   },
 )
 
-/**
- * 生命周期：卸载清理
- */
 onBeforeUnmount(() => {
   cancelScheduledHighlight()
   decorationsRef.value?.clear()
@@ -277,7 +204,8 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.03);
 }
 
+/* 代码行高亮改为橙色 */
 :deep(.monaco-editor .ds4viz-line-highlight) {
-  background: rgba(14, 116, 144, 0.12);
+  background: rgba(234, 88, 12, 0.14);
 }
 </style>

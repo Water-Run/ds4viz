@@ -1,26 +1,46 @@
+<!-- src/components/viz/VizPanel.vue -->
 <script setup lang="ts">
 /**
  * 可视化面板
  *
- * 支持 Stack / Queue / SList / DList / BinaryTree / BST / Heap / Graph 渲染，
- * 提供缩放/平移/双击回中、结构化 Tooltip、Diff 高亮（对称渐进渐退）、
- * 自适应节点大小、文本换行、标签碰撞规避、图形化空状态、元数据修复。
+ * 修复动画时序：
+ * 1) 先渐出（红虚线 ghost）
+ * 2) ghost 完全消失后 commit 新状态
+ * 3) 仅新增元素渐入
+ * 4) 视图缩放在 commit 后触发，避免与渐出重叠
+ *
+ * 同时完善元数据显示：
+ * - Object.label 独立稳定显示（不依赖 remarks）
+ * - remarks 与 label 并列展示
+ * - 展示 IR/Object/Step 可得信息
+ * - 对可解析未知字段做兜底展示
  *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-02
+ * @date 2026-03-03
  * @component VizPanel
  */
 
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
 import type {
-  IrStateData, IrValue, IrRemarks,
-  StackStateData, QueueStateData,
-  SListStateData, SListNode,
-  DListStateData, DListNode,
-  BinaryTreeStateData, BinaryTreeNode,
-  GraphStateData, GraphWeightedStateData, GraphNode, GraphEdge,
+  IrMeta,
+  IrPackage,
+  IrStateData,
+  IrValue,
+  IrRemarks,
+  StackStateData,
+  QueueStateData,
+  SListStateData,
+  SListNode,
+  DListStateData,
+  DListNode,
+  BinaryTreeStateData,
+  BinaryTreeNode,
+  GraphStateData,
+  GraphWeightedStateData,
+  GraphNode,
+  GraphEdge,
   IrObjectKind,
 } from '@/types/ir'
 import type { StepSummary } from '@/types/viz'
@@ -38,13 +58,15 @@ interface Props {
   step?: StepSummary | null
   label?: string
   remarks?: IrRemarks
+  meta?: IrMeta
+  irPackage?: IrPackage
   autoPlaying?: boolean
 }
 
 const props = defineProps<Props>()
 
 /* ================================================================
- *  常量（基准尺寸）
+ *  常量
  * ================================================================ */
 
 const BASE_CYL_RX = 64
@@ -73,9 +95,18 @@ const BASE_CHARS_NODE = 9
 const BASE_CHARS_CIRCLE = 4
 
 const NODE_PALETTE = [
-  '#0078d4', '#0e7c6b', '#7c3aed', '#c2410c',
-  '#0369a1', '#6d28d9', '#b45309', '#059669',
-  '#dc2626', '#4f46e5', '#0891b2', '#65a30d',
+  '#0078d4',
+  '#0e7c6b',
+  '#7c3aed',
+  '#c2410c',
+  '#0369a1',
+  '#6d28d9',
+  '#b45309',
+  '#059669',
+  '#dc2626',
+  '#4f46e5',
+  '#0891b2',
+  '#65a30d',
 ]
 
 type DiffStatus = 'added' | 'removed' | 'unchanged'
@@ -84,34 +115,20 @@ const ACCENT_COLOR = 'var(--color-accent)'
 const WARNING_COLOR = 'var(--color-warning)'
 
 /* ================================================================
- *  Ghost / Diff 缓存类型
+ *  Ghost / Diff 缓存
  * ================================================================ */
 
-/**
- * 缓存的位置与形态信息
- */
 interface CachedPosition {
-  /** 形状类型 */
   shape: 'rect' | 'circle' | 'ellipse'
-  /** x 坐标（circle/ellipse 为中心，rect 为左上角） */
   x: number
-  /** y 坐标（circle/ellipse 为中心，rect 为左上角） */
   y: number
-  /** 圆半径 */
   r?: number
-  /** 椭圆水平半径 */
   rx?: number
-  /** 椭圆垂直半径 */
   ry?: number
-  /** 矩形宽度 */
   w?: number
-  /** 矩形高度 */
   h?: number
 }
 
-/**
- * Ghost 元素（带标识键）
- */
 type GhostItem = CachedPosition & { key: string }
 
 /* ================================================================
@@ -120,43 +137,52 @@ type GhostItem = CachedPosition & { key: string }
 
 function getEffectiveLength(text: string): number {
   let len = 0
-  for (let i = 0; i < text.length; i += 1) {
-    len += text.charCodeAt(i) > 0x7F ? 2 : 1
+  for (let index = 0; index < text.length; index += 1) {
+    len += text.charCodeAt(index) > 0x7f ? 2 : 1
   }
   return len
 }
 
 function computeNodeScale(values: IrValue[], baseChars: number): number {
   if (values.length === 0) return 1
-  const maxLen = Math.max(...values.map((v) => getEffectiveLength(String(v))))
+  const maxLen = Math.max(...values.map((value) => getEffectiveLength(String(value))))
   if (maxLen <= baseChars) return 1
   return Math.min(2, maxLen / baseChars)
 }
 
-function splitDisplayLines(value: IrValue, maxCharsPerLine: number, maxLines: number): string[] {
+function splitDisplayLines(
+  value: IrValue,
+  maxCharsPerLine: number,
+  maxLines: number,
+): string[] {
   const text = String(value)
-  const effLen = getEffectiveLength(text)
-  if (effLen <= maxCharsPerLine) return [text]
+  const effectiveLength = getEffectiveLength(text)
+  if (effectiveLength <= maxCharsPerLine) return [text]
 
   const lines: string[] = []
-  let pos = 0
-  for (let line = 0; line < maxLines && pos < text.length; line += 1) {
+  let position = 0
+
+  for (let lineIndex = 0; lineIndex < maxLines && position < text.length; lineIndex += 1) {
     let lineChars = 0
-    let lineEnd = pos
+    let lineEnd = position
+
     while (lineEnd < text.length) {
-      const cw = text.charCodeAt(lineEnd) > 0x7F ? 2 : 1
-      if (lineChars + cw > maxCharsPerLine) break
-      lineChars += cw
+      const charWidth = text.charCodeAt(lineEnd) > 0x7f ? 2 : 1
+      if (lineChars + charWidth > maxCharsPerLine) break
+      lineChars += charWidth
       lineEnd += 1
     }
-    if (line === maxLines - 1 && lineEnd < text.length) {
-      const slice = text.slice(pos, Math.max(pos + 1, lineEnd - 1))
-      lines.push(slice + '…')
+
+    if (lineIndex === maxLines - 1 && lineEnd < text.length) {
+      const slice = text.slice(position, Math.max(position + 1, lineEnd - 1))
+      lines.push(`${slice}…`)
     } else {
-      lines.push(text.slice(pos, lineEnd))
+      lines.push(text.slice(position, lineEnd))
     }
-    pos = lineEnd
+
+    position = lineEnd
   }
+
   return lines.length > 0 ? lines : ['…']
 }
 
@@ -171,7 +197,11 @@ interface LayoutLabel {
 }
 
 function buildLabels(roles: Array<{ text: string; color: string }>): LayoutLabel[] {
-  return roles.map((r, i) => ({ text: r.text, position: i === 0 ? 'top' as const : 'bottom' as const, color: r.color }))
+  return roles.map((role, index) => ({
+    text: role.text,
+    position: index === 0 ? 'top' : 'bottom',
+    color: role.color,
+  }))
 }
 
 /* ================================================================
@@ -179,68 +209,102 @@ function buildLabels(roles: Array<{ text: string; color: string }>): LayoutLabel
  * ================================================================ */
 
 const canvasRef = ref<HTMLDivElement | null>(null)
-const isEmpty = computed<boolean>(() => props.data === undefined)
+
+/** 分阶段渲染：实际提交给布局的状态 */
+const committedData = shallowRef<IrStateData | undefined>(props.data)
+
+/** 等待提交的新状态 */
+const pendingData = shallowRef<IrStateData | undefined>(undefined)
+
+/** 新状态中的新增 key（仅用于 commit 后渐入） */
+const pendingAddedKeys = shallowRef<Set<string>>(new Set())
+
+/** 当前一轮应渐入 key */
+const forceAddedKeys = shallowRef<Set<string>>(new Set())
+
+/** 首次从空到非空时禁用平滑过渡，避免左上角飞入 */
+const suppressSmoothOnce = ref<boolean>(false)
+
+/** 动画时序计时器 */
+let commitTimer: number | null = null
+let clearAddedTimer: number | null = null
+
+const isEmpty = computed<boolean>(() => committedData.value === undefined)
 
 const kindStr = computed<string>(() => (props.kind ?? '') as string)
 
 const isHeap = computed<boolean>(() => {
-  const k = kindStr.value
-  if (k === 'heap') return true
-  if ((k === 'binary_tree' || k === 'bst') && (props.label?.toLowerCase().includes('heap') ?? false)) return true
+  const kind = kindStr.value
+  if (kind === 'heap') return true
+  if ((kind === 'binary_tree' || kind === 'bst') && (props.label?.toLowerCase().includes('heap') ?? false)) {
+    return true
+  }
   return false
 })
 
 const kindLabel = computed<string>(() => {
   if (isHeap.value) return 'Heap'
-  const m: Record<string, string> = {
-    stack: 'Stack', queue: 'Queue', slist: 'SList', dlist: 'DList',
-    binary_tree: 'BinaryTree', bst: 'BST', heap: 'Heap',
-    graph_undirected: 'Graph', graph_directed: 'Digraph', graph_weighted: 'WeightedGraph',
+  const mapping: Record<string, string> = {
+    stack: 'Stack',
+    queue: 'Queue',
+    slist: 'SList',
+    dlist: 'DList',
+    binary_tree: 'BinaryTree',
+    bst: 'BST',
+    heap: 'Heap',
+    graph_undirected: 'Graph',
+    graph_directed: 'Digraph',
+    graph_weighted: 'WeightedGraph',
   }
-  return m[kindStr.value] ?? kindStr.value
+  return mapping[kindStr.value] ?? kindStr.value
 })
 
 const isDirected = computed<boolean>(() => kindStr.value === 'graph_directed')
 const isWeighted = computed<boolean>(() => kindStr.value === 'graph_weighted')
 
-/* ---- 结构空状态 ---- */
-
-const isStructureEmpty = computed<boolean>(() => {
-  if (!props.data) return false
-  const k = kindStr.value
-  if (k === 'stack') return (props.data as StackStateData).items.length === 0
-  if (k === 'queue') return (props.data as QueueStateData).items.length === 0
-  if (k === 'slist') return (props.data as SListStateData).nodes.length === 0
-  if (k === 'dlist') return (props.data as DListStateData).nodes.length === 0
-  if (k === 'binary_tree' || k === 'bst' || k === 'heap') {
-    const d = props.data as BinaryTreeStateData
-    return d.root === -1 || d.nodes.length === 0
-  }
-  if (k === 'graph_undirected' || k === 'graph_directed' || k === 'graph_weighted') {
-    return (props.data as GraphStateData).nodes.length === 0
-  }
-  return false
-})
-
-const emptyLabel = computed<string>(() => {
-  const m: Record<string, string> = {
-    stack: '空栈', queue: '空队列', slist: '空链表', dlist: '空链表',
-    binary_tree: '空树', bst: '空树', heap: '空堆',
-    graph_undirected: '空图', graph_directed: '空图', graph_weighted: '空图',
-  }
-  return m[kindStr.value] ?? '空'
-})
-
-const emptyType = computed<string>(() => {
-  const k = kindStr.value
-  if (k === 'stack') return 'stack'
-  if (k === 'queue') return 'queue'
-  if (k === 'slist' || k === 'dlist') return 'list'
-  if (k === 'binary_tree' || k === 'bst' || k === 'heap') return 'tree'
-  return 'graph'
+const smoothEnabled = computed<boolean>(() => {
+  return vizFlags.enableSmoothTransitions && !suppressSmoothOnce.value
 })
 
 /* ---- 元数据显示 ---- */
+
+function formatUnknownValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '[unserializable]'
+  }
+}
+
+const objectExtraEntries = computed<Array<{ key: string; value: string }>>(() => {
+  const extra = props.label ? undefined : undefined
+  const object = (props as unknown as { object?: { extra?: Record<string, unknown> } }).object
+  const source = object?.extra ?? extra
+  if (!source) return []
+  return Object.entries(source).map(([key, value]) => ({
+    key,
+    value: formatUnknownValue(value),
+  }))
+})
+
+const remarksExtraEntries = computed<Array<{ key: string; value: string }>>(() => {
+  const extra = (props.remarks as IrRemarks | undefined)?.extra
+  if (!extra) return []
+  return Object.entries(extra).map(([key, value]) => ({
+    key,
+    value: formatUnknownValue(value),
+  }))
+})
+
+const stepArgEntries = computed<Array<{ key: string; value: string }>>(() => {
+  if (!props.step?.args) return []
+  return Object.entries(props.step.args).map(([key, value]) => ({
+    key,
+    value: formatUnknownValue(value),
+  }))
+})
 
 const hasMetadata = computed<boolean>(() => {
   if (!vizFlags.showMetadata) return false
@@ -248,39 +312,114 @@ const hasMetadata = computed<boolean>(() => {
   if (props.remarks?.title) return true
   if (props.remarks?.author) return true
   if (props.remarks?.comment) return true
+  if (props.meta?.createdAt) return true
+  if (props.step) return true
+  if (objectExtraEntries.value.length > 0) return true
+  if (remarksExtraEntries.value.length > 0) return true
+  if (stepArgEntries.value.length > 0) return true
   return false
 })
 
 /* ================================================================
- *  数据窄化
+ *  数据窄化（基于 committedData）
  * ================================================================ */
 
-const stackData = computed<StackStateData | null>(() => kindStr.value === 'stack' ? props.data as StackStateData : null)
-const queueData = computed<QueueStateData | null>(() => kindStr.value === 'queue' ? props.data as QueueStateData : null)
-const slistData = computed<SListStateData | null>(() => kindStr.value === 'slist' ? props.data as SListStateData : null)
-const dlistData = computed<DListStateData | null>(() => kindStr.value === 'dlist' ? props.data as DListStateData : null)
+const stackData = computed<StackStateData | null>(() => {
+  return kindStr.value === 'stack' ? (committedData.value as StackStateData) : null
+})
+
+const queueData = computed<QueueStateData | null>(() => {
+  return kindStr.value === 'queue' ? (committedData.value as QueueStateData) : null
+})
+
+const slistData = computed<SListStateData | null>(() => {
+  return kindStr.value === 'slist' ? (committedData.value as SListStateData) : null
+})
+
+const dlistData = computed<DListStateData | null>(() => {
+  return kindStr.value === 'dlist' ? (committedData.value as DListStateData) : null
+})
+
 const treeData = computed<BinaryTreeStateData | null>(() => {
-  const k = kindStr.value
-  if (k === 'binary_tree' || k === 'bst' || k === 'heap') return props.data as BinaryTreeStateData
+  const kind = kindStr.value
+  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+    return committedData.value as BinaryTreeStateData
+  }
   return null
 })
+
 const graphData = computed<GraphStateData | GraphWeightedStateData | null>(() => {
-  const k = kindStr.value
-  if (k === 'graph_undirected' || k === 'graph_directed' || k === 'graph_weighted') return props.data as GraphStateData
+  const kind = kindStr.value
+  if (kind === 'graph_undirected' || kind === 'graph_directed' || kind === 'graph_weighted') {
+    return committedData.value as GraphStateData
+  }
   return null
+})
+
+/* ---- 结构空状态 ---- */
+
+const isStructureEmpty = computed<boolean>(() => {
+  const data = committedData.value
+  if (!data) return false
+
+  const kind = kindStr.value
+  if (kind === 'stack') return (data as StackStateData).items.length === 0
+  if (kind === 'queue') return (data as QueueStateData).items.length === 0
+  if (kind === 'slist') return (data as SListStateData).nodes.length === 0
+  if (kind === 'dlist') return (data as DListStateData).nodes.length === 0
+
+  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+    const tree = data as BinaryTreeStateData
+    return tree.root === -1 || tree.nodes.length === 0
+  }
+
+  if (kind === 'graph_undirected' || kind === 'graph_directed' || kind === 'graph_weighted') {
+    return (data as GraphStateData).nodes.length === 0
+  }
+
+  return false
+})
+
+const emptyLabel = computed<string>(() => {
+  const mapping: Record<string, string> = {
+    stack: '空栈',
+    queue: '空队列',
+    slist: '空链表',
+    dlist: '空链表',
+    binary_tree: '空树',
+    bst: '空树',
+    heap: '空堆',
+    graph_undirected: '空图',
+    graph_directed: '空图',
+    graph_weighted: '空图',
+  }
+  return mapping[kindStr.value] ?? '空'
+})
+
+const emptyType = computed<string>(() => {
+  const kind = kindStr.value
+  if (kind === 'stack') return 'stack'
+  if (kind === 'queue') return 'queue'
+  if (kind === 'slist' || kind === 'dlist') return 'list'
+  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') return 'tree'
+  return 'graph'
 })
 
 /* ================================================================
- *  ViewBox / Zoom / Pan / 双击回中 / 缩放提示
+ *  ViewBox / Zoom / Pan
  * ================================================================ */
 
-interface VB { x: number; y: number; w: number; h: number }
+interface ViewBoxState {
+  x: number
+  y: number
+  w: number
+  h: number
+}
 
-const vb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
-const idealVb = ref<VB>({ x: 0, y: 0, w: 500, h: 400 })
-let animFrame: number | null = null
+const vb = ref<ViewBoxState>({ x: 0, y: 0, w: 500, h: 400 })
+const idealVb = ref<ViewBoxState>({ x: 0, y: 0, w: 500, h: 400 })
+let viewBoxAnimFrame: number | null = null
 
-/** 用户是否手动缩放/平移过 */
 const userManualZoom = ref<boolean>(false)
 
 const effectiveViewBox = computed<string>(() => {
@@ -293,69 +432,108 @@ const showZoomHint = computed<boolean>(() => {
 })
 
 const isPanning = ref<boolean>(false)
-const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({ cx: 0, cy: 0, vx: 0, vy: 0 })
+const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({
+  cx: 0,
+  cy: 0,
+  vx: 0,
+  vy: 0,
+})
 
-const animateToVb = (target: VB, duration: number = 200): void => {
-  if (animFrame !== null) window.cancelAnimationFrame(animFrame)
+const animateToVb = (target: ViewBoxState, duration = 200): void => {
+  if (viewBoxAnimFrame !== null) {
+    window.cancelAnimationFrame(viewBoxAnimFrame)
+  }
+
   const from = { ...vb.value }
   const start = performance.now()
+
   const animate = (now: number): void => {
     const t = Math.min(1, (now - start) / duration)
-    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
+    const ease = t < 0.5 ? 2 * t * t : 1 - (Math.pow(-2 * t + 2, 2) / 2)
+
     vb.value = {
       x: from.x + (target.x - from.x) * ease,
       y: from.y + (target.y - from.y) * ease,
       w: from.w + (target.w - from.w) * ease,
       h: from.h + (target.h - from.h) * ease,
     }
-    if (t < 1) { animFrame = window.requestAnimationFrame(animate) } else { animFrame = null }
+
+    if (t < 1) {
+      viewBoxAnimFrame = window.requestAnimationFrame(animate)
+    } else {
+      viewBoxAnimFrame = null
+    }
   }
-  animFrame = window.requestAnimationFrame(animate)
+
+  viewBoxAnimFrame = window.requestAnimationFrame(animate)
 }
 
-const onWheel = (e: WheelEvent): void => {
-  const svg = e.currentTarget as SVGSVGElement
+const onWheel = (event: WheelEvent): void => {
+  const svg = event.currentTarget as SVGSVGElement
   const rect = svg.getBoundingClientRect()
-  const mx = (e.clientX - rect.left) / rect.width
-  const my = (e.clientY - rect.top) / rect.height
-  const factor = e.deltaY > 0 ? 1.1 : 1 / 1.1
-  const nw = vb.value.w * factor
-  const nh = vb.value.h * factor
-  vb.value = { x: vb.value.x + (vb.value.w - nw) * mx, y: vb.value.y + (vb.value.h - nh) * my, w: nw, h: nh }
+  const mx = (event.clientX - rect.left) / rect.width
+  const my = (event.clientY - rect.top) / rect.height
+  const factor = event.deltaY > 0 ? 1.1 : 1 / 1.1
+  const nextW = vb.value.w * factor
+  const nextH = vb.value.h * factor
+
+  vb.value = {
+    x: vb.value.x + (vb.value.w - nextW) * mx,
+    y: vb.value.y + (vb.value.h - nextH) * my,
+    w: nextW,
+    h: nextH,
+  }
+
   userManualZoom.value = true
 }
 
-const onPanStart = (e: PointerEvent): void => {
+const onPanStart = (event: PointerEvent): void => {
   isPanning.value = true
-  panOrigin.value = { cx: e.clientX, cy: e.clientY, vx: vb.value.x, vy: vb.value.y }
-    ; (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId)
+  panOrigin.value = {
+    cx: event.clientX,
+    cy: event.clientY,
+    vx: vb.value.x,
+    vy: vb.value.y,
+  }
+  ;(event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId)
 }
 
-const onPanMove = (e: PointerEvent): void => {
+const onPanMove = (event: PointerEvent): void => {
   if (!isPanning.value) return
-  const svg = e.currentTarget as SVGSVGElement
+
+  const svg = event.currentTarget as SVGSVGElement
   const rect = svg.getBoundingClientRect()
-  const dx = (e.clientX - panOrigin.value.cx) / rect.width * vb.value.w
-  const dy = (e.clientY - panOrigin.value.cy) / rect.height * vb.value.h
-  vb.value = { ...vb.value, x: panOrigin.value.vx - dx, y: panOrigin.value.vy - dy }
+  const dx = ((event.clientX - panOrigin.value.cx) / rect.width) * vb.value.w
+  const dy = ((event.clientY - panOrigin.value.cy) / rect.height) * vb.value.h
+
+  vb.value = {
+    ...vb.value,
+    x: panOrigin.value.vx - dx,
+    y: panOrigin.value.vy - dy,
+  }
 }
 
 const onPanEnd = (): void => {
   if (isPanning.value) {
     const dx = Math.abs(vb.value.x - panOrigin.value.vx)
     const dy = Math.abs(vb.value.y - panOrigin.value.vy)
-    if (dx > 1 || dy > 1) {
-      userManualZoom.value = true
-    }
+    if (dx > 1 || dy > 1) userManualZoom.value = true
   }
   isPanning.value = false
 }
 
 const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): void => {
-  const w = Math.max(200, maxX - minX + PAD * 2)
-  const h = Math.max(150, maxY - minY + PAD * 2)
-  const target: VB = { x: minX - PAD, y: minY - PAD, w, h }
+  const width = Math.max(200, maxX - minX + PAD * 2)
+  const height = Math.max(150, maxY - minY + PAD * 2)
+  const target: ViewBoxState = {
+    x: minX - PAD,
+    y: minY - PAD,
+    w: width,
+    h: height,
+  }
+
   idealVb.value = { ...target }
+
   if (vizFlags.enableAutoFit) {
     animateToVb(target, 180)
     userManualZoom.value = false
@@ -368,25 +546,57 @@ const handleDblClick = (): void => {
 }
 
 /* ================================================================
- *  Tooltip（结构化白底）
+ *  Tooltip
  * ================================================================ */
 
-interface TipLine { label: string; value: string }
-const tip = ref<{ show: boolean; x: number; y: number; lines: TipLine[] }>({ show: false, x: 0, y: 0, lines: [] })
-const tipStyle = computed(() => ({ left: `${tip.value.x}px`, top: `${tip.value.y}px` }))
-
-const showTip = (lines: TipLine[], e: PointerEvent): void => {
-  if (!canvasRef.value) return
-  const r = canvasRef.value.getBoundingClientRect()
-  tip.value = { show: true, lines, x: e.clientX - r.left + 12, y: e.clientY - r.top - 8 }
+interface TipLine {
+  label: string
+  value: string
 }
-const hideTip = (): void => { tip.value = { ...tip.value, show: false } }
 
-function fullVal(v: IrValue): string { return typeof v === 'string' ? `"${v}"` : String(v) }
+const tip = ref<{
+  show: boolean
+  x: number
+  y: number
+  lines: TipLine[]
+}>({
+  show: false,
+  x: 0,
+  y: 0,
+  lines: [],
+})
+
+const tipStyle = computed(() => ({
+  left: `${tip.value.x}px`,
+  top: `${tip.value.y}px`,
+}))
+
+const showTip = (lines: TipLine[], event: PointerEvent): void => {
+  if (!canvasRef.value) return
+  const rect = canvasRef.value.getBoundingClientRect()
+  tip.value = {
+    show: true,
+    lines,
+    x: event.clientX - rect.left + 12,
+    y: event.clientY - rect.top - 8,
+  }
+}
+
+const hideTip = (): void => {
+  tip.value = { ...tip.value, show: false }
+}
+
+function fullVal(value: IrValue): string {
+  return typeof value === 'string' ? `"${value}"` : String(value)
+}
 
 /* ================================================================
- *  Diff 高亮（对称渐进渐退）
+ *  时序控制：Ghost -> Commit -> Added
  * ================================================================ */
+
+const removedKeys = shallowRef<GhostItem[]>([])
+const prevPositionCache = new Map<string, CachedPosition>()
+const prevIds = shallowRef<Set<string>>(new Set())
 
 function getGhostDuration(): number {
   if (props.autoPlaying) {
@@ -395,43 +605,172 @@ function getGhostDuration(): number {
   return 500
 }
 
-const ghostDurationMs = computed<string>(() => getGhostDuration() + 'ms')
+const ghostDurationMs = computed<string>(() => `${getGhostDuration()}ms`)
 
-let prevIds: Set<string> = new Set()
-const addedIds = shallowRef<Set<string>>(new Set())
-const removedKeys = shallowRef<GhostItem[]>([])
-let ghostTimer: number | null = null
-const prevPositionCache = new Map<string, CachedPosition>()
-
-function computeDiff(currentKeys: Map<string, CachedPosition>): void {
-  if (!vizFlags.enableDiffHighlight) {
-    addedIds.value = new Set()
-    removedKeys.value = []
-    prevIds = new Set(currentKeys.keys())
-    prevPositionCache.clear()
-    for (const [k, v] of currentKeys) prevPositionCache.set(k, v)
-    return
-  }
-  const curSet = new Set(currentKeys.keys())
-  const added = new Set<string>()
-  const removed: GhostItem[] = []
-  for (const k of curSet) { if (!prevIds.has(k)) added.add(k) }
-  for (const k of prevIds) {
-    if (!curSet.has(k)) {
-      const cached = prevPositionCache.get(k)
-      if (cached) removed.push({ key: k, ...cached })
-    }
-  }
-  addedIds.value = added
-  removedKeys.value = removed
-  prevIds = curSet
-  prevPositionCache.clear()
-  for (const [k, v] of currentKeys) prevPositionCache.set(k, v)
-  if (removed.length > 0) {
-    if (ghostTimer !== null) window.clearTimeout(ghostTimer)
-    ghostTimer = window.setTimeout(() => { removedKeys.value = [] }, getGhostDuration())
+function clearCommitTimer(): void {
+  if (commitTimer !== null) {
+    window.clearTimeout(commitTimer)
+    commitTimer = null
   }
 }
+
+function clearAddedKeysTimer(): void {
+  if (clearAddedTimer !== null) {
+    window.clearTimeout(clearAddedTimer)
+    clearAddedTimer = null
+  }
+}
+
+function scheduleClearAddedKeys(): void {
+  clearAddedKeysTimer()
+  clearAddedTimer = window.setTimeout(() => {
+    forceAddedKeys.value = new Set()
+    clearAddedTimer = null
+  }, getGhostDuration())
+}
+
+function isAddedKey(key: string): boolean {
+  return vizFlags.enableDiffHighlight && forceAddedKeys.value.has(key)
+}
+
+function getDataKeys(data: IrStateData | undefined, kind: string): Set<string> {
+  const keys = new Set<string>()
+  if (!data) return keys
+
+  if (kind === 'stack') {
+    const d = data as StackStateData
+    d.items.forEach((_, index) => keys.add(`s-${index}`))
+    return keys
+  }
+
+  if (kind === 'queue') {
+    const d = data as QueueStateData
+    d.items.forEach((_, index) => keys.add(`q-${index}`))
+    return keys
+  }
+
+  if (kind === 'slist') {
+    const d = data as SListStateData
+    d.nodes.forEach((node) => keys.add(`n-${node.id}`))
+    return keys
+  }
+
+  if (kind === 'dlist') {
+    const d = data as DListStateData
+    d.nodes.forEach((node) => keys.add(`n-${node.id}`))
+    return keys
+  }
+
+  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+    const d = data as BinaryTreeStateData
+    d.nodes.forEach((node) => keys.add(`t-${node.id}`))
+    return keys
+  }
+
+  if (kind === 'graph_undirected' || kind === 'graph_directed' || kind === 'graph_weighted') {
+    const d = data as GraphStateData
+    d.nodes.forEach((node) => keys.add(`g-${node.id}`))
+    return keys
+  }
+
+  return keys
+}
+
+function applyTransition(newData: IrStateData | undefined): void {
+  const kind = kindStr.value
+  const current = committedData.value
+
+  // 空 -> 首帧：直接 commit，禁平滑，禁止新增渐入（修复左上角飞入）
+  if (!current && newData) {
+    clearCommitTimer()
+    clearAddedKeysTimer()
+    removedKeys.value = []
+    forceAddedKeys.value = new Set()
+    suppressSmoothOnce.value = true
+    committedData.value = newData
+
+    window.setTimeout(() => {
+      suppressSmoothOnce.value = false
+    }, 0)
+
+    logDebug('[viz] first non-empty frame committed without transition')
+    return
+  }
+
+  // 清空或无旧状态：直接提交
+  if (!newData || !current || !vizFlags.enableDiffHighlight) {
+    clearCommitTimer()
+    clearAddedKeysTimer()
+    removedKeys.value = []
+    const added = getDataKeys(newData, kind)
+    const old = getDataKeys(current, kind)
+    const addedOnly = new Set<string>()
+    for (const key of added) {
+      if (!old.has(key)) addedOnly.add(key)
+    }
+    forceAddedKeys.value = addedOnly
+    committedData.value = newData
+    scheduleClearAddedKeys()
+    return
+  }
+
+  const oldKeys = getDataKeys(current, kind)
+  const nextKeys = getDataKeys(newData, kind)
+
+  const removedSet = new Set<string>()
+  const addedSet = new Set<string>()
+
+  for (const key of oldKeys) {
+    if (!nextKeys.has(key)) removedSet.add(key)
+  }
+
+  for (const key of nextKeys) {
+    if (!oldKeys.has(key)) addedSet.add(key)
+  }
+
+  // 无移除：直接 commit，仅新增渐入
+  if (removedSet.size === 0) {
+    clearCommitTimer()
+    clearAddedKeysTimer()
+    removedKeys.value = []
+    forceAddedKeys.value = addedSet
+    committedData.value = newData
+    scheduleClearAddedKeys()
+    return
+  }
+
+  // 先展示移除 ghost
+  const ghosts: GhostItem[] = []
+  for (const key of removedSet) {
+    const cached = prevPositionCache.get(key)
+    if (cached) ghosts.push({ key, ...cached })
+  }
+
+  removedKeys.value = ghosts
+  pendingData.value = newData
+  pendingAddedKeys.value = addedSet
+
+  clearCommitTimer()
+  clearAddedKeysTimer()
+
+  commitTimer = window.setTimeout(() => {
+    removedKeys.value = []
+    committedData.value = pendingData.value
+    forceAddedKeys.value = new Set(pendingAddedKeys.value)
+    pendingData.value = undefined
+    pendingAddedKeys.value = new Set()
+    commitTimer = null
+    scheduleClearAddedKeys()
+    logDebug('[viz] commit after ghost fade-out')
+  }, getGhostDuration())
+}
+
+watch(
+  () => props.data,
+  (nextData) => {
+    applyTransition(nextData)
+  },
+)
 
 /* ================================================================
  *  链表排序
@@ -439,352 +778,886 @@ function computeDiff(currentKeys: Map<string, CachedPosition>): void {
 
 const slistOrdered = computed<SListNode[]>(() => {
   if (!slistData.value) return []
+
   const map = new Map<number, SListNode>()
-  slistData.value.nodes.forEach((n) => map.set(n.id, n))
+  slistData.value.nodes.forEach((node) => map.set(node.id, node))
+
   const result: SListNode[] = []
-  let cur = slistData.value.head
+  let current = slistData.value.head
   const visited = new Set<number>()
-  while (cur !== -1 && !visited.has(cur)) { visited.add(cur); const n = map.get(cur); if (!n) break; result.push(n); cur = n.next }
+
+  while (current !== -1 && !visited.has(current)) {
+    visited.add(current)
+    const node = map.get(current)
+    if (!node) break
+    result.push(node)
+    current = node.next
+  }
+
   return result
 })
 
 const dlistOrdered = computed<DListNode[]>(() => {
   if (!dlistData.value) return []
+
   const map = new Map<number, DListNode>()
-  dlistData.value.nodes.forEach((n) => map.set(n.id, n))
+  dlistData.value.nodes.forEach((node) => map.set(node.id, node))
+
   const result: DListNode[] = []
-  let cur = dlistData.value.head
+  let current = dlistData.value.head
   const visited = new Set<number>()
-  while (cur !== -1 && !visited.has(cur)) { visited.add(cur); const n = map.get(cur); if (!n) break; result.push(n); cur = n.next }
+
+  while (current !== -1 && !visited.has(current)) {
+    visited.add(current)
+    const node = map.get(current)
+    if (!node) break
+    result.push(node)
+    current = node.next
+  }
+
   return result
 })
 
 /* ================================================================
- *  Stack 布局
+ *  布局：Stack
  * ================================================================ */
 
-interface StackLayoutItem { value: IrValue; y: number; isTop: boolean; diff: DiffStatus; displayLines: string[]; labels: LayoutLabel[] }
-interface StackLayout { svgW: number; svgH: number; cx: number; cylRx: number; cylItemH: number; items: StackLayoutItem[] }
+interface StackLayoutItem {
+  value: IrValue
+  y: number
+  isTop: boolean
+  diff: DiffStatus
+  displayLines: string[]
+  labels: LayoutLabel[]
+}
+
+interface StackLayout {
+  svgW: number
+  svgH: number
+  cx: number
+  cylRx: number
+  cylItemH: number
+  items: StackLayoutItem[]
+}
+
 const stackLayout = shallowRef<StackLayout | null>(null)
 
-watch(() => stackData.value, (d) => {
-  if (!d) { stackLayout.value = null; return }
-  if (d.items.length === 0) { stackLayout.value = null; computeDiff(new Map()); return }
-  const scale = computeNodeScale(d.items, BASE_CHARS_CYL)
-  const cylRx = BASE_CYL_RX * scale
-  const maxChars = Math.floor(BASE_CHARS_CYL * scale)
-  const anyTwoLine = d.items.some((v) => getEffectiveLength(String(v)) > maxChars)
-  const cylItemH = BASE_CYL_ITEM_H * (anyTwoLine ? 1.35 : 1)
-  const n = d.items.length
-  const svgW = cylRx * 2 + PAD * 2
-  const svgH = n * cylItemH + CYL_RY * 2 + PAD * 2 + 20
-  const cx = svgW / 2
-  const baseY = svgH - PAD - CYL_RY
-  const positions = new Map<string, CachedPosition>()
-  const items: StackLayoutItem[] = d.items.map((v, i) => {
-    const y = baseY - (i + 0.5) * cylItemH
-    positions.set(`s-${i}`, { shape: 'ellipse', x: cx, y, rx: cylRx, ry: CYL_RY })
-    const roles: Array<{ text: string; color: string }> = []
-    if (i === d.top) roles.push({ text: 'TOP', color: ACCENT_COLOR })
-    return { value: v, y, isTop: i === d.top, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(v, maxChars, 2), labels: buildLabels(roles) }
-  })
-  computeDiff(positions)
-  items.forEach((it, i) => { if (addedIds.value.has(`s-${i}`)) it.diff = 'added' })
-  stackLayout.value = { svgW, svgH, cx, cylRx, cylItemH, items }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
+watch(
+  () => stackData.value,
+  (data) => {
+    if (!data) {
+      stackLayout.value = null
+      return
+    }
+
+    if (data.items.length === 0) {
+      stackLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    const scale = computeNodeScale(data.items, BASE_CHARS_CYL)
+    const cylRx = BASE_CYL_RX * scale
+    const maxChars = Math.floor(BASE_CHARS_CYL * scale)
+    const anyTwoLine = data.items.some((item) => getEffectiveLength(String(item)) > maxChars)
+    const cylItemH = BASE_CYL_ITEM_H * (anyTwoLine ? 1.35 : 1)
+
+    const n = data.items.length
+    const svgW = cylRx * 2 + PAD * 2
+    const svgH = n * cylItemH + CYL_RY * 2 + PAD * 2 + 20
+    const cx = svgW / 2
+    const baseY = svgH - PAD - CYL_RY
+
+    const positions = new Map<string, CachedPosition>()
+
+    const items: StackLayoutItem[] = data.items.map((value, index) => {
+      const y = baseY - (index + 0.5) * cylItemH
+      const key = `s-${index}`
+      positions.set(key, {
+        shape: 'ellipse',
+        x: cx,
+        y,
+        rx: cylRx,
+        ry: CYL_RY,
+      })
+
+      const roles: Array<{ text: string; color: string }> = []
+      if (index === data.top) roles.push({ text: 'TOP', color: ACCENT_COLOR })
+
+      return {
+        value,
+        y,
+        isTop: index === data.top,
+        diff: isAddedKey(key) ? 'added' : 'unchanged',
+        displayLines: splitDisplayLines(value, maxChars, 2),
+        labels: buildLabels(roles),
+      }
+    })
+
+    stackLayout.value = {
+      svgW,
+      svgH,
+      cx,
+      cylRx,
+      cylItemH,
+      items,
+    }
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
 
 /* ================================================================
- *  Queue 布局
+ *  布局：Queue
  * ================================================================ */
 
-interface QueueLayoutItem { value: IrValue; x: number; diff: DiffStatus; displayLines: string[]; labels: LayoutLabel[] }
-interface QueueLayout { svgW: number; svgH: number; boxW: number; boxH: number; items: QueueLayoutItem[] }
+interface QueueLayoutItem {
+  value: IrValue
+  x: number
+  diff: DiffStatus
+  displayLines: string[]
+  labels: LayoutLabel[]
+}
+
+interface QueueLayout {
+  svgW: number
+  svgH: number
+  boxW: number
+  boxH: number
+  items: QueueLayoutItem[]
+}
+
 const queueLayout = shallowRef<QueueLayout | null>(null)
 
-watch(() => queueData.value, (d) => {
-  if (!d) { queueLayout.value = null; return }
-  if (d.items.length === 0) { queueLayout.value = null; computeDiff(new Map()); return }
-  const scale = computeNodeScale(d.items, BASE_CHARS_BOX)
-  const boxW = BASE_BOX_W * scale
-  const boxH = BASE_BOX_H
-  const maxChars = Math.floor(BASE_CHARS_BOX * scale)
-  const n = d.items.length
-  const hasBottomLabel = d.items.some((_, i) => {
-    const roles: string[] = []
-    if (i === d.front) roles.push('FRONT')
-    if (i === d.rear) roles.push('REAR')
-    return roles.length > 1
-  })
-  const svgW = n * boxW + (n - 1) * BOX_GAP + PAD * 2
-  const svgH = boxH + PAD * 2 + 24 + (hasBottomLabel ? 36 : 0)
-  const positions = new Map<string, CachedPosition>()
-  const items: QueueLayoutItem[] = d.items.map((v, i) => {
-    const x = PAD + i * (boxW + BOX_GAP)
-    positions.set(`q-${i}`, { shape: 'rect', x, y: PAD + 20, w: boxW, h: boxH })
-    const roles: Array<{ text: string; color: string }> = []
-    if (i === d.front) roles.push({ text: 'FRONT', color: ACCENT_COLOR })
-    if (i === d.rear) roles.push({ text: 'REAR', color: WARNING_COLOR })
-    return { value: v, x, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(v, maxChars, 2), labels: buildLabels(roles) }
-  })
-  computeDiff(positions)
-  items.forEach((it, i) => { if (addedIds.value.has(`q-${i}`)) it.diff = 'added' })
-  queueLayout.value = { svgW, svgH, boxW, boxH, items }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
+watch(
+  () => queueData.value,
+  (data) => {
+    if (!data) {
+      queueLayout.value = null
+      return
+    }
+
+    if (data.items.length === 0) {
+      queueLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    const scale = computeNodeScale(data.items, BASE_CHARS_BOX)
+    const boxW = BASE_BOX_W * scale
+    const boxH = BASE_BOX_H
+    const maxChars = Math.floor(BASE_CHARS_BOX * scale)
+
+    const n = data.items.length
+    const hasBottomLabel = data.items.some((_, index) => {
+      const roles: string[] = []
+      if (index === data.front) roles.push('FRONT')
+      if (index === data.rear) roles.push('REAR')
+      return roles.length > 1
+    })
+
+    const svgW = n * boxW + (n - 1) * BOX_GAP + PAD * 2
+    const svgH = boxH + PAD * 2 + 24 + (hasBottomLabel ? 36 : 0)
+
+    const positions = new Map<string, CachedPosition>()
+
+    const items: QueueLayoutItem[] = data.items.map((value, index) => {
+      const x = PAD + index * (boxW + BOX_GAP)
+      const key = `q-${index}`
+
+      positions.set(key, {
+        shape: 'rect',
+        x,
+        y: PAD + 20,
+        w: boxW,
+        h: boxH,
+      })
+
+      const roles: Array<{ text: string; color: string }> = []
+      if (index === data.front) roles.push({ text: 'FRONT', color: ACCENT_COLOR })
+      if (index === data.rear) roles.push({ text: 'REAR', color: WARNING_COLOR })
+
+      return {
+        value,
+        x,
+        diff: isAddedKey(key) ? 'added' : 'unchanged',
+        displayLines: splitDisplayLines(value, maxChars, 2),
+        labels: buildLabels(roles),
+      }
+    })
+
+    queueLayout.value = {
+      svgW,
+      svgH,
+      boxW,
+      boxH,
+      items,
+    }
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
 
 /* ================================================================
- *  SList 布局
+ *  布局：List
  * ================================================================ */
 
-interface ListLayoutNode { id: number; value: IrValue; x: number; diff: DiffStatus; displayLines: string[]; labels: LayoutLabel[]; isTail: boolean }
-interface ListLayout { svgW: number; svgH: number; nodeW: number; nodeH: number; nodes: ListLayoutNode[] }
+interface ListLayoutNode {
+  id: number
+  value: IrValue
+  x: number
+  diff: DiffStatus
+  displayLines: string[]
+  labels: LayoutLabel[]
+  isTail: boolean
+}
+
+interface ListLayout {
+  svgW: number
+  svgH: number
+  nodeW: number
+  nodeH: number
+  nodes: ListLayoutNode[]
+}
+
 const slistLayout = shallowRef<ListLayout | null>(null)
-
-watch(() => slistOrdered.value, (ordered) => {
-  if (!slistData.value) { slistLayout.value = null; return }
-  if (ordered.length === 0) { slistLayout.value = null; computeDiff(new Map()); return }
-  const values = ordered.map((n) => n.value)
-  const scale = computeNodeScale(values, BASE_CHARS_NODE)
-  const nodeW = BASE_NODE_W * scale
-  const nodeH = BASE_NODE_H
-  const maxChars = Math.floor(BASE_CHARS_NODE * scale)
-  const n = ordered.length
-  const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
-  const svgH = nodeH + PAD * 2 + 24 + 36
-  const positions = new Map<string, CachedPosition>()
-  const nodes: ListLayoutNode[] = ordered.map((nd, i) => {
-    const x = PAD + i * (nodeW + NODE_GAP)
-    positions.set(`n-${nd.id}`, { shape: 'rect', x, y: PAD + 20, w: nodeW, h: nodeH })
-    const roles: Array<{ text: string; color: string }> = []
-    if (nd.id === slistData.value!.head) roles.push({ text: 'HEAD', color: ACCENT_COLOR })
-    return { id: nd.id, value: nd.value, x, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(nd.value, maxChars, 2), labels: buildLabels(roles), isTail: nd.next === -1 }
-  })
-  computeDiff(positions)
-  nodes.forEach((nd) => { if (addedIds.value.has(`n-${nd.id}`)) nd.diff = 'added' })
-  slistLayout.value = { svgW, svgH, nodeW, nodeH, nodes }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
-
-/* ================================================================
- *  DList 布局
- * ================================================================ */
-
 const dlistLayout = shallowRef<ListLayout | null>(null)
 
-watch(() => dlistOrdered.value, (ordered) => {
-  if (!dlistData.value) { dlistLayout.value = null; return }
-  if (ordered.length === 0) { dlistLayout.value = null; computeDiff(new Map()); return }
-  const values = ordered.map((n) => n.value)
-  const scale = computeNodeScale(values, BASE_CHARS_NODE)
-  const nodeW = BASE_NODE_W * scale
-  const nodeH = BASE_NODE_H
-  const maxChars = Math.floor(BASE_CHARS_NODE * scale)
-  const n = ordered.length
-  const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
-  const svgH = nodeH + PAD * 2 + 24 + 36
-  const positions = new Map<string, CachedPosition>()
-  const nodes: ListLayoutNode[] = ordered.map((nd, i) => {
-    const x = PAD + i * (nodeW + NODE_GAP)
-    positions.set(`n-${nd.id}`, { shape: 'rect', x, y: PAD + 20, w: nodeW, h: nodeH })
-    const roles: Array<{ text: string; color: string }> = []
-    if (nd.id === dlistData.value!.head) roles.push({ text: 'HEAD', color: ACCENT_COLOR })
-    if (nd.id === dlistData.value!.tail) roles.push({ text: 'TAIL', color: WARNING_COLOR })
-    return { id: nd.id, value: nd.value, x, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(nd.value, maxChars, 2), labels: buildLabels(roles), isTail: nd.id === dlistData.value!.tail }
-  })
-  computeDiff(positions)
-  nodes.forEach((nd) => { if (addedIds.value.has(`n-${nd.id}`)) nd.diff = 'added' })
-  dlistLayout.value = { svgW, svgH, nodeW, nodeH, nodes }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
+watch(
+  () => slistOrdered.value,
+  (ordered) => {
+    if (!slistData.value) {
+      slistLayout.value = null
+      return
+    }
+
+    if (ordered.length === 0) {
+      slistLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    const values = ordered.map((node) => node.value)
+    const scale = computeNodeScale(values, BASE_CHARS_NODE)
+    const nodeW = BASE_NODE_W * scale
+    const nodeH = BASE_NODE_H
+    const maxChars = Math.floor(BASE_CHARS_NODE * scale)
+
+    const n = ordered.length
+    const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
+    const svgH = nodeH + PAD * 2 + 24 + 36
+
+    const positions = new Map<string, CachedPosition>()
+
+    const nodes: ListLayoutNode[] = ordered.map((node, index) => {
+      const x = PAD + index * (nodeW + NODE_GAP)
+      const key = `n-${node.id}`
+
+      positions.set(key, {
+        shape: 'rect',
+        x,
+        y: PAD + 20,
+        w: nodeW,
+        h: nodeH,
+      })
+
+      const roles: Array<{ text: string; color: string }> = []
+      if (node.id === slistData.value!.head) {
+        roles.push({ text: 'HEAD', color: ACCENT_COLOR })
+      }
+
+      return {
+        id: node.id,
+        value: node.value,
+        x,
+        diff: isAddedKey(key) ? 'added' : 'unchanged',
+        displayLines: splitDisplayLines(node.value, maxChars, 2),
+        labels: buildLabels(roles),
+        isTail: node.next === -1,
+      }
+    })
+
+    slistLayout.value = {
+      svgW,
+      svgH,
+      nodeW,
+      nodeH,
+      nodes,
+    }
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
+
+watch(
+  () => dlistOrdered.value,
+  (ordered) => {
+    if (!dlistData.value) {
+      dlistLayout.value = null
+      return
+    }
+
+    if (ordered.length === 0) {
+      dlistLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    const values = ordered.map((node) => node.value)
+    const scale = computeNodeScale(values, BASE_CHARS_NODE)
+    const nodeW = BASE_NODE_W * scale
+    const nodeH = BASE_NODE_H
+    const maxChars = Math.floor(BASE_CHARS_NODE * scale)
+
+    const n = ordered.length
+    const svgW = n * nodeW + (n - 1) * NODE_GAP + PAD * 2 + 40
+    const svgH = nodeH + PAD * 2 + 24 + 36
+
+    const positions = new Map<string, CachedPosition>()
+
+    const nodes: ListLayoutNode[] = ordered.map((node, index) => {
+      const x = PAD + index * (nodeW + NODE_GAP)
+      const key = `n-${node.id}`
+
+      positions.set(key, {
+        shape: 'rect',
+        x,
+        y: PAD + 20,
+        w: nodeW,
+        h: nodeH,
+      })
+
+      const roles: Array<{ text: string; color: string }> = []
+      if (node.id === dlistData.value!.head) roles.push({ text: 'HEAD', color: ACCENT_COLOR })
+      if (node.id === dlistData.value!.tail) roles.push({ text: 'TAIL', color: WARNING_COLOR })
+
+      return {
+        id: node.id,
+        value: node.value,
+        x,
+        diff: isAddedKey(key) ? 'added' : 'unchanged',
+        displayLines: splitDisplayLines(node.value, maxChars, 2),
+        labels: buildLabels(roles),
+        isTail: node.id === dlistData.value!.tail,
+      }
+    })
+
+    dlistLayout.value = {
+      svgW,
+      svgH,
+      nodeW,
+      nodeH,
+      nodes,
+    }
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
 
 /* ================================================================
- *  Tree 布局
+ *  布局：Tree / BST / Heap
  * ================================================================ */
 
-interface TreeLayoutNode { id: number; value: IrValue; x: number; y: number; isRoot: boolean; diff: DiffStatus; displayLines: string[]; left: number; right: number }
-interface TreeLayoutEdge { x1: number; y1: number; x2: number; y2: number }
-interface HeapArrayItem { id: number; value: IrValue; index: number; x: number; displayLines: string[] }
-interface TreeLayout { svgW: number; svgH: number; treeR: number; nodes: TreeLayoutNode[]; edges: TreeLayoutEdge[]; heapArray: HeapArrayItem[]; heapArrayY: number }
+interface TreeLayoutNode {
+  id: number
+  value: IrValue
+  x: number
+  y: number
+  isRoot: boolean
+  diff: DiffStatus
+  displayLines: string[]
+  left: number
+  right: number
+}
+
+interface TreeLayoutEdge {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+interface HeapArrayItem {
+  id: number
+  value: IrValue
+  index: number
+  x: number
+  displayLines: string[]
+}
+
+interface TreeLayout {
+  svgW: number
+  svgH: number
+  treeR: number
+  nodes: TreeLayoutNode[]
+  edges: TreeLayoutEdge[]
+  heapArray: HeapArrayItem[]
+  heapArrayY: number
+}
+
 const treeLayout = shallowRef<TreeLayout | null>(null)
 
-watch(() => treeData.value, (d) => {
-  if (!d || d.root === -1 || d.nodes.length === 0) { treeLayout.value = null; computeDiff(new Map()); return }
-  logDebug('[viz] tree layout, nodes =', d.nodes.length)
-  const values = d.nodes.map((n) => n.value)
-  const scale = computeNodeScale(values, BASE_CHARS_CIRCLE)
-  const treeR = Math.round(BASE_TREE_R * scale)
-  const maxChars = Math.floor(BASE_CHARS_CIRCLE * scale)
-  const nodeMap = new Map<number, BinaryTreeNode>()
-  d.nodes.forEach((n) => nodeMap.set(n.id, n))
-  const levels: number[][] = []
-  const bfsQ: Array<{ id: number; lvl: number }> = [{ id: d.root, lvl: 0 }]
-  const vis = new Set<number>()
-  while (bfsQ.length > 0) {
-    const c = bfsQ.shift()!
-    if (vis.has(c.id)) continue
-    vis.add(c.id)
-    if (!levels[c.lvl]) levels[c.lvl] = []
-    levels[c.lvl].push(c.id)
-    const n = nodeMap.get(c.id)
-    if (!n) continue
-    if (n.left !== -1) bfsQ.push({ id: n.left, lvl: c.lvl + 1 })
-    if (n.right !== -1) bfsQ.push({ id: n.right, lvl: c.lvl + 1 })
-  }
-  const maxInLvl = Math.max(...levels.map((l) => l.length))
-  const baseW = Math.max(300, maxInLvl * treeR * 5 + PAD * 2)
-  const posMap = new Map<number, { x: number; y: number }>()
-  levels.forEach((ids, lvl) => {
-    const gap = baseW / (ids.length + 1)
-    ids.forEach((id, i) => posMap.set(id, { x: gap * (i + 1), y: PAD + lvl * TREE_LEVEL_H }))
-  })
-  let maxX = 0; let maxY = 0
-  posMap.forEach((p) => { if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y })
-  const positions = new Map<string, CachedPosition>()
-  const nodes: TreeLayoutNode[] = d.nodes.filter((n) => posMap.has(n.id)).map((n) => {
-    const p = posMap.get(n.id)!
+watch(
+  () => treeData.value,
+  (data) => {
+    if (!data || data.root === -1 || data.nodes.length === 0) {
+      treeLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    logDebug('[viz] tree layout, nodes =', data.nodes.length)
+
+    const values = data.nodes.map((node) => node.value)
+    const scale = computeNodeScale(values, BASE_CHARS_CIRCLE)
+    const treeR = Math.round(BASE_TREE_R * scale)
+    const maxChars = Math.floor(BASE_CHARS_CIRCLE * scale)
+
+    const nodeMap = new Map<number, BinaryTreeNode>()
+    data.nodes.forEach((node) => nodeMap.set(node.id, node))
+
+    const levels: number[][] = []
+    const bfsQueue: Array<{ id: number; lvl: number }> = [{ id: data.root, lvl: 0 }]
+    const visited = new Set<number>()
+
+    while (bfsQueue.length > 0) {
+      const current = bfsQueue.shift()!
+      if (visited.has(current.id)) continue
+      visited.add(current.id)
+
+      if (!levels[current.lvl]) levels[current.lvl] = []
+      levels[current.lvl].push(current.id)
+
+      const node = nodeMap.get(current.id)
+      if (!node) continue
+
+      if (node.left !== -1) bfsQueue.push({ id: node.left, lvl: current.lvl + 1 })
+      if (node.right !== -1) bfsQueue.push({ id: node.right, lvl: current.lvl + 1 })
+    }
+
+    const maxInLevel = Math.max(...levels.map((level) => level.length))
+    const baseW = Math.max(300, maxInLevel * treeR * 5 + PAD * 2)
+
+    const posMap = new Map<number, { x: number; y: number }>()
+    levels.forEach((ids, levelIndex) => {
+      const gap = baseW / (ids.length + 1)
+      ids.forEach((id, index) => {
+        posMap.set(id, {
+          x: gap * (index + 1),
+          y: PAD + levelIndex * TREE_LEVEL_H,
+        })
+      })
+    })
+
+    let maxX = 0
+    let maxY = 0
+    posMap.forEach((point) => {
+      if (point.x > maxX) maxX = point.x
+      if (point.y > maxY) maxY = point.y
+    })
+
+    const positions = new Map<string, CachedPosition>()
+
+    const nodes: TreeLayoutNode[] = data.nodes
+      .filter((node) => posMap.has(node.id))
+      .map((node) => {
+        const point = posMap.get(node.id)!
+        const key = `t-${node.id}`
+
+        if (isHeap.value) {
+          positions.set(key, {
+            shape: 'rect',
+            x: point.x - treeR,
+            y: point.y - treeR,
+            w: treeR * 2,
+            h: treeR * 2,
+          })
+        } else {
+          positions.set(key, {
+            shape: 'circle',
+            x: point.x,
+            y: point.y,
+            r: treeR,
+          })
+        }
+
+        return {
+          id: node.id,
+          value: node.value,
+          x: point.x,
+          y: point.y,
+          isRoot: node.id === data.root,
+          diff: isAddedKey(key) ? 'added' : 'unchanged',
+          displayLines: splitDisplayLines(node.value, maxChars, 1),
+          left: node.left,
+          right: node.right,
+        }
+      })
+
+    const edges: TreeLayoutEdge[] = []
+    data.nodes.forEach((node) => {
+      const from = posMap.get(node.id)
+      if (!from) return
+
+      for (const childId of [node.left, node.right]) {
+        if (childId === -1) continue
+        const to = posMap.get(childId)
+        if (to) {
+          edges.push({
+            x1: from.x,
+            y1: from.y,
+            x2: to.x,
+            y2: to.y,
+          })
+        }
+      }
+    })
+
+    const heapArray: HeapArrayItem[] = []
+    let heapArrayY = 0
+
     if (isHeap.value) {
-      positions.set(`t-${n.id}`, { shape: 'rect', x: p.x - treeR, y: p.y - treeR, w: treeR * 2, h: treeR * 2 })
-    } else {
-      positions.set(`t-${n.id}`, { shape: 'circle', x: p.x, y: p.y, r: treeR })
+      heapArrayY = maxY + treeR + 40
+
+      const bfsOrder: Array<{ id: number; value: IrValue }> = []
+      const queue = [data.root]
+      const visitedInArray = new Set<number>()
+
+      while (queue.length > 0) {
+        const id = queue.shift()!
+        if (visitedInArray.has(id)) continue
+        visitedInArray.add(id)
+
+        const node = nodeMap.get(id)
+        if (!node) continue
+
+        bfsOrder.push({ id: node.id, value: node.value })
+        if (node.left !== -1) queue.push(node.left)
+        if (node.right !== -1) queue.push(node.right)
+      }
+
+      const arrayWidth = 36
+      const totalArrayWidth = bfsOrder.length * arrayWidth
+      const arrayStartX = Math.max(PAD, (baseW - totalArrayWidth) / 2)
+
+      bfsOrder.forEach((item, index) => {
+        heapArray.push({
+          id: item.id,
+          value: item.value,
+          index,
+          x: arrayStartX + index * arrayWidth,
+          displayLines: splitDisplayLines(item.value, 3, 1),
+        })
+      })
+
+      if (heapArrayY + 40 > maxY + treeR + PAD) {
+        maxY = heapArrayY + 40 - treeR
+      }
     }
-    return { id: n.id, value: n.value, x: p.x, y: p.y, isRoot: n.id === d.root, diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(n.value, maxChars, 1), left: n.left, right: n.right }
-  })
-  const edges: TreeLayoutEdge[] = []
-  d.nodes.forEach((n) => {
-    const from = posMap.get(n.id)
-    if (!from) return
-    for (const childId of [n.left, n.right]) {
-      if (childId === -1) continue
-      const to = posMap.get(childId)
-      if (to) edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y })
+
+    const svgW = maxX + PAD
+    const svgH = maxY + PAD + treeR + (isHeap.value ? 60 : 0)
+
+    treeLayout.value = {
+      svgW,
+      svgH,
+      treeR,
+      nodes,
+      edges,
+      heapArray,
+      heapArrayY,
     }
-  })
-  const heapArray: HeapArrayItem[] = []
-  let heapArrayY = 0
-  if (isHeap.value) {
-    heapArrayY = maxY + treeR + 40
-    const bfsOrder: Array<{ id: number; value: IrValue }> = []
-    const q2 = [d.root]; const v2 = new Set<number>()
-    while (q2.length > 0) { const id = q2.shift()!; if (v2.has(id)) continue; v2.add(id); const n = nodeMap.get(id); if (!n) continue; bfsOrder.push({ id: n.id, value: n.value }); if (n.left !== -1) q2.push(n.left); if (n.right !== -1) q2.push(n.right) }
-    const arrW = 36; const totalArrW = bfsOrder.length * arrW; const arrStartX = Math.max(PAD, (baseW - totalArrW) / 2)
-    bfsOrder.forEach((item, i) => { heapArray.push({ id: item.id, value: item.value, index: i, x: arrStartX + i * arrW, displayLines: splitDisplayLines(item.value, 3, 1) }) })
-    if (heapArrayY + 40 > maxY + treeR + PAD) maxY = heapArrayY + 40 - treeR
-  }
-  computeDiff(positions)
-  nodes.forEach((nd) => { if (addedIds.value.has(`t-${nd.id}`)) nd.diff = 'added' })
-  const svgW = maxX + PAD; const svgH = maxY + PAD + treeR + (isHeap.value ? 60 : 0)
-  treeLayout.value = { svgW, svgH, treeR, nodes, edges, heapArray, heapArrayY }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
 
 /* ================================================================
- *  Graph 布局
+ *  布局：Graph
  * ================================================================ */
 
-interface GLayoutNode { id: number; label: string; x: number; y: number; color: string; diff: DiffStatus; displayLines: string[] }
-interface GLayoutEdge { from: number; to: number; x1: number; y1: number; x2: number; y2: number; weight?: number; mx: number; my: number }
-interface GLayout { svgW: number; svgH: number; graphR: number; nodes: GLayoutNode[]; edges: GLayoutEdge[] }
-const graphLayout = shallowRef<GLayout | null>(null)
+interface GraphLayoutNode {
+  id: number
+  label: string
+  x: number
+  y: number
+  color: string
+  diff: DiffStatus
+  displayLines: string[]
+}
 
-watch(() => graphData.value, (d) => {
-  if (!d || d.nodes.length === 0) { graphLayout.value = null; computeDiff(new Map()); return }
-  logDebug('[viz] graph layout, nodes =', d.nodes.length, 'edges =', d.edges.length)
-  const labels = d.nodes.map((n: GraphNode) => n.label)
-  const scale = computeNodeScale(labels, BASE_CHARS_CIRCLE)
-  const graphR = Math.round(BASE_GRAPH_R * scale)
-  const maxChars = Math.floor(BASE_CHARS_CIRCLE * scale)
-  const svgW = 500; const svgH = 380; const cx = svgW / 2; const cy = svgH / 2
-  const cR = Math.min(140, 34 * Math.max(3, d.nodes.length))
-  const pMap = new Map<number, { x: number; y: number }>()
-  const positions = new Map<string, CachedPosition>()
-  const nodes: GLayoutNode[] = d.nodes.map((n: GraphNode, i: number) => {
-    const angle = (2 * Math.PI * i) / Math.max(1, d.nodes.length) - Math.PI / 2
-    const x = cx + cR * Math.cos(angle); const y = cy + cR * Math.sin(angle)
-    pMap.set(n.id, { x, y }); positions.set(`g-${n.id}`, { shape: 'circle', x, y, r: graphR })
-    return { id: n.id, label: n.label, x, y, color: NODE_PALETTE[Math.abs(n.id) % NODE_PALETTE.length], diff: 'unchanged' as DiffStatus, displayLines: splitDisplayLines(n.label, maxChars, 1) }
-  })
-  const edges: GLayoutEdge[] = []
-  d.edges.forEach((e: GraphEdge & { weight?: number }) => {
-    const from = pMap.get(e.from); const to = pMap.get(e.to)
-    if (!from || !to) return
-    const dx = to.x - from.x; const dy = to.y - from.y; const dist = Math.sqrt(dx * dx + dy * dy)
-    if (dist === 0) return
-    const ux = dx / dist; const uy = dy / dist
-    edges.push({ from: e.from, to: e.to, x1: from.x + ux * graphR, y1: from.y + uy * graphR, x2: to.x - ux * graphR, y2: to.y - uy * graphR, weight: e.weight, mx: (from.x + to.x) / 2, my: (from.y + to.y) / 2 })
-  })
-  computeDiff(positions)
-  nodes.forEach((n) => { if (addedIds.value.has(`g-${n.id}`)) n.diff = 'added' })
-  graphLayout.value = { svgW, svgH, graphR, nodes, edges }
-  fitViewBox(0, 0, svgW, svgH)
-}, { immediate: true })
+interface GraphLayoutEdge {
+  from: number
+  to: number
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  weight?: number
+  mx: number
+  my: number
+}
+
+interface GraphLayout {
+  svgW: number
+  svgH: number
+  graphR: number
+  nodes: GraphLayoutNode[]
+  edges: GraphLayoutEdge[]
+}
+
+const graphLayout = shallowRef<GraphLayout | null>(null)
+
+watch(
+  () => graphData.value,
+  (data) => {
+    if (!data || data.nodes.length === 0) {
+      graphLayout.value = null
+      prevIds.value = new Set()
+      prevPositionCache.clear()
+      return
+    }
+
+    logDebug('[viz] graph layout, nodes =', data.nodes.length, 'edges =', data.edges.length)
+
+    const labels = data.nodes.map((node) => node.label)
+    const scale = computeNodeScale(labels, BASE_CHARS_CIRCLE)
+    const graphR = Math.round(BASE_GRAPH_R * scale)
+    const maxChars = Math.floor(BASE_CHARS_CIRCLE * scale)
+
+    const svgW = 500
+    const svgH = 380
+    const cx = svgW / 2
+    const cy = svgH / 2
+    const circleR = Math.min(140, 34 * Math.max(3, data.nodes.length))
+
+    const positionMap = new Map<number, { x: number; y: number }>()
+    const positions = new Map<string, CachedPosition>()
+
+    const nodes: GraphLayoutNode[] = data.nodes.map((node: GraphNode, index: number) => {
+      const angle = (2 * Math.PI * index) / Math.max(1, data.nodes.length) - Math.PI / 2
+      const x = cx + circleR * Math.cos(angle)
+      const y = cy + circleR * Math.sin(angle)
+
+      positionMap.set(node.id, { x, y })
+
+      const key = `g-${node.id}`
+      positions.set(key, {
+        shape: 'circle',
+        x,
+        y,
+        r: graphR,
+      })
+
+      return {
+        id: node.id,
+        label: node.label,
+        x,
+        y,
+        color: NODE_PALETTE[Math.abs(node.id) % NODE_PALETTE.length],
+        diff: isAddedKey(key) ? 'added' : 'unchanged',
+        displayLines: splitDisplayLines(node.label, maxChars, 1),
+      }
+    })
+
+    const edges: GraphLayoutEdge[] = []
+    data.edges.forEach((edge: GraphEdge & { weight?: number }) => {
+      const from = positionMap.get(edge.from)
+      const to = positionMap.get(edge.to)
+      if (!from || !to) return
+
+      const dx = to.x - from.x
+      const dy = to.y - from.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist === 0) return
+
+      const ux = dx / dist
+      const uy = dy / dist
+
+      edges.push({
+        from: edge.from,
+        to: edge.to,
+        x1: from.x + ux * graphR,
+        y1: from.y + uy * graphR,
+        x2: to.x - ux * graphR,
+        y2: to.y - uy * graphR,
+        weight: edge.weight,
+        mx: (from.x + to.x) / 2,
+        my: (from.y + to.y) / 2,
+      })
+    })
+
+    graphLayout.value = {
+      svgW,
+      svgH,
+      graphR,
+      nodes,
+      edges,
+    }
+
+    prevIds.value = new Set(positions.keys())
+    prevPositionCache.clear()
+    for (const [key, value] of positions) {
+      prevPositionCache.set(key, value)
+    }
+
+    fitViewBox(0, 0, svgW, svgH)
+  },
+  { immediate: true },
+)
 
 /* ================================================================
- *  Tooltip 构建器
+ *  Tooltip 构建
  * ================================================================ */
 
 function stackTipLines(index: number, value: IrValue, isTop: boolean): TipLine[] {
-  const lines: TipLine[] = [{ label: '索引', value: `[${index}]` }, { label: '值', value: fullVal(value) }]
+  const lines: TipLine[] = [
+    { label: '索引', value: `[${index}]` },
+    { label: '值', value: fullVal(value) },
+  ]
   if (isTop) lines.push({ label: '角色', value: 'TOP' })
   return lines
 }
 
 function queueTipLines(index: number, value: IrValue, labels: LayoutLabel[]): TipLine[] {
-  const lines: TipLine[] = [{ label: '索引', value: `[${index}]` }, { label: '值', value: fullVal(value) }]
-  if (labels.length > 0) lines.push({ label: '角色', value: labels.map((l) => l.text).join(', ') })
+  const lines: TipLine[] = [
+    { label: '索引', value: `[${index}]` },
+    { label: '值', value: fullVal(value) },
+  ]
+  if (labels.length > 0) {
+    lines.push({ label: '角色', value: labels.map((item) => item.text).join(', ') })
+  }
   return lines
 }
 
-function listTipLines(id: number, value: IrValue, labels: LayoutLabel[], nextId?: number, prevId?: number): TipLine[] {
-  const lines: TipLine[] = [{ label: 'ID', value: `#${id}` }, { label: '值', value: fullVal(value) }]
-  if (labels.length > 0) lines.push({ label: '角色', value: labels.map((l) => l.text).join(', ') })
-  if (nextId !== undefined && nextId !== -1) lines.push({ label: '后继', value: `#${nextId}` })
-  if (prevId !== undefined && prevId !== -1) lines.push({ label: '前驱', value: `#${prevId}` })
+function listTipLines(
+  id: number,
+  value: IrValue,
+  labels: LayoutLabel[],
+  nextId?: number,
+  prevId?: number,
+): TipLine[] {
+  const lines: TipLine[] = [
+    { label: 'ID', value: `#${id}` },
+    { label: '值', value: fullVal(value) },
+  ]
+
+  if (labels.length > 0) {
+    lines.push({ label: '角色', value: labels.map((item) => item.text).join(', ') })
+  }
+
+  if (nextId !== undefined && nextId !== -1) {
+    lines.push({ label: '后继', value: `#${nextId}` })
+  }
+
+  if (prevId !== undefined && prevId !== -1) {
+    lines.push({ label: '前驱', value: `#${prevId}` })
+  }
+
   return lines
 }
 
-function treeTipLines(nd: TreeLayoutNode): TipLine[] {
-  const lines: TipLine[] = [{ label: 'ID', value: `#${nd.id}` }, { label: '值', value: fullVal(nd.value) }]
-  if (nd.isRoot) lines.push({ label: '角色', value: 'ROOT' })
-  if (nd.left !== -1) lines.push({ label: '左子', value: `#${nd.left}` })
-  if (nd.right !== -1) lines.push({ label: '右子', value: `#${nd.right}` })
+function treeTipLines(node: TreeLayoutNode): TipLine[] {
+  const lines: TipLine[] = [
+    { label: 'ID', value: `#${node.id}` },
+    { label: '值', value: fullVal(node.value) },
+  ]
+
+  if (node.isRoot) lines.push({ label: '角色', value: 'ROOT' })
+  if (node.left !== -1) lines.push({ label: '左子', value: `#${node.left}` })
+  if (node.right !== -1) lines.push({ label: '右子', value: `#${node.right}` })
+
   return lines
 }
 
-function graphTipLines(nd: GLayoutNode): TipLine[] {
-  return [{ label: 'ID', value: `#${nd.id}` }, { label: '标签', value: nd.label }]
+function graphTipLines(node: GraphLayoutNode): TipLine[] {
+  return [
+    { label: 'ID', value: `#${node.id}` },
+    { label: '标签', value: node.label },
+  ]
 }
 
 /* ================================================================
  *  配置实时化
  * ================================================================ */
 
-watch(() => vizFlags.enableAutoFit, (enabled) => {
-  if (enabled) {
-    animateToVb({ ...idealVb.value }, 200)
-    userManualZoom.value = false
-  }
-})
+watch(
+  () => vizFlags.enableAutoFit,
+  (enabled) => {
+    if (enabled) {
+      animateToVb({ ...idealVb.value }, 200)
+      userManualZoom.value = false
+    }
+  },
+)
 
-watch(() => vizFlags.enableDiffHighlight, (enabled) => {
-  if (!enabled) {
-    addedIds.value = new Set()
-    removedKeys.value = []
-  }
-})
+watch(
+  () => vizFlags.enableDiffHighlight,
+  (enabled) => {
+    if (!enabled) {
+      forceAddedKeys.value = new Set()
+      removedKeys.value = []
+      clearAddedKeysTimer()
+      clearCommitTimer()
+    }
+  },
+)
 
 /* ================================================================
  *  生命周期
  * ================================================================ */
 
 onBeforeUnmount(() => {
-  if (ghostTimer !== null) window.clearTimeout(ghostTimer)
-  if (animFrame !== null) window.cancelAnimationFrame(animFrame)
+  clearCommitTimer()
+  clearAddedKeysTimer()
+  if (viewBoxAnimFrame !== null) {
+    window.cancelAnimationFrame(viewBoxAnimFrame)
+  }
 })
 </script>
 
 <template>
-  <section class="viz-panel" :class="{ 'viz-panel--smooth': vizFlags.enableSmoothTransitions }">
+  <section class="viz-panel" :class="{ 'viz-panel--smooth': smoothEnabled }">
     <header class="viz-panel__header">
       <div class="viz-panel__title">
         <MaterialIcon name="graph_3" :size="18" />
@@ -798,21 +1671,78 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- 元数据条 -->
+    <!-- 元数据 -->
     <div v-if="hasMetadata" class="viz-panel__meta">
-      <span v-if="label" class="viz-panel__meta-item viz-panel__meta-label">{{ label }}</span>
-      <span v-if="remarks?.title" class="viz-panel__meta-item">{{ remarks.title }}</span>
-      <span v-if="remarks?.author" class="viz-panel__meta-item">{{ remarks.author }}</span>
-      <span v-if="remarks?.comment" class="viz-panel__meta-item viz-panel__meta-comment">{{ remarks.comment }}</span>
+      <div class="viz-panel__meta-row">
+        <span class="viz-panel__meta-tag">Object</span>
+        <span v-if="label" class="viz-panel__meta-item viz-panel__meta-label">label={{ label }}</span>
+        <span class="viz-panel__meta-item">kind={{ kindStr }}</span>
+        <span
+          v-for="entry in objectExtraEntries"
+          :key="`obj-extra-${entry.key}`"
+          class="viz-panel__meta-item"
+        >
+          {{ entry.key }}={{ entry.value }}
+        </span>
+      </div>
+
+      <div
+        v-if="remarks?.title || remarks?.author || remarks?.comment || remarksExtraEntries.length > 0"
+        class="viz-panel__meta-row"
+      >
+        <span class="viz-panel__meta-tag">Remarks</span>
+        <span v-if="remarks?.title" class="viz-panel__meta-item">title={{ remarks.title }}</span>
+        <span v-if="remarks?.author" class="viz-panel__meta-item">author={{ remarks.author }}</span>
+        <span v-if="remarks?.comment" class="viz-panel__meta-item viz-panel__meta-comment">
+          comment={{ remarks.comment }}
+        </span>
+        <span
+          v-for="entry in remarksExtraEntries"
+          :key="`remarks-extra-${entry.key}`"
+          class="viz-panel__meta-item"
+        >
+          {{ entry.key }}={{ entry.value }}
+        </span>
+      </div>
+
+      <div v-if="meta?.createdAt" class="viz-panel__meta-row">
+        <span class="viz-panel__meta-tag">IR</span>
+        <span class="viz-panel__meta-item">created_at={{ meta.createdAt }}</span>
+      </div>
+
+      <div v-if="step" class="viz-panel__meta-row">
+        <span class="viz-panel__meta-tag">Step</span>
+        <span class="viz-panel__meta-item">op={{ step.op }}</span>
+        <span v-if="step.line" class="viz-panel__meta-item">line={{ step.line }}</span>
+        <span v-if="step.note" class="viz-panel__meta-item">note={{ step.note }}</span>
+        <span
+          v-for="entry in stepArgEntries"
+          :key="`step-arg-${entry.key}`"
+          class="viz-panel__meta-item"
+        >
+          {{ entry.key }}={{ entry.value }}
+        </span>
+      </div>
     </div>
 
     <div ref="canvasRef" class="viz-panel__body">
       <Transition name="fade" mode="out-in">
         <VizPlaceholder v-if="isEmpty" key="empty" />
 
-        <svg v-else key="canvas" class="viz-panel__svg" :viewBox="effectiveViewBox" preserveAspectRatio="xMidYMid meet"
-          :style="{ '--ghost-ms': ghostDurationMs }" @wheel.prevent="onWheel" @pointerdown="onPanStart"
-          @pointermove="onPanMove" @pointerup="onPanEnd" @pointerleave="onPanEnd" @dblclick="handleDblClick">
+        <svg
+          v-else
+          key="canvas"
+          class="viz-panel__svg"
+          :viewBox="effectiveViewBox"
+          preserveAspectRatio="xMidYMid meet"
+          :style="{ '--ghost-ms': ghostDurationMs }"
+          @wheel.prevent="onWheel"
+          @pointerdown="onPanStart"
+          @pointermove="onPanMove"
+          @pointerup="onPanEnd"
+          @pointerleave="onPanEnd"
+          @dblclick="handleDblClick"
+        >
           <defs>
             <marker id="viz-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--color-border-strong)" />
@@ -822,7 +1752,7 @@ onBeforeUnmount(() => {
             </marker>
           </defs>
 
-          <!-- ═══════ 图形化空状态 ═══════ -->
+          <!-- 空结构图形 -->
           <g v-if="isStructureEmpty">
             <g v-if="emptyType === 'stack'" transform="translate(90,20)">
               <ellipse cx="60" cy="10" rx="50" ry="10" class="viz-empty-shape" />
@@ -860,220 +1790,475 @@ onBeforeUnmount(() => {
             <text x="150" y="170" class="viz-empty-text">{{ emptyLabel }}</text>
           </g>
 
-          <!-- ═══════ Stack ═══════ -->
+          <!-- Stack -->
           <g v-if="stackLayout && stackLayout.items.length > 0">
-            <template v-for="(it, i) in stackLayout.items" :key="`si-${i}`">
-              <ellipse :cx="stackLayout.cx" :cy="it.y + stackLayout.cylItemH / 2" :rx="stackLayout.cylRx" :ry="CYL_RY"
-                class="viz-cyl-sep" :class="{ 'viz-node--added': it.diff === 'added' }" />
-              <rect :x="stackLayout.cx - stackLayout.cylRx" :y="it.y - stackLayout.cylItemH / 2"
-                :width="stackLayout.cylRx * 2" :height="stackLayout.cylItemH" class="viz-cyl-body"
-                :class="{ 'viz-cyl-body--top': it.isTop, 'viz-node--added': it.diff === 'added' }" />
-              <line :x1="stackLayout.cx - stackLayout.cylRx" :y1="it.y - stackLayout.cylItemH / 2"
-                :x2="stackLayout.cx - stackLayout.cylRx" :y2="it.y + stackLayout.cylItemH / 2" class="viz-cyl-side" />
-              <line :x1="stackLayout.cx + stackLayout.cylRx" :y1="it.y - stackLayout.cylItemH / 2"
-                :x2="stackLayout.cx + stackLayout.cylRx" :y2="it.y + stackLayout.cylItemH / 2" class="viz-cyl-side" />
-              <ellipse :cx="stackLayout.cx" :cy="it.y - stackLayout.cylItemH / 2" :rx="stackLayout.cylRx" :ry="CYL_RY"
-                class="viz-cyl-top" :class="{ 'viz-cyl-top--accent': it.isTop }" />
-              <text :x="stackLayout.cx" :y="it.displayLines.length === 1 ? it.y + 4 : it.y - LINE_H / 2 + 4"
-                class="viz-val" @pointerenter="showTip(stackTipLines(i, it.value, it.isTop), $event)"
-                @pointerleave="hideTip">
-                <template v-if="it.displayLines.length === 1">{{ it.displayLines[0] }}</template>
+            <template v-for="(item, index) in stackLayout.items" :key="`si-${index}`">
+              <ellipse
+                :cx="stackLayout.cx"
+                :cy="item.y + stackLayout.cylItemH / 2"
+                :rx="stackLayout.cylRx"
+                :ry="CYL_RY"
+                class="viz-cyl-sep"
+                :class="{ 'viz-node--added': item.diff === 'added' }"
+              />
+              <rect
+                :x="stackLayout.cx - stackLayout.cylRx"
+                :y="item.y - stackLayout.cylItemH / 2"
+                :width="stackLayout.cylRx * 2"
+                :height="stackLayout.cylItemH"
+                class="viz-cyl-body"
+                :class="{ 'viz-cyl-body--top': item.isTop, 'viz-node--added': item.diff === 'added' }"
+              />
+              <line
+                :x1="stackLayout.cx - stackLayout.cylRx"
+                :y1="item.y - stackLayout.cylItemH / 2"
+                :x2="stackLayout.cx - stackLayout.cylRx"
+                :y2="item.y + stackLayout.cylItemH / 2"
+                class="viz-cyl-side"
+              />
+              <line
+                :x1="stackLayout.cx + stackLayout.cylRx"
+                :y1="item.y - stackLayout.cylItemH / 2"
+                :x2="stackLayout.cx + stackLayout.cylRx"
+                :y2="item.y + stackLayout.cylItemH / 2"
+                class="viz-cyl-side"
+              />
+              <ellipse
+                :cx="stackLayout.cx"
+                :cy="item.y - stackLayout.cylItemH / 2"
+                :rx="stackLayout.cylRx"
+                :ry="CYL_RY"
+                class="viz-cyl-top"
+                :class="{ 'viz-cyl-top--accent': item.isTop }"
+              />
+              <text
+                :x="stackLayout.cx"
+                :y="item.displayLines.length === 1 ? item.y + 4 : item.y - LINE_H / 2 + 4"
+                class="viz-val"
+                @pointerenter="showTip(stackTipLines(index, item.value, item.isTop), $event)"
+                @pointerleave="hideTip"
+              >
+                <template v-if="item.displayLines.length === 1">
+                  {{ item.displayLines[0] }}
+                </template>
                 <template v-else>
-                  <tspan :x="stackLayout.cx" dy="0">{{ it.displayLines[0] }}</tspan>
-                  <tspan :x="stackLayout.cx" :dy="LINE_H">{{ it.displayLines[1] }}</tspan>
+                  <tspan :x="stackLayout.cx" dy="0">{{ item.displayLines[0] }}</tspan>
+                  <tspan :x="stackLayout.cx" :dy="LINE_H">{{ item.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <template v-for="(lbl, li) in it.labels" :key="`sl-${i}-${li}`">
-                <text v-if="lbl.position === 'top'" :x="stackLayout.cx + stackLayout.cylRx + 8" :y="it.y + 4"
-                  class="viz-badge" :style="{ fill: lbl.color }" text-anchor="start">{{ lbl.text }}</text>
+              <template v-for="(labelItem, labelIndex) in item.labels" :key="`sl-${index}-${labelIndex}`">
+                <text
+                  v-if="labelItem.position === 'top'"
+                  :x="stackLayout.cx + stackLayout.cylRx + 8"
+                  :y="item.y + 4"
+                  class="viz-badge"
+                  :style="{ fill: labelItem.color }"
+                  text-anchor="start"
+                >
+                  {{ labelItem.text }}
+                </text>
               </template>
             </template>
           </g>
 
-          <!-- ═══════ Queue ═══════ -->
+          <!-- Queue -->
           <g v-if="queueLayout && queueLayout.items.length > 0">
-            <template v-for="(it, i) in queueLayout.items" :key="`qi-${i}`">
-              <rect :x="it.x" :y="PAD + 20" :width="queueLayout.boxW" :height="queueLayout.boxH" rx="6" class="viz-box"
-                :class="{ 'viz-box--accent': it.labels.length > 0, 'viz-node--added': it.diff === 'added' }" />
-              <text :x="it.x + queueLayout.boxW / 2"
-                :y="it.displayLines.length === 1 ? PAD + 20 + queueLayout.boxH / 2 + 4 : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4"
-                class="viz-val" @pointerenter="showTip(queueTipLines(i, it.value, it.labels), $event)"
-                @pointerleave="hideTip">
-                <template v-if="it.displayLines.length === 1">{{ it.displayLines[0] }}</template>
+            <template v-for="(item, index) in queueLayout.items" :key="`qi-${index}`">
+              <rect
+                :x="item.x"
+                :y="PAD + 20"
+                :width="queueLayout.boxW"
+                :height="queueLayout.boxH"
+                rx="6"
+                class="viz-box"
+                :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }"
+              />
+              <text
+                :x="item.x + queueLayout.boxW / 2"
+                :y="item.displayLines.length === 1 ? PAD + 20 + queueLayout.boxH / 2 + 4 : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4"
+                class="viz-val"
+                @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)"
+                @pointerleave="hideTip"
+              >
+                <template v-if="item.displayLines.length === 1">
+                  {{ item.displayLines[0] }}
+                </template>
                 <template v-else>
-                  <tspan :x="it.x + queueLayout.boxW / 2" dy="0">{{ it.displayLines[0] }}</tspan>
-                  <tspan :x="it.x + queueLayout.boxW / 2" :dy="LINE_H">{{ it.displayLines[1] }}</tspan>
+                  <tspan :x="item.x + queueLayout.boxW / 2" dy="0">{{ item.displayLines[0] }}</tspan>
+                  <tspan :x="item.x + queueLayout.boxW / 2" :dy="LINE_H">{{ item.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <line v-if="i < queueLayout.items.length - 1" :x1="it.x + queueLayout.boxW + 4"
-                :y1="PAD + 20 + queueLayout.boxH / 2" :x2="queueLayout.items[i + 1].x - 4"
-                :y2="PAD + 20 + queueLayout.boxH / 2" class="viz-arrow" marker-end="url(#viz-arrow)" />
-              <template v-for="(lbl, li) in it.labels" :key="`qlbl-${i}-${li}`">
-                <text v-if="lbl.position === 'top'" :x="it.x + queueLayout.boxW / 2" :y="PAD + 12" class="viz-badge"
-                  :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+              <line
+                v-if="index < queueLayout.items.length - 1"
+                :x1="item.x + queueLayout.boxW + 4"
+                :y1="PAD + 20 + queueLayout.boxH / 2"
+                :x2="queueLayout.items[index + 1].x - 4"
+                :y2="PAD + 20 + queueLayout.boxH / 2"
+                class="viz-arrow"
+                marker-end="url(#viz-arrow)"
+              />
+              <template v-for="(labelItem, labelIndex) in item.labels" :key="`ql-${index}-${labelIndex}`">
+                <text
+                  v-if="labelItem.position === 'top'"
+                  :x="item.x + queueLayout.boxW / 2"
+                  :y="PAD + 12"
+                  class="viz-badge"
+                  :style="{ fill: labelItem.color }"
+                >
+                  {{ labelItem.text }}
+                </text>
                 <g v-else>
-                  <line :x1="it.x + queueLayout.boxW / 2" :y1="PAD + 20 + queueLayout.boxH + 2"
-                    :x2="it.x + queueLayout.boxW / 2" :y2="PAD + 20 + queueLayout.boxH + 18" class="viz-leader"
-                    :style="{ stroke: lbl.color }" />
-                  <text :x="it.x + queueLayout.boxW / 2" :y="PAD + 20 + queueLayout.boxH + 28" class="viz-badge"
-                    :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+                  <line
+                    :x1="item.x + queueLayout.boxW / 2"
+                    :y1="PAD + 20 + queueLayout.boxH + 2"
+                    :x2="item.x + queueLayout.boxW / 2"
+                    :y2="PAD + 20 + queueLayout.boxH + 18"
+                    class="viz-leader"
+                    :style="{ stroke: labelItem.color }"
+                  />
+                  <text
+                    :x="item.x + queueLayout.boxW / 2"
+                    :y="PAD + 20 + queueLayout.boxH + 28"
+                    class="viz-badge"
+                    :style="{ fill: labelItem.color }"
+                  >
+                    {{ labelItem.text }}
+                  </text>
                 </g>
               </template>
             </template>
           </g>
 
-          <!-- ═══════ SList ═══════ -->
+          <!-- SList -->
           <g v-if="slistLayout && slistLayout.nodes.length > 0">
-            <template v-for="(nd, i) in slistLayout.nodes" :key="`sn-${nd.id}`">
-              <rect :x="nd.x" :y="PAD + 20" :width="slistLayout.nodeW" :height="slistLayout.nodeH" rx="8"
+            <template v-for="(node, index) in slistLayout.nodes" :key="`sn-${node.id}`">
+              <rect
+                :x="node.x"
+                :y="PAD + 20"
+                :width="slistLayout.nodeW"
+                :height="slistLayout.nodeH"
+                rx="8"
                 class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': nd.labels.length > 0, 'viz-node--added': nd.diff === 'added' }" />
-              <text :x="nd.x + slistLayout.nodeW / 2"
-                :y="nd.displayLines.length === 1 ? PAD + 20 + slistLayout.nodeH / 2 - 4 : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2"
+                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }"
+              />
+              <text
+                :x="node.x + slistLayout.nodeW / 2"
+                :y="node.displayLines.length === 1 ? PAD + 20 + slistLayout.nodeH / 2 - 4 : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2"
                 class="viz-val"
-                @pointerenter="showTip(listTipLines(nd.id, nd.value, nd.labels, slistOrdered[i]?.next), $event)"
-                @pointerleave="hideTip">
-                <template v-if="nd.displayLines.length === 1">{{ nd.displayLines[0] }}</template>
+                @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, slistOrdered[index]?.next), $event)"
+                @pointerleave="hideTip"
+              >
+                <template v-if="node.displayLines.length === 1">
+                  {{ node.displayLines[0] }}
+                </template>
                 <template v-else>
-                  <tspan :x="nd.x + slistLayout.nodeW / 2" dy="0">{{ nd.displayLines[0] }}</tspan>
-                  <tspan :x="nd.x + slistLayout.nodeW / 2" :dy="LINE_H">{{ nd.displayLines[1] }}</tspan>
+                  <tspan :x="node.x + slistLayout.nodeW / 2" dy="0">{{ node.displayLines[0] }}</tspan>
+                  <tspan :x="node.x + slistLayout.nodeW / 2" :dy="LINE_H">{{ node.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <text :x="nd.x + slistLayout.nodeW / 2" :y="PAD + 20 + slistLayout.nodeH / 2 + 14" class="viz-ptr">#{{
-                nd.id }}</text>
-              <template v-for="(lbl, li) in nd.labels" :key="`snlbl-${nd.id}-${li}`">
-                <text v-if="lbl.position === 'top'" :x="nd.x + slistLayout.nodeW / 2" :y="PAD + 12" class="viz-badge"
-                  :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+              <text
+                :x="node.x + slistLayout.nodeW / 2"
+                :y="PAD + 20 + slistLayout.nodeH / 2 + 14"
+                class="viz-ptr"
+              >
+                #{{ node.id }}
+              </text>
+              <template v-for="(labelItem, labelIndex) in node.labels" :key="`snl-${node.id}-${labelIndex}`">
+                <text
+                  v-if="labelItem.position === 'top'"
+                  :x="node.x + slistLayout.nodeW / 2"
+                  :y="PAD + 12"
+                  class="viz-badge"
+                  :style="{ fill: labelItem.color }"
+                >
+                  {{ labelItem.text }}
+                </text>
                 <g v-else>
-                  <line :x1="nd.x + slistLayout.nodeW / 2" :y1="PAD + 20 + slistLayout.nodeH + 2"
-                    :x2="nd.x + slistLayout.nodeW / 2" :y2="PAD + 20 + slistLayout.nodeH + 18" class="viz-leader"
-                    :style="{ stroke: lbl.color }" />
-                  <text :x="nd.x + slistLayout.nodeW / 2" :y="PAD + 20 + slistLayout.nodeH + 28" class="viz-badge"
-                    :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+                  <line
+                    :x1="node.x + slistLayout.nodeW / 2"
+                    :y1="PAD + 20 + slistLayout.nodeH + 2"
+                    :x2="node.x + slistLayout.nodeW / 2"
+                    :y2="PAD + 20 + slistLayout.nodeH + 18"
+                    class="viz-leader"
+                    :style="{ stroke: labelItem.color }"
+                  />
+                  <text
+                    :x="node.x + slistLayout.nodeW / 2"
+                    :y="PAD + 20 + slistLayout.nodeH + 28"
+                    class="viz-badge"
+                    :style="{ fill: labelItem.color }"
+                  >
+                    {{ labelItem.text }}
+                  </text>
                 </g>
               </template>
-              <line v-if="i < slistLayout.nodes.length - 1" :x1="nd.x + slistLayout.nodeW + 2"
-                :y1="PAD + 20 + slistLayout.nodeH / 2" :x2="slistLayout.nodes[i + 1].x - 2"
-                :y2="PAD + 20 + slistLayout.nodeH / 2" class="viz-arrow" marker-end="url(#viz-arrow)" />
-              <g v-if="nd.isTail">
-                <line :x1="nd.x + slistLayout.nodeW + 2" :y1="PAD + 20 + slistLayout.nodeH / 2"
-                  :x2="nd.x + slistLayout.nodeW + 28" :y2="PAD + 20 + slistLayout.nodeH / 2" class="viz-arrow" />
-                <text :x="nd.x + slistLayout.nodeW + 32" :y="PAD + 20 + slistLayout.nodeH / 2 + 4"
-                  class="viz-null">⊘</text>
+              <line
+                v-if="index < slistLayout.nodes.length - 1"
+                :x1="node.x + slistLayout.nodeW + 2"
+                :y1="PAD + 20 + slistLayout.nodeH / 2"
+                :x2="slistLayout.nodes[index + 1].x - 2"
+                :y2="PAD + 20 + slistLayout.nodeH / 2"
+                class="viz-arrow"
+                marker-end="url(#viz-arrow)"
+              />
+              <g v-if="node.isTail">
+                <line
+                  :x1="node.x + slistLayout.nodeW + 2"
+                  :y1="PAD + 20 + slistLayout.nodeH / 2"
+                  :x2="node.x + slistLayout.nodeW + 28"
+                  :y2="PAD + 20 + slistLayout.nodeH / 2"
+                  class="viz-arrow"
+                />
+                <text
+                  :x="node.x + slistLayout.nodeW + 32"
+                  :y="PAD + 20 + slistLayout.nodeH / 2 + 4"
+                  class="viz-null"
+                >
+                  ⊘
+                </text>
               </g>
             </template>
           </g>
 
-          <!-- ═══════ DList ═══════ -->
+          <!-- DList -->
           <g v-if="dlistLayout && dlistLayout.nodes.length > 0">
-            <template v-for="(nd, i) in dlistLayout.nodes" :key="`dn-${nd.id}`">
-              <rect :x="nd.x" :y="PAD + 20" :width="dlistLayout.nodeW" :height="dlistLayout.nodeH" rx="8"
+            <template v-for="(node, index) in dlistLayout.nodes" :key="`dn-${node.id}`">
+              <rect
+                :x="node.x"
+                :y="PAD + 20"
+                :width="dlistLayout.nodeW"
+                :height="dlistLayout.nodeH"
+                rx="8"
                 class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': nd.labels.length > 0, 'viz-node--added': nd.diff === 'added' }" />
-              <text :x="nd.x + dlistLayout.nodeW / 2"
-                :y="nd.displayLines.length === 1 ? PAD + 20 + dlistLayout.nodeH / 2 - 4 : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2"
+                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }"
+              />
+              <text
+                :x="node.x + dlistLayout.nodeW / 2"
+                :y="node.displayLines.length === 1 ? PAD + 20 + dlistLayout.nodeH / 2 - 4 : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2"
                 class="viz-val"
-                @pointerenter="showTip(listTipLines(nd.id, nd.value, nd.labels, dlistOrdered[i]?.next, dlistOrdered[i]?.prev), $event)"
-                @pointerleave="hideTip">
-                <template v-if="nd.displayLines.length === 1">{{ nd.displayLines[0] }}</template>
+                @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, dlistOrdered[index]?.next, dlistOrdered[index]?.prev), $event)"
+                @pointerleave="hideTip"
+              >
+                <template v-if="node.displayLines.length === 1">
+                  {{ node.displayLines[0] }}
+                </template>
                 <template v-else>
-                  <tspan :x="nd.x + dlistLayout.nodeW / 2" dy="0">{{ nd.displayLines[0] }}</tspan>
-                  <tspan :x="nd.x + dlistLayout.nodeW / 2" :dy="LINE_H">{{ nd.displayLines[1] }}</tspan>
+                  <tspan :x="node.x + dlistLayout.nodeW / 2" dy="0">{{ node.displayLines[0] }}</tspan>
+                  <tspan :x="node.x + dlistLayout.nodeW / 2" :dy="LINE_H">{{ node.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <text :x="nd.x + dlistLayout.nodeW / 2" :y="PAD + 20 + dlistLayout.nodeH / 2 + 14" class="viz-ptr">#{{
-                nd.id }}</text>
-              <template v-for="(lbl, li) in nd.labels" :key="`dnlbl-${nd.id}-${li}`">
-                <text v-if="lbl.position === 'top'" :x="nd.x + dlistLayout.nodeW / 2" :y="PAD + 12" class="viz-badge"
-                  :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+              <text
+                :x="node.x + dlistLayout.nodeW / 2"
+                :y="PAD + 20 + dlistLayout.nodeH / 2 + 14"
+                class="viz-ptr"
+              >
+                #{{ node.id }}
+              </text>
+              <template v-for="(labelItem, labelIndex) in node.labels" :key="`dnl-${node.id}-${labelIndex}`">
+                <text
+                  v-if="labelItem.position === 'top'"
+                  :x="node.x + dlistLayout.nodeW / 2"
+                  :y="PAD + 12"
+                  class="viz-badge"
+                  :style="{ fill: labelItem.color }"
+                >
+                  {{ labelItem.text }}
+                </text>
                 <g v-else>
-                  <line :x1="nd.x + dlistLayout.nodeW / 2" :y1="PAD + 20 + dlistLayout.nodeH + 2"
-                    :x2="nd.x + dlistLayout.nodeW / 2" :y2="PAD + 20 + dlistLayout.nodeH + 18" class="viz-leader"
-                    :style="{ stroke: lbl.color }" />
-                  <text :x="nd.x + dlistLayout.nodeW / 2" :y="PAD + 20 + dlistLayout.nodeH + 28" class="viz-badge"
-                    :style="{ fill: lbl.color }">{{ lbl.text }}</text>
+                  <line
+                    :x1="node.x + dlistLayout.nodeW / 2"
+                    :y1="PAD + 20 + dlistLayout.nodeH + 2"
+                    :x2="node.x + dlistLayout.nodeW / 2"
+                    :y2="PAD + 20 + dlistLayout.nodeH + 18"
+                    class="viz-leader"
+                    :style="{ stroke: labelItem.color }"
+                  />
+                  <text
+                    :x="node.x + dlistLayout.nodeW / 2"
+                    :y="PAD + 20 + dlistLayout.nodeH + 28"
+                    class="viz-badge"
+                    :style="{ fill: labelItem.color }"
+                  >
+                    {{ labelItem.text }}
+                  </text>
                 </g>
               </template>
-              <g v-if="i < dlistLayout.nodes.length - 1">
-                <line :x1="nd.x + dlistLayout.nodeW + 2" :y1="PAD + 20 + dlistLayout.nodeH / 2 - 4"
-                  :x2="dlistLayout.nodes[i + 1].x - 2" :y2="PAD + 20 + dlistLayout.nodeH / 2 - 4" class="viz-arrow"
-                  marker-end="url(#viz-arrow)" />
-                <line :x1="dlistLayout.nodes[i + 1].x - 2" :y1="PAD + 20 + dlistLayout.nodeH / 2 + 4"
-                  :x2="nd.x + dlistLayout.nodeW + 2" :y2="PAD + 20 + dlistLayout.nodeH / 2 + 4" class="viz-arrow"
-                  marker-end="url(#viz-arrow)" />
+              <g v-if="index < dlistLayout.nodes.length - 1">
+                <line
+                  :x1="node.x + dlistLayout.nodeW + 2"
+                  :y1="PAD + 20 + dlistLayout.nodeH / 2 - 4"
+                  :x2="dlistLayout.nodes[index + 1].x - 2"
+                  :y2="PAD + 20 + dlistLayout.nodeH / 2 - 4"
+                  class="viz-arrow"
+                  marker-end="url(#viz-arrow)"
+                />
+                <line
+                  :x1="dlistLayout.nodes[index + 1].x - 2"
+                  :y1="PAD + 20 + dlistLayout.nodeH / 2 + 4"
+                  :x2="node.x + dlistLayout.nodeW + 2"
+                  :y2="PAD + 20 + dlistLayout.nodeH / 2 + 4"
+                  class="viz-arrow"
+                  marker-end="url(#viz-arrow)"
+                />
               </g>
             </template>
           </g>
 
-          <!-- ═══════ Tree / BST / Heap ═══════ -->
+          <!-- Tree / BST / Heap -->
           <g v-if="treeLayout">
-            <line v-for="(e, i) in treeLayout.edges" :key="`te-${i}`" :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2"
-              :class="isHeap ? 'viz-edge--dashed' : 'viz-edge'" />
-            <g v-for="nd in treeLayout.nodes" :key="`tn-${nd.id}`">
-              <circle v-if="!isHeap" :cx="nd.x" :cy="nd.y" :r="treeLayout.treeR" class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': nd.isRoot, 'viz-node--added': nd.diff === 'added' }" />
-              <rect v-else :x="nd.x - treeLayout.treeR" :y="nd.y - treeLayout.treeR" :width="treeLayout.treeR * 2"
-                :height="treeLayout.treeR * 2" rx="6" class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': nd.isRoot, 'viz-node--added': nd.diff === 'added' }" />
-              <text :x="nd.x" :y="nd.y + 5" class="viz-val" @pointerenter="showTip(treeTipLines(nd), $event)"
-                @pointerleave="hideTip">{{ nd.displayLines[0] }}</text>
+            <line
+              v-for="(edge, index) in treeLayout.edges"
+              :key="`te-${index}`"
+              :x1="edge.x1"
+              :y1="edge.y1"
+              :x2="edge.x2"
+              :y2="edge.y2"
+              :class="isHeap ? 'viz-edge--dashed' : 'viz-edge'"
+            />
+            <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
+              <circle
+                v-if="!isHeap"
+                :cx="node.x"
+                :cy="node.y"
+                :r="treeLayout.treeR"
+                class="viz-tree-node"
+                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }"
+              />
+              <rect
+                v-else
+                :x="node.x - treeLayout.treeR"
+                :y="node.y - treeLayout.treeR"
+                :width="treeLayout.treeR * 2"
+                :height="treeLayout.treeR * 2"
+                rx="6"
+                class="viz-tree-node"
+                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }"
+              />
+              <text
+                :x="node.x"
+                :y="node.y + 5"
+                class="viz-val"
+                @pointerenter="showTip(treeTipLines(node), $event)"
+                @pointerleave="hideTip"
+              >
+                {{ node.displayLines[0] }}
+              </text>
             </g>
             <g v-if="isHeap && treeLayout.heapArray.length > 0">
-              <line :x1="treeLayout.heapArray[0].x - 4" :y1="treeLayout.heapArrayY - 4"
-                :x2="treeLayout.heapArray[treeLayout.heapArray.length - 1].x + 36 + 4" :y2="treeLayout.heapArrayY - 4"
-                class="viz-edge" />
-              <g v-for="h in treeLayout.heapArray" :key="`ha-${h.index}`">
-                <rect :x="h.x" :y="treeLayout.heapArrayY" :width="34" :height="28" rx="4" class="viz-box" />
-                <text :x="h.x + 17" :y="treeLayout.heapArrayY + 18" class="viz-val viz-val--sm">{{ h.displayLines[0]
-                }}</text>
-                <text :x="h.x + 17" :y="treeLayout.heapArrayY + 42" class="viz-ptr">{{ h.index }}</text>
+              <line
+                :x1="treeLayout.heapArray[0].x - 4"
+                :y1="treeLayout.heapArrayY - 4"
+                :x2="treeLayout.heapArray[treeLayout.heapArray.length - 1].x + 36 + 4"
+                :y2="treeLayout.heapArrayY - 4"
+                class="viz-edge"
+              />
+              <g v-for="item in treeLayout.heapArray" :key="`ha-${item.index}`">
+                <rect
+                  :x="item.x"
+                  :y="treeLayout.heapArrayY"
+                  :width="34"
+                  :height="28"
+                  rx="4"
+                  class="viz-box"
+                />
+                <text :x="item.x + 17" :y="treeLayout.heapArrayY + 18" class="viz-val viz-val--sm">
+                  {{ item.displayLines[0] }}
+                </text>
+                <text :x="item.x + 17" :y="treeLayout.heapArrayY + 42" class="viz-ptr">
+                  {{ item.index }}
+                </text>
               </g>
             </g>
           </g>
 
-          <!-- ═══════ Graph ═══════ -->
+          <!-- Graph -->
           <g v-if="graphLayout">
-            <line v-for="(e, i) in graphLayout.edges" :key="`ge-${i}`" :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2"
-              class="viz-edge" :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined" />
-            <text v-for="(e, i) in graphLayout.edges" :key="`gw-${i}`" v-show="isWeighted && e.weight !== undefined"
-              :x="e.mx" :y="e.my - 6" class="viz-weight">{{ e.weight }}</text>
-            <g v-for="nd in graphLayout.nodes" :key="`gn-${nd.id}`">
-              <circle :cx="nd.x" :cy="nd.y" :r="graphLayout.graphR" class="viz-graph-node"
-                :class="{ 'viz-node--added': nd.diff === 'added' }"
-                :style="{ fill: nd.color + '18', stroke: nd.color }" />
-              <text :x="nd.x" :y="nd.y + 5" class="viz-val" @pointerenter="showTip(graphTipLines(nd), $event)"
-                @pointerleave="hideTip">{{ nd.displayLines[0] }}</text>
+            <line
+              v-for="(edge, index) in graphLayout.edges"
+              :key="`ge-${index}`"
+              :x1="edge.x1"
+              :y1="edge.y1"
+              :x2="edge.x2"
+              :y2="edge.y2"
+              class="viz-edge"
+              :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined"
+            />
+            <text
+              v-for="(edge, index) in graphLayout.edges"
+              :key="`gw-${index}`"
+              v-show="isWeighted && edge.weight !== undefined"
+              :x="edge.mx"
+              :y="edge.my - 6"
+              class="viz-weight"
+            >
+              {{ edge.weight }}
+            </text>
+            <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`">
+              <circle
+                :cx="node.x"
+                :cy="node.y"
+                :r="graphLayout.graphR"
+                class="viz-graph-node"
+                :class="{ 'viz-node--added': node.diff === 'added' }"
+                :style="{ fill: node.color + '18', stroke: node.color }"
+              />
+              <text
+                :x="node.x"
+                :y="node.y + 5"
+                class="viz-val"
+                @pointerenter="showTip(graphTipLines(node), $event)"
+                @pointerleave="hideTip"
+              >
+                {{ node.displayLines[0] }}
+              </text>
             </g>
           </g>
 
-          <!-- ═══════ Ghost 元素（移除渐退） ═══════ -->
-          <template v-for="g in removedKeys" :key="`ghost-${g.key}`">
-            <circle v-if="g.shape === 'circle'" :cx="g.x" :cy="g.y" :r="g.r" class="viz-ghost viz-ghost--circle" />
-            <ellipse v-else-if="g.shape === 'ellipse'" :cx="g.x" :cy="g.y" :rx="g.rx" :ry="g.ry"
-              class="viz-ghost viz-ghost--circle" />
-            <rect v-else :x="g.x" :y="g.y" :width="g.w ?? 72" :height="g.h ?? 44" rx="6" class="viz-ghost" />
+          <!-- Ghost（移除渐出） -->
+          <template v-for="ghost in removedKeys" :key="`ghost-${ghost.key}`">
+            <circle
+              v-if="ghost.shape === 'circle'"
+              :cx="ghost.x"
+              :cy="ghost.y"
+              :r="ghost.r"
+              class="viz-ghost viz-ghost--circle"
+            />
+            <ellipse
+              v-else-if="ghost.shape === 'ellipse'"
+              :cx="ghost.x"
+              :cy="ghost.y"
+              :rx="ghost.rx"
+              :ry="ghost.ry"
+              class="viz-ghost viz-ghost--circle"
+            />
+            <rect
+              v-else
+              :x="ghost.x"
+              :y="ghost.y"
+              :width="ghost.w ?? 72"
+              :height="ghost.h ?? 44"
+              rx="6"
+              class="viz-ghost"
+            />
           </template>
         </svg>
       </Transition>
 
-      <!-- Tooltip -->
       <Transition name="fade">
         <div v-if="tip.show" class="viz-tooltip" :style="tipStyle">
-          <div v-for="(line, li) in tip.lines" :key="li" class="viz-tooltip__row">
+          <div v-for="(line, index) in tip.lines" :key="index" class="viz-tooltip__row">
             <span class="viz-tooltip__label">{{ line.label }}</span>
             <span class="viz-tooltip__value">{{ line.value }}</span>
           </div>
         </div>
       </Transition>
 
-      <!-- 缩放还原提示 -->
       <Transition name="fade">
         <div v-if="showZoomHint" class="viz-panel__zoom-hint">
           双击画布还原缩放定位
         </div>
       </Transition>
 
-      <!-- 设置齿轮 -->
       <VizSettings />
     </div>
   </section>
@@ -1143,15 +2328,33 @@ onBeforeUnmount(() => {
   background-color: var(--color-bg-hover);
 }
 
+/* metadata */
 .viz-panel__meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px var(--space-2);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-surface-alt);
   font-size: 11px;
   color: var(--color-text-tertiary);
+}
+
+.viz-panel__meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+.viz-panel__meta-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .viz-panel__meta-item {
@@ -1187,7 +2390,6 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
-/* ---- 缩放还原提示 ---- */
 .viz-panel__zoom-hint {
   position: absolute;
   bottom: 14px;
@@ -1206,7 +2408,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
 }
 
-/* ---- Tooltip ---- */
 .viz-tooltip {
   position: absolute;
   padding: 8px 12px;
@@ -1240,7 +2441,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-/* ---- 空状态图形 ---- */
 .viz-empty-shape {
   fill: none;
   stroke: var(--color-text-tertiary);
@@ -1256,7 +2456,7 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-/* ---- 公共 SVG 样式 ---- */
+/* svg common */
 .viz-val {
   font-size: 13px;
   font-family: var(--font-mono);
@@ -1387,6 +2587,7 @@ onBeforeUnmount(() => {
   stroke-width: 1.5;
 }
 
+/* 新增渐入 */
 .viz-node--added {
   transform-box: fill-box;
   transform-origin: center;
@@ -1396,15 +2597,15 @@ onBeforeUnmount(() => {
 @keyframes viz-pop {
   from {
     opacity: 0;
-    transform: scale(0.85);
+    transform: scale(0.88);
   }
-
   to {
     opacity: 1;
     transform: scale(1);
   }
 }
 
+/* 移除 ghost（红虚线） */
 .viz-ghost {
   fill: none;
   stroke: var(--color-error);
@@ -1421,43 +2622,55 @@ onBeforeUnmount(() => {
 
 @keyframes viz-fade-out {
   from {
-    opacity: 0.4;
+    opacity: 0.45;
     transform: scale(1);
   }
-
   to {
     opacity: 0;
-    transform: scale(0.85);
+    transform: scale(0.86);
   }
 }
 
-/* ---- 平滑过渡 ---- */
-
+/* 平滑位移：仅在 smooth 模式开启 */
 .viz-panel--smooth .viz-tree-node,
 .viz-panel--smooth .viz-graph-node {
-  transition: cx var(--duration-viz) var(--ease), cy var(--duration-viz) var(--ease), x var(--duration-viz) var(--ease), y var(--duration-viz) var(--ease), r var(--duration-viz) var(--ease), fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
+  transition:
+    cx var(--duration-viz) var(--ease),
+    cy var(--duration-viz) var(--ease),
+    x var(--duration-viz) var(--ease),
+    y var(--duration-viz) var(--ease),
+    r var(--duration-viz) var(--ease),
+    fill var(--duration-viz) var(--ease),
+    stroke var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-edge,
 .viz-panel--smooth .viz-edge--dashed,
 .viz-panel--smooth .viz-arrow {
-  transition: x1 var(--duration-viz) var(--ease), y1 var(--duration-viz) var(--ease), x2 var(--duration-viz) var(--ease), y2 var(--duration-viz) var(--ease);
+  transition:
+    x1 var(--duration-viz) var(--ease),
+    y1 var(--duration-viz) var(--ease),
+    x2 var(--duration-viz) var(--ease),
+    y2 var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-val,
 .viz-panel--smooth .viz-ptr,
 .viz-panel--smooth .viz-badge {
-  transition: x var(--duration-viz) var(--ease), y var(--duration-viz) var(--ease);
+  transition:
+    x var(--duration-viz) var(--ease),
+    y var(--duration-viz) var(--ease);
 }
 
 .viz-panel--smooth .viz-cyl-body,
 .viz-panel--smooth .viz-cyl-top,
 .viz-panel--smooth .viz-box,
 .viz-panel--smooth .viz-node-rect {
-  transition: fill var(--duration-viz) var(--ease), stroke var(--duration-viz) var(--ease);
+  transition:
+    fill var(--duration-viz) var(--ease),
+    stroke var(--duration-viz) var(--ease);
 }
 
-/* 新增元素禁用位移过渡，避免从默认坐标飞入 */
 .viz-panel--smooth .viz-node--added {
   transition: none;
 }

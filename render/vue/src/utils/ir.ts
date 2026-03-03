@@ -1,12 +1,15 @@
+// src/utils/ir.ts
 /**
  * IR TOML 解析与映射
  *
  * 解析后的 IrDocument 使用 markRaw 标记，
  * 防止 Vue 对嵌套数据创建响应式代理（消除渲染卡死根因）。
  *
+ * 同时保留未知但可解析字段（extra），避免信息丢失。
+ *
  * @file src/utils/ir.ts
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-03
  */
 
 import * as toml from '@iarna/toml'
@@ -31,11 +34,8 @@ import { logDebug } from '@/utils/viz-flags'
  * @interface
  */
 export interface ParseIrResult {
-  /** 是否解析成功 */
   ok: boolean
-  /** IR 文档（已 markRaw） */
   document?: IrDocument
-  /** 错误消息 */
   errorMessage?: string
 }
 
@@ -43,12 +43,6 @@ export interface ParseIrResult {
  *  markRaw 工具
  * ---------------------------------------------------------------- */
 
-/**
- * 递归标记对象为 raw，阻止 Vue 创建响应式代理
- *
- * @param value - 任意值
- * @returns 原值（对象/数组已标记）
- */
 function deepMarkRaw<T>(value: T): T {
   if (value === null || value === undefined || typeof value !== 'object') {
     return value
@@ -61,9 +55,9 @@ function deepMarkRaw<T>(value: T): T {
       }
     }
   } else {
-    for (const val of Object.values(value as Record<string, unknown>)) {
-      if (val !== null && typeof val === 'object') {
-        deepMarkRaw(val)
+    for (const nested of Object.values(value as Record<string, unknown>)) {
+      if (nested !== null && typeof nested === 'object') {
+        deepMarkRaw(nested)
       }
     }
   }
@@ -71,29 +65,37 @@ function deepMarkRaw<T>(value: T): T {
 }
 
 /* ----------------------------------------------------------------
+ *  Unknown 字段提取
+ * ---------------------------------------------------------------- */
+
+function pickExtra(
+  source: Record<string, unknown>,
+  knownKeys: string[],
+): Record<string, unknown> | undefined {
+  const known = new Set<string>(knownKeys)
+  const extraEntries = Object.entries(source).filter(([key]) => !known.has(key))
+  if (extraEntries.length === 0) return undefined
+  return Object.fromEntries(extraEntries)
+}
+
+/* ----------------------------------------------------------------
  *  公开 API
  * ---------------------------------------------------------------- */
 
-/**
- * 解析 TOML 并映射为 IR 文档
- *
- * 返回的 document 已通过 deepMarkRaw 处理，可安全存入
- * shallowRef 而不触发 Vue 深层代理。
- *
- * @param content - TOML 原始文本
- * @returns 解析结果
- */
 export function parseIrToml(content: string): ParseIrResult {
   try {
     logDebug('[ir] parsing TOML, length =', content.length)
     const raw = toml.parse(content) as Record<string, unknown>
     const document = mapDocument(raw)
     const validationError = validateDocument(document)
+
     if (validationError) {
       logDebug('[ir] validation failed:', validationError)
       return { ok: false, errorMessage: validationError }
     }
+
     deepMarkRaw(document)
+
     logDebug('[ir] parse ok', {
       kind: document.object.kind,
       states: document.states.length,
@@ -101,6 +103,7 @@ export function parseIrToml(content: string): ParseIrResult {
       hasResult: document.result !== undefined,
       hasError: document.error !== undefined,
     })
+
     return { ok: true, document }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'TOML 解析失败'
@@ -113,20 +116,27 @@ export function parseIrToml(content: string): ParseIrResult {
  *  校验
  * ---------------------------------------------------------------- */
 
-/**
- * 校验 IR 文档结构
- *
- * @param document - IR 文档
- * @returns 错误消息，校验通过时返回空字符串
- */
 function validateDocument(document: IrDocument): string {
   const allowedLangs = new Set([
-    'python', 'c', 'zig', 'rust', 'java', 'csharp', 'typescript', 'lua',
+    'python',
+    'c',
+    'zig',
+    'rust',
+    'java',
+    'csharp',
+    'typescript',
+    'lua',
   ])
   const allowedKinds = new Set([
-    'stack', 'queue', 'slist', 'dlist',
-    'binary_tree', 'bst',
-    'graph_undirected', 'graph_directed', 'graph_weighted',
+    'stack',
+    'queue',
+    'slist',
+    'dlist',
+    'binary_tree',
+    'bst',
+    'graph_undirected',
+    'graph_directed',
+    'graph_weighted',
   ])
 
   if (!document.meta.createdAt || !document.meta.lang || !document.meta.langVersion) {
@@ -214,12 +224,15 @@ function validateDocument(document: IrDocument): string {
   const steps = document.steps ?? []
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index]
+
     if (step.id !== index) {
       return 'steps.id 必须从 0 连续递增'
     }
+
     if (step.before < 0 || step.before >= document.states.length) {
       return 'steps.before 未引用有效 states.id'
     }
+
     if (step.after !== undefined) {
       if (step.after < 0 || step.after >= document.states.length) {
         return 'steps.after 未引用有效 states.id'
@@ -227,9 +240,11 @@ function validateDocument(document: IrDocument): string {
     } else if (!document.error || document.error.step !== step.id) {
       return 'steps.after 缺失时必须存在 error.step'
     }
+
     if (step.code?.line !== undefined && step.code.line < 1) {
       return 'steps.code.line 必须为正整数'
     }
+
     if (step.code?.col !== undefined && step.code.col < 1) {
       return 'steps.code.col 必须为正整数'
     }
@@ -239,11 +254,11 @@ function validateDocument(document: IrDocument): string {
 }
 
 /* ----------------------------------------------------------------
- *  映射函数
+ *  映射
  * ---------------------------------------------------------------- */
 
 function mapDocument(raw: Record<string, unknown>): IrDocument {
-  return {
+  const document: IrDocument = {
     meta: mapMeta(raw.meta),
     package: mapPackage(raw.package),
     remarks: mapRemarks(raw.remarks),
@@ -252,51 +267,53 @@ function mapDocument(raw: Record<string, unknown>): IrDocument {
     steps: mapSteps(raw.steps),
     result: mapResult(raw.result),
     error: mapError(raw.error),
+    extra: pickExtra(raw, ['meta', 'package', 'remarks', 'object', 'states', 'steps', 'result', 'error']),
   }
+  return document
 }
 
 function mapMeta(value: unknown): IrMeta {
-  const meta = value as Record<string, unknown>
+  const meta = (value ?? {}) as Record<string, unknown>
   return {
-    createdAt: String(meta?.created_at ?? ''),
-    lang: String(meta?.lang ?? ''),
-    langVersion: String(meta?.lang_version ?? ''),
+    createdAt: String(meta.created_at ?? ''),
+    lang: String(meta.lang ?? ''),
+    langVersion: String(meta.lang_version ?? ''),
+    extra: pickExtra(meta, ['created_at', 'lang', 'lang_version']),
   }
 }
 
 function mapPackage(value: unknown): IrPackage {
-  const pkg = value as Record<string, unknown>
+  const pkg = (value ?? {}) as Record<string, unknown>
   return {
-    name: String(pkg?.name ?? ''),
-    lang: String(pkg?.lang ?? ''),
-    version: String(pkg?.version ?? ''),
+    name: String(pkg.name ?? ''),
+    lang: String(pkg.lang ?? ''),
+    version: String(pkg.version ?? ''),
+    extra: pickExtra(pkg, ['name', 'lang', 'version']),
   }
 }
 
 function mapRemarks(value: unknown): IrRemarks | undefined {
-  if (value === undefined || value === null) {
-    return undefined
-  }
+  if (value === undefined || value === null) return undefined
   const remarks = value as Record<string, unknown>
   return {
     title: remarks.title !== undefined ? String(remarks.title) : undefined,
     author: remarks.author !== undefined ? String(remarks.author) : undefined,
     comment: remarks.comment !== undefined ? String(remarks.comment) : undefined,
+    extra: pickExtra(remarks, ['title', 'author', 'comment']),
   }
 }
 
 function mapObject(value: unknown): IrObject {
-  const object = value as Record<string, unknown>
+  const object = (value ?? {}) as Record<string, unknown>
   return {
-    kind: String(object?.kind ?? '') as IrObject['kind'],
-    label: object?.label !== undefined ? String(object.label) : undefined,
+    kind: String(object.kind ?? '') as IrObject['kind'],
+    label: object.label !== undefined ? String(object.label) : undefined,
+    extra: pickExtra(object, ['kind', 'label']),
   }
 }
 
 function mapStates(value: unknown): IrState[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
+  if (!Array.isArray(value)) return []
   return value.map((item) => {
     const state = item as Record<string, unknown>
     return {
@@ -307,12 +324,11 @@ function mapStates(value: unknown): IrState[] {
 }
 
 function mapSteps(value: unknown): IrStep[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined
-  }
+  if (!Array.isArray(value)) return undefined
   return value.map((item) => {
     const step = item as Record<string, unknown>
     const code = step.code as Record<string, unknown> | undefined
+
     return {
       id: Number(step.id ?? 0),
       op: String(step.op ?? ''),
@@ -321,39 +337,35 @@ function mapSteps(value: unknown): IrStep[] | undefined {
       ret: step.ret as IrStep['ret'],
       note: step.note !== undefined ? String(step.note) : undefined,
       args: (step.args ?? {}) as IrStep['args'],
-      code:
-        code !== undefined
-          ? {
-            line: Number(code.line ?? 0),
-            col: code.col !== undefined ? Number(code.col) : undefined,
-          }
-          : undefined,
+      code: code
+        ? {
+          line: Number(code.line ?? 0),
+          col: code.col !== undefined ? Number(code.col) : undefined,
+        }
+        : undefined,
+      extra: pickExtra(step, ['id', 'op', 'before', 'after', 'ret', 'note', 'args', 'code']),
     }
   })
 }
 
 function mapResult(value: unknown): IrResult | undefined {
-  if (value === undefined || value === null) {
-    return undefined
-  }
+  if (value === undefined || value === null) return undefined
   const result = value as Record<string, unknown>
   const commit = result.commit as Record<string, unknown> | undefined
+
   return {
     finalState: Number(result.final_state ?? 0),
-    commit:
-      commit !== undefined
-        ? {
-          op: String(commit.op ?? ''),
-          line: Number(commit.line ?? 0),
-        }
-        : undefined,
+    commit: commit
+      ? {
+        op: String(commit.op ?? ''),
+        line: Number(commit.line ?? 0),
+      }
+      : undefined,
   }
 }
 
 function mapError(value: unknown): IrError | undefined {
-  if (value === undefined || value === null) {
-    return undefined
-  }
+  if (value === undefined || value === null) return undefined
   const error = value as Record<string, unknown>
   return {
     type: String(error.type ?? 'unknown') as IrError['type'],

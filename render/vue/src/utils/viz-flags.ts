@@ -46,7 +46,7 @@ const STORAGE_KEY = 'ds4viz_viz_flags'
  * 默认开关配置
  */
 const DEFAULT_FLAGS: VizFlagsState = {
-    showMetadata: true,
+    showMetadata: false,
     enableSmoothTransitions: true,
     enableCodeLineHighlight: true,
     enableAutoFit: true,

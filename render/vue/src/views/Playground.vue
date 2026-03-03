@@ -1,3 +1,4 @@
+<!-- src/views/Playground.vue -->
 <script setup lang="ts">
 /**
  * 编辑器页面
@@ -37,125 +38,65 @@ import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /* ---- 编辑器状态 ---- */
 
-/** 当前语言 */
 const language = ref<Language>('python')
-
-/** 当前代码 */
 const code = ref<string>(getDefaultTemplate('python'))
-
-/** 语言选择器 key（用于强制刷新） */
 const languageSelectKey = ref<number>(0)
-
-/** 模板加载中 */
 const templateLoading = ref<boolean>(false)
-
-/** 模板加载错误 */
 const templateError = ref<string>('')
-
-/** 运行中 */
 const running = ref<boolean>(false)
-
-/** 执行错误 */
 const executeError = ref<string>('')
-
-/** 执行信息 */
 const executionInfo = ref<string>('')
-
-/** TOML 内容 */
 const tomlContent = ref<string>('')
-
-/** TOML 展开状态 */
 const tomlExpanded = ref<boolean>(false)
 
 /* ---- 可视化状态 ---- */
 
-/** IR 文档（shallow） */
 const irDoc = shallowRef<IrDocument | null>(null)
-
-/** 当前状态索引 */
 const currentStateIndex = ref<number>(0)
-
-/** 自动播放状态 */
 const isPlaying = ref<boolean>(false)
-
-/** 自动播放 timer */
 const playTimer = ref<number | null>(null)
-
-/** 可视化是否已开始（就绪页控制） */
 const vizStarted = ref<boolean>(false)
 
-/**
- * 按 stateIndex 索引的步骤摘要（O(1)）
- */
 const stepSummaryByStateIndex = shallowRef<Map<number, StepSummary>>(new Map())
 
 /* ---- 派生计算 ---- */
 
-/**
- * 是否为默认代码模板
- */
 const isDefaultCode = computed<boolean>(() => {
   const trimmed = code.value.trim()
   return trimmed.length === 0 || trimmed === getDefaultTemplate(language.value).trim()
 })
 
-/**
- * 总状态数
- */
 const totalStates = computed<number>(() => irDoc.value?.states.length ?? 0)
 
-/**
- * 当前状态对象
- */
 const currentState = computed(() => {
   if (!irDoc.value) return null
   return getStateByIndex(irDoc.value, currentStateIndex.value)
 })
 
-/**
- * 当前步骤摘要（O(1) 查找）
- */
 const currentStepInfo = computed<StepSummary | null>(() => {
   return stepSummaryByStateIndex.value.get(currentStateIndex.value) ?? null
 })
 
-/**
- * 代码高亮行
- */
 const highlightLine = computed<number | null>(() => {
   if (!vizFlags.enableCodeLineHighlight) return null
   return currentStepInfo.value?.line ?? null
 })
 
-/**
- * 是否可后退
- */
 const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
-
-/**
- * 是否可前进
- */
 const canStepForward = computed<boolean>(() => currentStateIndex.value < totalStates.value - 1)
 
-/**
- * 是否显示就绪页（受 skipReadyPage 控制）
- */
-const showVizReady = computed<boolean>(() =>
-  irDoc.value !== null
-  && !vizStarted.value
-  && !vizFlags.skipReadyPage
-  && totalStates.value > 1
-  && currentStateIndex.value === 0,
-)
+const showVizReady = computed<boolean>(() => {
+  return (
+    irDoc.value !== null
+    && !vizStarted.value
+    && !vizFlags.skipReadyPage
+    && totalStates.value > 1
+    && currentStateIndex.value === 0
+  )
+})
 
-/* ---- 步骤索引构建 ---- */
+/* ---- 步骤索引 ---- */
 
-/**
- * 将 IrStep 映射为 StepSummary
- *
- * @param step - 原始步骤
- * @returns 步骤摘要
- */
 function mapStepToSummary(step: IrStep): StepSummary {
   return {
     op: step.op,
@@ -166,11 +107,6 @@ function mapStepToSummary(step: IrStep): StepSummary {
   }
 }
 
-/**
- * 基于文档重建步骤索引（after -> summary）
- *
- * @param doc - IR 文档
- */
 function rebuildStepSummaryIndex(doc: IrDocument | null): void {
   const map = new Map<number, StepSummary>()
   if (doc?.steps) {
@@ -183,15 +119,11 @@ function rebuildStepSummaryIndex(doc: IrDocument | null): void {
   stepSummaryByStateIndex.value = map
 }
 
-/* ---- TOML 解析与应用 ---- */
+/* ---- TOML 解析 ---- */
 
-/**
- * 应用 TOML 到可视化状态
- *
- * @param content - TOML 文本
- */
 const applyToml = (content: string): void => {
   const parsed = parseIrToml(content)
+
   if (!parsed.ok || !parsed.document) {
     executeError.value = parsed.errorMessage ?? 'TOML 解析失败'
     irDoc.value = null
@@ -221,11 +153,6 @@ const applyToml = (content: string): void => {
 
 /* ---- 语言与模板 ---- */
 
-/**
- * 处理语言切换
- *
- * @param value - 新语言
- */
 const handleLanguageChange = (value: Language): void => {
   if (!isDefaultCode.value) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
@@ -240,11 +167,6 @@ const handleLanguageChange = (value: Language): void => {
   localStorage.setItem('ds4viz_language', value)
 }
 
-/**
- * 加载模板代码
- *
- * @param templateId - 模板 ID
- */
 const loadTemplate = async (templateId: number): Promise<void> => {
   if (templateLoading.value) return
 
@@ -269,9 +191,6 @@ const loadTemplate = async (templateId: number): Promise<void> => {
 
 /* ---- 执行 ---- */
 
-/**
- * 运行代码
- */
 const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
@@ -305,11 +224,6 @@ const handleRun = async (): Promise<void> => {
 
 /* ---- TOML 文件操作 ---- */
 
-/**
- * 上传 TOML 文件
- *
- * @param event - input change 事件
- */
 const handleUploadToml = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -323,9 +237,6 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   input.value = ''
 }
 
-/**
- * 下载 TOML 文件
- */
 const handleDownloadToml = (): void => {
   if (!tomlContent.value) return
 
@@ -346,17 +257,11 @@ const handleDownloadToml = (): void => {
 
 /* ---- 步骤导航 ---- */
 
-/**
- * 跳转到首步
- */
 const goFirst = (): void => {
   stopPlay()
   currentStateIndex.value = 0
 }
 
-/**
- * 上一步
- */
 const goPrev = (): void => {
   stopPlay()
   if (currentStateIndex.value > 0) {
@@ -364,18 +269,12 @@ const goPrev = (): void => {
   }
 }
 
-/**
- * 下一步
- */
 const goNext = (): void => {
   if (currentStateIndex.value < totalStates.value - 1) {
     currentStateIndex.value += 1
   }
 }
 
-/**
- * 跳转到末步
- */
 const goLast = (): void => {
   stopPlay()
   if (totalStates.value > 0) {
@@ -385,9 +284,6 @@ const goLast = (): void => {
 
 /* ---- 自动播放 ---- */
 
-/**
- * 停止自动播放
- */
 const stopPlay = (): void => {
   isPlaying.value = false
   if (playTimer.value !== null) {
@@ -396,9 +292,6 @@ const stopPlay = (): void => {
   }
 }
 
-/**
- * 启动自动播放
- */
 const startPlay = (): void => {
   if (!irDoc.value || totalStates.value <= 1) return
 
@@ -414,9 +307,6 @@ const startPlay = (): void => {
   }, interval)
 }
 
-/**
- * 切换自动播放
- */
 const togglePlay = (): void => {
   if (isPlaying.value) {
     stopPlay()
@@ -425,25 +315,19 @@ const togglePlay = (): void => {
   startPlay()
 }
 
-/* ---- 就绪页操作 ---- */
+/* ---- 就绪页 ---- */
 
-/**
- * 就绪页：下一步
- */
 const handleStartNext = (): void => {
   vizStarted.value = true
   goNext()
 }
 
-/**
- * 就绪页：自动播放
- */
 const handleStartPlay = (): void => {
   vizStarted.value = true
   startPlay()
 }
 
-/* ---- 播放间隔变更：重启定时器 ---- */
+/* ---- 播放间隔热更新 ---- */
 
 watch(
   () => vizFlags.playbackInterval,
@@ -496,7 +380,6 @@ watch(
   () => route.query.templateId,
   async (value) => {
     if (!value) return
-
     const id = Number(value)
     if (Number.isNaN(id)) return
 
@@ -509,8 +392,8 @@ watch(
   { immediate: true },
 )
 
-watch(currentStateIndex, (newVal, oldVal) => {
-  if (newVal !== oldVal && newVal > 0) {
+watch(currentStateIndex, (next, prev) => {
+  if (next !== prev && next > 0) {
     vizStarted.value = true
   }
 })
@@ -565,7 +448,6 @@ watch(currentStateIndex, (newVal, oldVal) => {
           </div>
         </div>
 
-        <!-- 就绪页 / 可视化面板 -->
         <Transition name="fade" mode="out-in">
           <div v-if="showVizReady" key="ready" class="viz-ready">
             <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
@@ -584,7 +466,8 @@ watch(currentStateIndex, (newVal, oldVal) => {
           </div>
 
           <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
-            :label="irDoc?.object.label" :remarks="irDoc?.remarks" :auto-playing="isPlaying" />
+            :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
+            :auto-playing="isPlaying" />
         </Transition>
 
         <div v-if="tomlContent" class="toml-section">
@@ -798,8 +681,6 @@ watch(currentStateIndex, (newVal, oldVal) => {
   height: 18px;
 }
 
-/* ---- 就绪页 ---- */
-
 .viz-ready {
   display: flex;
   align-items: center;
@@ -876,8 +757,6 @@ watch(currentStateIndex, (newVal, oldVal) => {
   background-color: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
 }
-
-/* ---- TOML ---- */
 
 .toml-section {
   flex-shrink: 0;
