@@ -3,10 +3,12 @@
  * 编辑器页面
  *
  * 集成可视化 flag：skipReadyPage / autoPlayOnGenerate / playbackInterval。
+ * 关键优化：
+ * - 步骤摘要改为按 state 索引的 O(1) 查找，避免播放中反复线性扫描
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-03-02
+ * @date 2026-03-03
  * @component Playground
  */
 
@@ -18,12 +20,12 @@ import { fetchTemplateCodeApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
 import { formatDuration } from '@/utils/time'
 import { parseIrToml } from '@/utils/ir'
-import { getStateByIndex, getStepSummaryForState } from '@/utils/viz'
+import { getStateByIndex } from '@/utils/viz'
 import { getDefaultTemplate } from '@/utils/editor-templates'
 import { vizFlags, logDebug } from '@/utils/viz-flags'
 import { LANGUAGES } from '@/types/api'
 import type { Language } from '@/types/api'
-import type { IrDocument } from '@/types/ir'
+import type { IrDocument, IrStep } from '@/types/ir'
 import type { StepSummary } from '@/types/viz'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
@@ -35,54 +37,108 @@ import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /* ---- 编辑器状态 ---- */
 
+/** 当前语言 */
 const language = ref<Language>('python')
+
+/** 当前代码 */
 const code = ref<string>(getDefaultTemplate('python'))
+
+/** 语言选择器 key（用于强制刷新） */
 const languageSelectKey = ref<number>(0)
+
+/** 模板加载中 */
 const templateLoading = ref<boolean>(false)
+
+/** 模板加载错误 */
 const templateError = ref<string>('')
+
+/** 运行中 */
 const running = ref<boolean>(false)
+
+/** 执行错误 */
 const executeError = ref<string>('')
+
+/** 执行信息 */
 const executionInfo = ref<string>('')
+
+/** TOML 内容 */
 const tomlContent = ref<string>('')
+
+/** TOML 展开状态 */
 const tomlExpanded = ref<boolean>(false)
 
 /* ---- 可视化状态 ---- */
 
+/** IR 文档（shallow） */
 const irDoc = shallowRef<IrDocument | null>(null)
+
+/** 当前状态索引 */
 const currentStateIndex = ref<number>(0)
+
+/** 自动播放状态 */
 const isPlaying = ref<boolean>(false)
+
+/** 自动播放 timer */
 const playTimer = ref<number | null>(null)
+
+/** 可视化是否已开始（就绪页控制） */
 const vizStarted = ref<boolean>(false)
+
+/**
+ * 按 stateIndex 索引的步骤摘要（O(1)）
+ */
+const stepSummaryByStateIndex = shallowRef<Map<number, StepSummary>>(new Map())
 
 /* ---- 派生计算 ---- */
 
+/**
+ * 是否为默认代码模板
+ */
 const isDefaultCode = computed<boolean>(() => {
   const trimmed = code.value.trim()
   return trimmed.length === 0 || trimmed === getDefaultTemplate(language.value).trim()
 })
 
+/**
+ * 总状态数
+ */
 const totalStates = computed<number>(() => irDoc.value?.states.length ?? 0)
 
+/**
+ * 当前状态对象
+ */
 const currentState = computed(() => {
   if (!irDoc.value) return null
   return getStateByIndex(irDoc.value, currentStateIndex.value)
 })
 
+/**
+ * 当前步骤摘要（O(1) 查找）
+ */
 const currentStepInfo = computed<StepSummary | null>(() => {
-  if (!irDoc.value) return null
-  return getStepSummaryForState(irDoc.value, currentStateIndex.value)
+  return stepSummaryByStateIndex.value.get(currentStateIndex.value) ?? null
 })
 
+/**
+ * 代码高亮行
+ */
 const highlightLine = computed<number | null>(() => {
   if (!vizFlags.enableCodeLineHighlight) return null
   return currentStepInfo.value?.line ?? null
 })
 
+/**
+ * 是否可后退
+ */
 const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
+
+/**
+ * 是否可前进
+ */
 const canStepForward = computed<boolean>(() => currentStateIndex.value < totalStates.value - 1)
 
 /**
- * 是否显示就绪页（受 skipReadyPage flag 控制）
+ * 是否显示就绪页（受 skipReadyPage 控制）
  */
 const showVizReady = computed<boolean>(() =>
   irDoc.value !== null
@@ -92,21 +148,65 @@ const showVizReady = computed<boolean>(() =>
   && currentStateIndex.value === 0,
 )
 
+/* ---- 步骤索引构建 ---- */
+
+/**
+ * 将 IrStep 映射为 StepSummary
+ *
+ * @param step - 原始步骤
+ * @returns 步骤摘要
+ */
+function mapStepToSummary(step: IrStep): StepSummary {
+  return {
+    op: step.op,
+    line: step.code?.line,
+    note: step.note,
+    args: step.args as Record<string, unknown>,
+    ret: step.ret,
+  }
+}
+
+/**
+ * 基于文档重建步骤索引（after -> summary）
+ *
+ * @param doc - IR 文档
+ */
+function rebuildStepSummaryIndex(doc: IrDocument | null): void {
+  const map = new Map<number, StepSummary>()
+  if (doc?.steps) {
+    for (const step of doc.steps) {
+      if (step.after !== undefined) {
+        map.set(step.after, mapStepToSummary(step))
+      }
+    }
+  }
+  stepSummaryByStateIndex.value = map
+}
+
 /* ---- TOML 解析与应用 ---- */
 
+/**
+ * 应用 TOML 到可视化状态
+ *
+ * @param content - TOML 文本
+ */
 const applyToml = (content: string): void => {
   const parsed = parseIrToml(content)
   if (!parsed.ok || !parsed.document) {
     executeError.value = parsed.errorMessage ?? 'TOML 解析失败'
     irDoc.value = null
+    stepSummaryByStateIndex.value = new Map()
     currentStateIndex.value = 0
     vizStarted.value = false
     return
   }
+
   irDoc.value = parsed.document
+  rebuildStepSummaryIndex(parsed.document)
   currentStateIndex.value = 0
   vizStarted.value = false
   executeError.value = parsed.document.error?.message ?? ''
+
   logDebug('[playground] TOML applied, states =', parsed.document.states.length)
 
   if (vizFlags.skipReadyPage) {
@@ -121,6 +221,11 @@ const applyToml = (content: string): void => {
 
 /* ---- 语言与模板 ---- */
 
+/**
+ * 处理语言切换
+ *
+ * @param value - 新语言
+ */
 const handleLanguageChange = (value: Language): void => {
   if (!isDefaultCode.value) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
@@ -129,18 +234,27 @@ const handleLanguageChange = (value: Language): void => {
       return
     }
   }
+
   language.value = value
   code.value = getDefaultTemplate(value)
   localStorage.setItem('ds4viz_language', value)
 }
 
+/**
+ * 加载模板代码
+ *
+ * @param templateId - 模板 ID
+ */
 const loadTemplate = async (templateId: number): Promise<void> => {
   if (templateLoading.value) return
+
   templateError.value = ''
+
   if (!isDefaultCode.value) {
     const confirmed = window.confirm('此操作会覆盖现有代码，继续吗')
     if (!confirmed) return
   }
+
   templateLoading.value = true
   try {
     const result = await fetchTemplateCodeApi(templateId, language.value)
@@ -155,22 +269,30 @@ const loadTemplate = async (templateId: number): Promise<void> => {
 
 /* ---- 执行 ---- */
 
+/**
+ * 运行代码
+ */
 const handleRun = async (): Promise<void> => {
   executeError.value = ''
   executionInfo.value = ''
   running.value = true
   tomlExpanded.value = false
   stopPlay()
+
   logDebug('[playground] run', language.value)
+
   try {
     const result = await executeCodeApi(language.value, code.value)
+
     if (result.tomlOutput) {
       tomlContent.value = result.tomlOutput
       applyToml(result.tomlOutput)
     }
+
     const statusLabel = result.status
     const timeLabel = result.executionTime !== null ? formatDuration(result.executionTime) : '--'
     executionInfo.value = `${statusLabel} / ${timeLabel}`
+
     if (result.errorMessage) {
       executeError.value = result.errorMessage
     }
@@ -183,10 +305,16 @@ const handleRun = async (): Promise<void> => {
 
 /* ---- TOML 文件操作 ---- */
 
+/**
+ * 上传 TOML 文件
+ *
+ * @param event - input change 事件
+ */
 const handleUploadToml = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+
   const content = await file.text()
   tomlContent.value = content
   tomlExpanded.value = false
@@ -195,28 +323,71 @@ const handleUploadToml = async (event: Event): Promise<void> => {
   input.value = ''
 }
 
+/**
+ * 下载 TOML 文件
+ */
 const handleDownloadToml = (): void => {
   if (!tomlContent.value) return
-  const blob = new Blob([tomlContent.value], { type: 'text/plain;charset=utf-8' })
+
+  const blob = new Blob([tomlContent.value], {
+    type: 'text/plain;charset=utf-8',
+  })
   const url = URL.createObjectURL(blob)
+
   const link = document.createElement('a')
   link.href = url
   link.download = 'ds4viz.toml'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+
   URL.revokeObjectURL(url)
 }
 
 /* ---- 步骤导航 ---- */
 
-const goFirst = (): void => { stopPlay(); currentStateIndex.value = 0 }
-const goPrev = (): void => { stopPlay(); if (currentStateIndex.value > 0) currentStateIndex.value -= 1 }
-const goNext = (): void => { if (currentStateIndex.value < totalStates.value - 1) currentStateIndex.value += 1 }
-const goLast = (): void => { stopPlay(); if (totalStates.value > 0) currentStateIndex.value = totalStates.value - 1 }
+/**
+ * 跳转到首步
+ */
+const goFirst = (): void => {
+  stopPlay()
+  currentStateIndex.value = 0
+}
+
+/**
+ * 上一步
+ */
+const goPrev = (): void => {
+  stopPlay()
+  if (currentStateIndex.value > 0) {
+    currentStateIndex.value -= 1
+  }
+}
+
+/**
+ * 下一步
+ */
+const goNext = (): void => {
+  if (currentStateIndex.value < totalStates.value - 1) {
+    currentStateIndex.value += 1
+  }
+}
+
+/**
+ * 跳转到末步
+ */
+const goLast = (): void => {
+  stopPlay()
+  if (totalStates.value > 0) {
+    currentStateIndex.value = totalStates.value - 1
+  }
+}
 
 /* ---- 自动播放 ---- */
 
+/**
+ * 停止自动播放
+ */
 const stopPlay = (): void => {
   isPlaying.value = false
   if (playTimer.value !== null) {
@@ -225,34 +396,64 @@ const stopPlay = (): void => {
   }
 }
 
+/**
+ * 启动自动播放
+ */
 const startPlay = (): void => {
-  if (!irDoc.value) return
+  if (!irDoc.value || totalStates.value <= 1) return
+
   isPlaying.value = true
   const interval = Math.max(50, vizFlags.playbackInterval)
+
   playTimer.value = window.setInterval(() => {
-    if (!canStepForward.value) { stopPlay(); return }
+    if (!canStepForward.value) {
+      stopPlay()
+      return
+    }
     goNext()
   }, interval)
 }
 
+/**
+ * 切换自动播放
+ */
 const togglePlay = (): void => {
-  if (isPlaying.value) { stopPlay(); return }
+  if (isPlaying.value) {
+    stopPlay()
+    return
+  }
   startPlay()
 }
 
 /* ---- 就绪页操作 ---- */
 
-const handleStartNext = (): void => { vizStarted.value = true; goNext() }
-const handleStartPlay = (): void => { vizStarted.value = true; startPlay() }
+/**
+ * 就绪页：下一步
+ */
+const handleStartNext = (): void => {
+  vizStarted.value = true
+  goNext()
+}
 
-/* ---- 播放间隔变更时重启定时器 ---- */
+/**
+ * 就绪页：自动播放
+ */
+const handleStartPlay = (): void => {
+  vizStarted.value = true
+  startPlay()
+}
 
-watch(() => vizFlags.playbackInterval, () => {
-  if (isPlaying.value) {
-    stopPlay()
-    startPlay()
-  }
-})
+/* ---- 播放间隔变更：重启定时器 ---- */
+
+watch(
+  () => vizFlags.playbackInterval,
+  () => {
+    if (isPlaying.value) {
+      stopPlay()
+      startPlay()
+    }
+  },
+)
 
 /* ---- 生命周期 ---- */
 
@@ -263,13 +464,16 @@ onMounted(() => {
   try {
     const editCode = sessionStorage.getItem('ds4viz_edit_code')
     const editLang = sessionStorage.getItem('ds4viz_edit_language') as Language | null
+
     if (editCode !== null) {
       sessionStorage.removeItem('ds4viz_edit_code')
       sessionStorage.removeItem('ds4viz_edit_language')
+
       if (editLang && LANGUAGES.includes(editLang)) {
         language.value = editLang
         localStorage.setItem('ds4viz_language', editLang)
       }
+
       code.value = editCode
       return
     }
@@ -284,15 +488,20 @@ onMounted(() => {
   }
 })
 
-onBeforeUnmount(() => { stopPlay() })
+onBeforeUnmount(() => {
+  stopPlay()
+})
 
 watch(
   () => route.query.templateId,
   async (value) => {
     if (!value) return
+
     const id = Number(value)
     if (Number.isNaN(id)) return
+
     await loadTemplate(id)
+
     const query = { ...route.query }
     delete query.templateId
     router.replace({ query })
@@ -301,7 +510,9 @@ watch(
 )
 
 watch(currentStateIndex, (newVal, oldVal) => {
-  if (newVal !== oldVal && newVal > 0) vizStarted.value = true
+  if (newVal !== oldVal && newVal > 0) {
+    vizStarted.value = true
+  }
 })
 </script>
 
@@ -348,7 +559,7 @@ watch(currentStateIndex, (newVal, oldVal) => {
             <button class="icon-btn" :disabled="!canStepForward" @click="goLast">
               <MaterialIcon name="last_page" :size="18" />
             </button>
-            <button class="icon-btn" :disabled="totalStates === 0" @click="togglePlay">
+            <button class="icon-btn" :disabled="totalStates <= 1" @click="togglePlay">
               <MaterialIcon :name="isPlaying ? 'pause' : 'play_arrow'" :size="18" />
             </button>
           </div>
