@@ -495,7 +495,7 @@ const onPanStart = (event: PointerEvent): void => {
     vx: vb.value.x,
     vy: vb.value.y,
   }
-  ;(event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId)
+    ; (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId)
 }
 
 const onPanMove = (event: PointerEvent): void => {
@@ -1677,30 +1677,20 @@ onBeforeUnmount(() => {
         <span class="viz-panel__meta-tag">Object</span>
         <span v-if="label" class="viz-panel__meta-item viz-panel__meta-label">label={{ label }}</span>
         <span class="viz-panel__meta-item">kind={{ kindStr }}</span>
-        <span
-          v-for="entry in objectExtraEntries"
-          :key="`obj-extra-${entry.key}`"
-          class="viz-panel__meta-item"
-        >
+        <span v-for="entry in objectExtraEntries" :key="`obj-extra-${entry.key}`" class="viz-panel__meta-item">
           {{ entry.key }}={{ entry.value }}
         </span>
       </div>
 
-      <div
-        v-if="remarks?.title || remarks?.author || remarks?.comment || remarksExtraEntries.length > 0"
-        class="viz-panel__meta-row"
-      >
+      <div v-if="remarks?.title || remarks?.author || remarks?.comment || remarksExtraEntries.length > 0"
+        class="viz-panel__meta-row">
         <span class="viz-panel__meta-tag">Remarks</span>
         <span v-if="remarks?.title" class="viz-panel__meta-item">title={{ remarks.title }}</span>
         <span v-if="remarks?.author" class="viz-panel__meta-item">author={{ remarks.author }}</span>
         <span v-if="remarks?.comment" class="viz-panel__meta-item viz-panel__meta-comment">
           comment={{ remarks.comment }}
         </span>
-        <span
-          v-for="entry in remarksExtraEntries"
-          :key="`remarks-extra-${entry.key}`"
-          class="viz-panel__meta-item"
-        >
+        <span v-for="entry in remarksExtraEntries" :key="`remarks-extra-${entry.key}`" class="viz-panel__meta-item">
           {{ entry.key }}={{ entry.value }}
         </span>
       </div>
@@ -1715,11 +1705,7 @@ onBeforeUnmount(() => {
         <span class="viz-panel__meta-item">op={{ step.op }}</span>
         <span v-if="step.line" class="viz-panel__meta-item">line={{ step.line }}</span>
         <span v-if="step.note" class="viz-panel__meta-item">note={{ step.note }}</span>
-        <span
-          v-for="entry in stepArgEntries"
-          :key="`step-arg-${entry.key}`"
-          class="viz-panel__meta-item"
-        >
+        <span v-for="entry in stepArgEntries" :key="`step-arg-${entry.key}`" class="viz-panel__meta-item">
           {{ entry.key }}={{ entry.value }}
         </span>
       </div>
@@ -1729,20 +1715,9 @@ onBeforeUnmount(() => {
       <Transition name="fade" mode="out-in">
         <VizPlaceholder v-if="isEmpty" key="empty" />
 
-        <svg
-          v-else
-          key="canvas"
-          class="viz-panel__svg"
-          :viewBox="effectiveViewBox"
-          preserveAspectRatio="xMidYMid meet"
-          :style="{ '--ghost-ms': ghostDurationMs }"
-          @wheel.prevent="onWheel"
-          @pointerdown="onPanStart"
-          @pointermove="onPanMove"
-          @pointerup="onPanEnd"
-          @pointerleave="onPanEnd"
-          @dblclick="handleDblClick"
-        >
+        <svg v-else key="canvas" class="viz-panel__svg" :viewBox="effectiveViewBox" preserveAspectRatio="xMidYMid meet"
+          :style="{ '--ghost-ms': ghostDurationMs }" @wheel.prevent="onWheel" @pointerdown="onPanStart"
+          @pointermove="onPanMove" @pointerup="onPanEnd" @pointerleave="onPanEnd" @dblclick="handleDblClick">
           <defs>
             <marker id="viz-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
               <path d="M 0 0 L 8 4 L 0 8 Z" fill="var(--color-border-strong)" />
@@ -1793,51 +1768,20 @@ onBeforeUnmount(() => {
           <!-- Stack -->
           <g v-if="stackLayout && stackLayout.items.length > 0">
             <template v-for="(item, index) in stackLayout.items" :key="`si-${index}`">
-              <ellipse
-                :cx="stackLayout.cx"
-                :cy="item.y + stackLayout.cylItemH / 2"
-                :rx="stackLayout.cylRx"
-                :ry="CYL_RY"
-                class="viz-cyl-sep"
-                :class="{ 'viz-node--added': item.diff === 'added' }"
-              />
-              <rect
-                :x="stackLayout.cx - stackLayout.cylRx"
-                :y="item.y - stackLayout.cylItemH / 2"
-                :width="stackLayout.cylRx * 2"
-                :height="stackLayout.cylItemH"
-                class="viz-cyl-body"
-                :class="{ 'viz-cyl-body--top': item.isTop, 'viz-node--added': item.diff === 'added' }"
-              />
-              <line
-                :x1="stackLayout.cx - stackLayout.cylRx"
-                :y1="item.y - stackLayout.cylItemH / 2"
-                :x2="stackLayout.cx - stackLayout.cylRx"
-                :y2="item.y + stackLayout.cylItemH / 2"
-                class="viz-cyl-side"
-              />
-              <line
-                :x1="stackLayout.cx + stackLayout.cylRx"
-                :y1="item.y - stackLayout.cylItemH / 2"
-                :x2="stackLayout.cx + stackLayout.cylRx"
-                :y2="item.y + stackLayout.cylItemH / 2"
-                class="viz-cyl-side"
-              />
-              <ellipse
-                :cx="stackLayout.cx"
-                :cy="item.y - stackLayout.cylItemH / 2"
-                :rx="stackLayout.cylRx"
-                :ry="CYL_RY"
-                class="viz-cyl-top"
-                :class="{ 'viz-cyl-top--accent': item.isTop }"
-              />
-              <text
-                :x="stackLayout.cx"
-                :y="item.displayLines.length === 1 ? item.y + 4 : item.y - LINE_H / 2 + 4"
-                class="viz-val"
-                @pointerenter="showTip(stackTipLines(index, item.value, item.isTop), $event)"
-                @pointerleave="hideTip"
-              >
+              <ellipse :cx="stackLayout.cx" :cy="item.y + stackLayout.cylItemH / 2" :rx="stackLayout.cylRx" :ry="CYL_RY"
+                class="viz-cyl-sep" :class="{ 'viz-node--added': item.diff === 'added' }" />
+              <rect :x="stackLayout.cx - stackLayout.cylRx" :y="item.y - stackLayout.cylItemH / 2"
+                :width="stackLayout.cylRx * 2" :height="stackLayout.cylItemH" class="viz-cyl-body"
+                :class="{ 'viz-cyl-body--top': item.isTop, 'viz-node--added': item.diff === 'added' }" />
+              <line :x1="stackLayout.cx - stackLayout.cylRx" :y1="item.y - stackLayout.cylItemH / 2"
+                :x2="stackLayout.cx - stackLayout.cylRx" :y2="item.y + stackLayout.cylItemH / 2" class="viz-cyl-side" />
+              <line :x1="stackLayout.cx + stackLayout.cylRx" :y1="item.y - stackLayout.cylItemH / 2"
+                :x2="stackLayout.cx + stackLayout.cylRx" :y2="item.y + stackLayout.cylItemH / 2" class="viz-cyl-side" />
+              <ellipse :cx="stackLayout.cx" :cy="item.y - stackLayout.cylItemH / 2" :rx="stackLayout.cylRx" :ry="CYL_RY"
+                class="viz-cyl-top" :class="{ 'viz-cyl-top--accent': item.isTop }" />
+              <text :x="stackLayout.cx" :y="item.displayLines.length === 1 ? item.y + 4 : item.y - LINE_H / 2 + 4"
+                class="viz-val" @pointerenter="showTip(stackTipLines(index, item.value, item.isTop), $event)"
+                @pointerleave="hideTip">
                 <template v-if="item.displayLines.length === 1">
                   {{ item.displayLines[0] }}
                 </template>
@@ -1847,14 +1791,8 @@ onBeforeUnmount(() => {
                 </template>
               </text>
               <template v-for="(labelItem, labelIndex) in item.labels" :key="`sl-${index}-${labelIndex}`">
-                <text
-                  v-if="labelItem.position === 'top'"
-                  :x="stackLayout.cx + stackLayout.cylRx + 8"
-                  :y="item.y + 4"
-                  class="viz-badge"
-                  :style="{ fill: labelItem.color }"
-                  text-anchor="start"
-                >
+                <text v-if="labelItem.position === 'top'" :x="stackLayout.cx + stackLayout.cylRx + 8" :y="item.y + 4"
+                  class="viz-badge" :style="{ fill: labelItem.color }" text-anchor="start">
                   {{ labelItem.text }}
                 </text>
               </template>
@@ -1864,22 +1802,13 @@ onBeforeUnmount(() => {
           <!-- Queue -->
           <g v-if="queueLayout && queueLayout.items.length > 0">
             <template v-for="(item, index) in queueLayout.items" :key="`qi-${index}`">
-              <rect
-                :x="item.x"
-                :y="PAD + 20"
-                :width="queueLayout.boxW"
-                :height="queueLayout.boxH"
-                rx="6"
+              <rect :x="item.x" :y="PAD + 20" :width="queueLayout.boxW" :height="queueLayout.boxH" rx="6"
                 class="viz-box"
-                :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }"
-              />
-              <text
-                :x="item.x + queueLayout.boxW / 2"
+                :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }" />
+              <text :x="item.x + queueLayout.boxW / 2"
                 :y="item.displayLines.length === 1 ? PAD + 20 + queueLayout.boxH / 2 + 4 : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4"
-                class="viz-val"
-                @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)"
-                @pointerleave="hideTip"
-              >
+                class="viz-val" @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)"
+                @pointerleave="hideTip">
                 <template v-if="item.displayLines.length === 1">
                   {{ item.displayLines[0] }}
                 </template>
@@ -1888,40 +1817,20 @@ onBeforeUnmount(() => {
                   <tspan :x="item.x + queueLayout.boxW / 2" :dy="LINE_H">{{ item.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <line
-                v-if="index < queueLayout.items.length - 1"
-                :x1="item.x + queueLayout.boxW + 4"
-                :y1="PAD + 20 + queueLayout.boxH / 2"
-                :x2="queueLayout.items[index + 1].x - 4"
-                :y2="PAD + 20 + queueLayout.boxH / 2"
-                class="viz-arrow"
-                marker-end="url(#viz-arrow)"
-              />
+              <line v-if="index < queueLayout.items.length - 1" :x1="item.x + queueLayout.boxW + 4"
+                :y1="PAD + 20 + queueLayout.boxH / 2" :x2="queueLayout.items[index + 1].x - 4"
+                :y2="PAD + 20 + queueLayout.boxH / 2" class="viz-arrow" marker-end="url(#viz-arrow)" />
               <template v-for="(labelItem, labelIndex) in item.labels" :key="`ql-${index}-${labelIndex}`">
-                <text
-                  v-if="labelItem.position === 'top'"
-                  :x="item.x + queueLayout.boxW / 2"
-                  :y="PAD + 12"
-                  class="viz-badge"
-                  :style="{ fill: labelItem.color }"
-                >
+                <text v-if="labelItem.position === 'top'" :x="item.x + queueLayout.boxW / 2" :y="PAD + 12"
+                  class="viz-badge" :style="{ fill: labelItem.color }">
                   {{ labelItem.text }}
                 </text>
                 <g v-else>
-                  <line
-                    :x1="item.x + queueLayout.boxW / 2"
-                    :y1="PAD + 20 + queueLayout.boxH + 2"
-                    :x2="item.x + queueLayout.boxW / 2"
-                    :y2="PAD + 20 + queueLayout.boxH + 18"
-                    class="viz-leader"
-                    :style="{ stroke: labelItem.color }"
-                  />
-                  <text
-                    :x="item.x + queueLayout.boxW / 2"
-                    :y="PAD + 20 + queueLayout.boxH + 28"
-                    class="viz-badge"
-                    :style="{ fill: labelItem.color }"
-                  >
+                  <line :x1="item.x + queueLayout.boxW / 2" :y1="PAD + 20 + queueLayout.boxH + 2"
+                    :x2="item.x + queueLayout.boxW / 2" :y2="PAD + 20 + queueLayout.boxH + 18" class="viz-leader"
+                    :style="{ stroke: labelItem.color }" />
+                  <text :x="item.x + queueLayout.boxW / 2" :y="PAD + 20 + queueLayout.boxH + 28" class="viz-badge"
+                    :style="{ fill: labelItem.color }">
                     {{ labelItem.text }}
                   </text>
                 </g>
@@ -1932,22 +1841,14 @@ onBeforeUnmount(() => {
           <!-- SList -->
           <g v-if="slistLayout && slistLayout.nodes.length > 0">
             <template v-for="(node, index) in slistLayout.nodes" :key="`sn-${node.id}`">
-              <rect
-                :x="node.x"
-                :y="PAD + 20"
-                :width="slistLayout.nodeW"
-                :height="slistLayout.nodeH"
-                rx="8"
+              <rect :x="node.x" :y="PAD + 20" :width="slistLayout.nodeW" :height="slistLayout.nodeH" rx="8"
                 class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }"
-              />
-              <text
-                :x="node.x + slistLayout.nodeW / 2"
+                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }" />
+              <text :x="node.x + slistLayout.nodeW / 2"
                 :y="node.displayLines.length === 1 ? PAD + 20 + slistLayout.nodeH / 2 - 4 : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2"
                 class="viz-val"
                 @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, slistOrdered[index]?.next), $event)"
-                @pointerleave="hideTip"
-              >
+                @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
                   {{ node.displayLines[0] }}
                 </template>
@@ -1956,64 +1857,31 @@ onBeforeUnmount(() => {
                   <tspan :x="node.x + slistLayout.nodeW / 2" :dy="LINE_H">{{ node.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <text
-                :x="node.x + slistLayout.nodeW / 2"
-                :y="PAD + 20 + slistLayout.nodeH / 2 + 14"
-                class="viz-ptr"
-              >
+              <text :x="node.x + slistLayout.nodeW / 2" :y="PAD + 20 + slistLayout.nodeH / 2 + 14" class="viz-ptr">
                 #{{ node.id }}
               </text>
               <template v-for="(labelItem, labelIndex) in node.labels" :key="`snl-${node.id}-${labelIndex}`">
-                <text
-                  v-if="labelItem.position === 'top'"
-                  :x="node.x + slistLayout.nodeW / 2"
-                  :y="PAD + 12"
-                  class="viz-badge"
-                  :style="{ fill: labelItem.color }"
-                >
+                <text v-if="labelItem.position === 'top'" :x="node.x + slistLayout.nodeW / 2" :y="PAD + 12"
+                  class="viz-badge" :style="{ fill: labelItem.color }">
                   {{ labelItem.text }}
                 </text>
                 <g v-else>
-                  <line
-                    :x1="node.x + slistLayout.nodeW / 2"
-                    :y1="PAD + 20 + slistLayout.nodeH + 2"
-                    :x2="node.x + slistLayout.nodeW / 2"
-                    :y2="PAD + 20 + slistLayout.nodeH + 18"
-                    class="viz-leader"
-                    :style="{ stroke: labelItem.color }"
-                  />
-                  <text
-                    :x="node.x + slistLayout.nodeW / 2"
-                    :y="PAD + 20 + slistLayout.nodeH + 28"
-                    class="viz-badge"
-                    :style="{ fill: labelItem.color }"
-                  >
+                  <line :x1="node.x + slistLayout.nodeW / 2" :y1="PAD + 20 + slistLayout.nodeH + 2"
+                    :x2="node.x + slistLayout.nodeW / 2" :y2="PAD + 20 + slistLayout.nodeH + 18" class="viz-leader"
+                    :style="{ stroke: labelItem.color }" />
+                  <text :x="node.x + slistLayout.nodeW / 2" :y="PAD + 20 + slistLayout.nodeH + 28" class="viz-badge"
+                    :style="{ fill: labelItem.color }">
                     {{ labelItem.text }}
                   </text>
                 </g>
               </template>
-              <line
-                v-if="index < slistLayout.nodes.length - 1"
-                :x1="node.x + slistLayout.nodeW + 2"
-                :y1="PAD + 20 + slistLayout.nodeH / 2"
-                :x2="slistLayout.nodes[index + 1].x - 2"
-                :y2="PAD + 20 + slistLayout.nodeH / 2"
-                class="viz-arrow"
-                marker-end="url(#viz-arrow)"
-              />
+              <line v-if="index < slistLayout.nodes.length - 1" :x1="node.x + slistLayout.nodeW + 2"
+                :y1="PAD + 20 + slistLayout.nodeH / 2" :x2="slistLayout.nodes[index + 1].x - 2"
+                :y2="PAD + 20 + slistLayout.nodeH / 2" class="viz-arrow" marker-end="url(#viz-arrow)" />
               <g v-if="node.isTail">
-                <line
-                  :x1="node.x + slistLayout.nodeW + 2"
-                  :y1="PAD + 20 + slistLayout.nodeH / 2"
-                  :x2="node.x + slistLayout.nodeW + 28"
-                  :y2="PAD + 20 + slistLayout.nodeH / 2"
-                  class="viz-arrow"
-                />
-                <text
-                  :x="node.x + slistLayout.nodeW + 32"
-                  :y="PAD + 20 + slistLayout.nodeH / 2 + 4"
-                  class="viz-null"
-                >
+                <line :x1="node.x + slistLayout.nodeW + 2" :y1="PAD + 20 + slistLayout.nodeH / 2"
+                  :x2="node.x + slistLayout.nodeW + 28" :y2="PAD + 20 + slistLayout.nodeH / 2" class="viz-arrow" />
+                <text :x="node.x + slistLayout.nodeW + 32" :y="PAD + 20 + slistLayout.nodeH / 2 + 4" class="viz-null">
                   ⊘
                 </text>
               </g>
@@ -2023,22 +1891,14 @@ onBeforeUnmount(() => {
           <!-- DList -->
           <g v-if="dlistLayout && dlistLayout.nodes.length > 0">
             <template v-for="(node, index) in dlistLayout.nodes" :key="`dn-${node.id}`">
-              <rect
-                :x="node.x"
-                :y="PAD + 20"
-                :width="dlistLayout.nodeW"
-                :height="dlistLayout.nodeH"
-                rx="8"
+              <rect :x="node.x" :y="PAD + 20" :width="dlistLayout.nodeW" :height="dlistLayout.nodeH" rx="8"
                 class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }"
-              />
-              <text
-                :x="node.x + dlistLayout.nodeW / 2"
+                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }" />
+              <text :x="node.x + dlistLayout.nodeW / 2"
                 :y="node.displayLines.length === 1 ? PAD + 20 + dlistLayout.nodeH / 2 - 4 : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2"
                 class="viz-val"
                 @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, dlistOrdered[index]?.next, dlistOrdered[index]?.prev), $event)"
-                @pointerleave="hideTip"
-              >
+                @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
                   {{ node.displayLines[0] }}
                 </template>
@@ -2047,120 +1907,56 @@ onBeforeUnmount(() => {
                   <tspan :x="node.x + dlistLayout.nodeW / 2" :dy="LINE_H">{{ node.displayLines[1] }}</tspan>
                 </template>
               </text>
-              <text
-                :x="node.x + dlistLayout.nodeW / 2"
-                :y="PAD + 20 + dlistLayout.nodeH / 2 + 14"
-                class="viz-ptr"
-              >
+              <text :x="node.x + dlistLayout.nodeW / 2" :y="PAD + 20 + dlistLayout.nodeH / 2 + 14" class="viz-ptr">
                 #{{ node.id }}
               </text>
               <template v-for="(labelItem, labelIndex) in node.labels" :key="`dnl-${node.id}-${labelIndex}`">
-                <text
-                  v-if="labelItem.position === 'top'"
-                  :x="node.x + dlistLayout.nodeW / 2"
-                  :y="PAD + 12"
-                  class="viz-badge"
-                  :style="{ fill: labelItem.color }"
-                >
+                <text v-if="labelItem.position === 'top'" :x="node.x + dlistLayout.nodeW / 2" :y="PAD + 12"
+                  class="viz-badge" :style="{ fill: labelItem.color }">
                   {{ labelItem.text }}
                 </text>
                 <g v-else>
-                  <line
-                    :x1="node.x + dlistLayout.nodeW / 2"
-                    :y1="PAD + 20 + dlistLayout.nodeH + 2"
-                    :x2="node.x + dlistLayout.nodeW / 2"
-                    :y2="PAD + 20 + dlistLayout.nodeH + 18"
-                    class="viz-leader"
-                    :style="{ stroke: labelItem.color }"
-                  />
-                  <text
-                    :x="node.x + dlistLayout.nodeW / 2"
-                    :y="PAD + 20 + dlistLayout.nodeH + 28"
-                    class="viz-badge"
-                    :style="{ fill: labelItem.color }"
-                  >
+                  <line :x1="node.x + dlistLayout.nodeW / 2" :y1="PAD + 20 + dlistLayout.nodeH + 2"
+                    :x2="node.x + dlistLayout.nodeW / 2" :y2="PAD + 20 + dlistLayout.nodeH + 18" class="viz-leader"
+                    :style="{ stroke: labelItem.color }" />
+                  <text :x="node.x + dlistLayout.nodeW / 2" :y="PAD + 20 + dlistLayout.nodeH + 28" class="viz-badge"
+                    :style="{ fill: labelItem.color }">
                     {{ labelItem.text }}
                   </text>
                 </g>
               </template>
               <g v-if="index < dlistLayout.nodes.length - 1">
-                <line
-                  :x1="node.x + dlistLayout.nodeW + 2"
-                  :y1="PAD + 20 + dlistLayout.nodeH / 2 - 4"
-                  :x2="dlistLayout.nodes[index + 1].x - 2"
-                  :y2="PAD + 20 + dlistLayout.nodeH / 2 - 4"
-                  class="viz-arrow"
-                  marker-end="url(#viz-arrow)"
-                />
-                <line
-                  :x1="dlistLayout.nodes[index + 1].x - 2"
-                  :y1="PAD + 20 + dlistLayout.nodeH / 2 + 4"
-                  :x2="node.x + dlistLayout.nodeW + 2"
-                  :y2="PAD + 20 + dlistLayout.nodeH / 2 + 4"
-                  class="viz-arrow"
-                  marker-end="url(#viz-arrow)"
-                />
+                <line :x1="node.x + dlistLayout.nodeW + 2" :y1="PAD + 20 + dlistLayout.nodeH / 2 - 4"
+                  :x2="dlistLayout.nodes[index + 1].x - 2" :y2="PAD + 20 + dlistLayout.nodeH / 2 - 4" class="viz-arrow"
+                  marker-end="url(#viz-arrow)" />
+                <line :x1="dlistLayout.nodes[index + 1].x - 2" :y1="PAD + 20 + dlistLayout.nodeH / 2 + 4"
+                  :x2="node.x + dlistLayout.nodeW + 2" :y2="PAD + 20 + dlistLayout.nodeH / 2 + 4" class="viz-arrow"
+                  marker-end="url(#viz-arrow)" />
               </g>
             </template>
           </g>
 
           <!-- Tree / BST / Heap -->
           <g v-if="treeLayout">
-            <line
-              v-for="(edge, index) in treeLayout.edges"
-              :key="`te-${index}`"
-              :x1="edge.x1"
-              :y1="edge.y1"
-              :x2="edge.x2"
-              :y2="edge.y2"
-              :class="isHeap ? 'viz-edge--dashed' : 'viz-edge'"
-            />
+            <line v-for="(edge, index) in treeLayout.edges" :key="`te-${index}`" :x1="edge.x1" :y1="edge.y1"
+              :x2="edge.x2" :y2="edge.y2" :class="isHeap ? 'viz-edge--dashed' : 'viz-edge'" />
             <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
-              <circle
-                v-if="!isHeap"
-                :cx="node.x"
-                :cy="node.y"
-                :r="treeLayout.treeR"
-                class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }"
-              />
-              <rect
-                v-else
-                :x="node.x - treeLayout.treeR"
-                :y="node.y - treeLayout.treeR"
-                :width="treeLayout.treeR * 2"
-                :height="treeLayout.treeR * 2"
-                rx="6"
-                class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }"
-              />
-              <text
-                :x="node.x"
-                :y="node.y + 5"
-                class="viz-val"
-                @pointerenter="showTip(treeTipLines(node), $event)"
-                @pointerleave="hideTip"
-              >
+              <circle v-if="!isHeap" :cx="node.x" :cy="node.y" :r="treeLayout.treeR" class="viz-tree-node"
+                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }" />
+              <rect v-else :x="node.x - treeLayout.treeR" :y="node.y - treeLayout.treeR" :width="treeLayout.treeR * 2"
+                :height="treeLayout.treeR * 2" rx="6" class="viz-tree-node"
+                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }" />
+              <text :x="node.x" :y="node.y + 5" class="viz-val" @pointerenter="showTip(treeTipLines(node), $event)"
+                @pointerleave="hideTip">
                 {{ node.displayLines[0] }}
               </text>
             </g>
             <g v-if="isHeap && treeLayout.heapArray.length > 0">
-              <line
-                :x1="treeLayout.heapArray[0].x - 4"
-                :y1="treeLayout.heapArrayY - 4"
-                :x2="treeLayout.heapArray[treeLayout.heapArray.length - 1].x + 36 + 4"
-                :y2="treeLayout.heapArrayY - 4"
-                class="viz-edge"
-              />
+              <line :x1="treeLayout.heapArray[0].x - 4" :y1="treeLayout.heapArrayY - 4"
+                :x2="treeLayout.heapArray[treeLayout.heapArray.length - 1].x + 36 + 4" :y2="treeLayout.heapArrayY - 4"
+                class="viz-edge" />
               <g v-for="item in treeLayout.heapArray" :key="`ha-${item.index}`">
-                <rect
-                  :x="item.x"
-                  :y="treeLayout.heapArrayY"
-                  :width="34"
-                  :height="28"
-                  rx="4"
-                  class="viz-box"
-                />
+                <rect :x="item.x" :y="treeLayout.heapArrayY" :width="34" :height="28" rx="4" class="viz-box" />
                 <text :x="item.x + 17" :y="treeLayout.heapArrayY + 18" class="viz-val viz-val--sm">
                   {{ item.displayLines[0] }}
                 </text>
@@ -2173,42 +1969,19 @@ onBeforeUnmount(() => {
 
           <!-- Graph -->
           <g v-if="graphLayout">
-            <line
-              v-for="(edge, index) in graphLayout.edges"
-              :key="`ge-${index}`"
-              :x1="edge.x1"
-              :y1="edge.y1"
-              :x2="edge.x2"
-              :y2="edge.y2"
-              class="viz-edge"
-              :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined"
-            />
-            <text
-              v-for="(edge, index) in graphLayout.edges"
-              :key="`gw-${index}`"
-              v-show="isWeighted && edge.weight !== undefined"
-              :x="edge.mx"
-              :y="edge.my - 6"
-              class="viz-weight"
-            >
+            <line v-for="(edge, index) in graphLayout.edges" :key="`ge-${index}`" :x1="edge.x1" :y1="edge.y1"
+              :x2="edge.x2" :y2="edge.y2" class="viz-edge"
+              :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined" />
+            <text v-for="(edge, index) in graphLayout.edges" :key="`gw-${index}`"
+              v-show="isWeighted && edge.weight !== undefined" :x="edge.mx" :y="edge.my - 6" class="viz-weight">
               {{ edge.weight }}
             </text>
             <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`">
-              <circle
-                :cx="node.x"
-                :cy="node.y"
-                :r="graphLayout.graphR"
-                class="viz-graph-node"
+              <circle :cx="node.x" :cy="node.y" :r="graphLayout.graphR" class="viz-graph-node"
                 :class="{ 'viz-node--added': node.diff === 'added' }"
-                :style="{ fill: node.color + '18', stroke: node.color }"
-              />
-              <text
-                :x="node.x"
-                :y="node.y + 5"
-                class="viz-val"
-                @pointerenter="showTip(graphTipLines(node), $event)"
-                @pointerleave="hideTip"
-              >
+                :style="{ fill: node.color + '18', stroke: node.color }" />
+              <text :x="node.x" :y="node.y + 5" class="viz-val" @pointerenter="showTip(graphTipLines(node), $event)"
+                @pointerleave="hideTip">
                 {{ node.displayLines[0] }}
               </text>
             </g>
@@ -2216,30 +1989,12 @@ onBeforeUnmount(() => {
 
           <!-- Ghost（移除渐出） -->
           <template v-for="ghost in removedKeys" :key="`ghost-${ghost.key}`">
-            <circle
-              v-if="ghost.shape === 'circle'"
-              :cx="ghost.x"
-              :cy="ghost.y"
-              :r="ghost.r"
-              class="viz-ghost viz-ghost--circle"
-            />
-            <ellipse
-              v-else-if="ghost.shape === 'ellipse'"
-              :cx="ghost.x"
-              :cy="ghost.y"
-              :rx="ghost.rx"
-              :ry="ghost.ry"
-              class="viz-ghost viz-ghost--circle"
-            />
-            <rect
-              v-else
-              :x="ghost.x"
-              :y="ghost.y"
-              :width="ghost.w ?? 72"
-              :height="ghost.h ?? 44"
-              rx="6"
-              class="viz-ghost"
-            />
+            <circle v-if="ghost.shape === 'circle'" :cx="ghost.x" :cy="ghost.y" :r="ghost.r"
+              class="viz-ghost viz-ghost--circle" />
+            <ellipse v-else-if="ghost.shape === 'ellipse'" :cx="ghost.x" :cy="ghost.y" :rx="ghost.rx" :ry="ghost.ry"
+              class="viz-ghost viz-ghost--circle" />
+            <rect v-else :x="ghost.x" :y="ghost.y" :width="ghost.w ?? 72" :height="ghost.h ?? 44" rx="6"
+              class="viz-ghost" />
           </template>
         </svg>
       </Transition>
@@ -2370,11 +2125,29 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 
+.viz-panel__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface-alt);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+
+  position: relative;
+  z-index: 1;
+  /* 低层 */
+}
+
 .viz-panel__body {
   flex: 1;
   min-height: 0;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  /* 关键：让设置面板可“压”到 meta 区域 */
+  z-index: 2;
+  /* 高于 meta */
 }
 
 .viz-panel__svg {
@@ -2599,6 +2372,7 @@ onBeforeUnmount(() => {
     opacity: 0;
     transform: scale(0.88);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -2625,6 +2399,7 @@ onBeforeUnmount(() => {
     opacity: 0.45;
     transform: scale(1);
   }
+
   to {
     opacity: 0;
     transform: scale(0.86);

@@ -6,7 +6,7 @@
  *
  * @file src/components/viz/VizSettings.vue
  * @author WaterRun
- * @date 2026-03-02
+ * @date 2026-03-03
  * @component VizSettings
  */
 
@@ -156,7 +156,8 @@ onUnmounted(() => cancelClose())
     position: absolute;
     bottom: 12px;
     left: 12px;
-    z-index: var(--z-dropdown);
+    z-index: 1000;
+    /* 明确给大值，避免变量不够高 */
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -207,6 +208,7 @@ onUnmounted(() => cancelClose())
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-hover);
+    z-index: 1001;
 }
 
 .viz-settings__header {
