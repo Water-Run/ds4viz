@@ -1,27 +1,42 @@
-import { fileURLToPath, URL } from 'node:url'
+// vite.config.js
+import { fileURLToPath, URL } from "node:url";
 
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    vue(),
-  ],
+  plugins: [vue()],
+
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+
   define: {
-    global: 'globalThis',
+    global: "globalThis",
   },
+
   server: {
+    host: "0.0.0.0",
+    port: 5173,
+    strictPort: true,
+
+    allowedHosts: ["evader84.picp.io"],
+
+    hmr: {
+      host: "evader84.picp.io",
+      protocol: "ws",
+      clientPort: 5173,
+    },
+
     proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:10000',
+      "/api": {
+        target: "http://127.0.0.1:10000",
         changeOrigin: true,
+        ws: true,
       },
     },
   },
-})
+});
