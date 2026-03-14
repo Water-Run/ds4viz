@@ -65,7 +65,7 @@
 | 语言                         | 安装                                                                                     | 文档                                                     | 状态   |
 |------------------------------|------------------------------------------------------------------------------------------|----------------------------------------------------------|--------|
 | `Python`                     | `pip install ds4viz`                                                                     | [py-ds4viz](./library/python/README.md)                  | 已就绪 |
-| `C`*                         | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`  | [c-ds4viz](./library/c/README.md)                        | 已编写 |
+| `C`                         | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`  | [c-ds4viz](./library/c/README.md)                        | 已编写 |
 | `C#`                         | `dotnet add package Ds4Viz`                                                              | [csharp-ds4viz](./library/csharp/Ds4Viz/README.md)       | 未测试 |
 | `F#`                         | -                                                                                        | -                                                        | 规划中 |
 | `Java`*                      | -                                                                                        | -                                                        | 规划中 |
