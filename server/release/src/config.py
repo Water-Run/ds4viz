@@ -3,7 +3,7 @@ r"""
 
 :file: src/config.py
 :author: WaterRun
-:time: 2026-02-04
+:time: 2026-03-15
 """
 
 import os
@@ -71,6 +71,7 @@ class LibraryConfig:
     lua_path: str = "/usr/share/lua/5.4"
     lua_cpath: str = "/usr/lib64/lua/5.4"
     rust_ds4viz_path: str = ""
+    c_ds4viz_header_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ def _parse_config(raw: dict[str, Any], env: str) -> AppConfig:
             lua_path=library_raw.get("lua_path", "/usr/share/lua/5.4"),
             lua_cpath=library_raw.get("lua_cpath", "/usr/lib64/lua/5.4"),
             rust_ds4viz_path=library_raw.get("rust_ds4viz_path", ""),
+            c_ds4viz_header_path=library_raw.get("c_ds4viz_header_path", ""),
         ),
         env=env,
     )

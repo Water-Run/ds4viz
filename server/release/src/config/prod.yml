@@ -27,4 +27,5 @@ library:
   python_path: ""
   lua_path: "/usr/share/lua/5.4"
   lua_cpath: "/usr/lib64/lua/5.4"
-  rust_ds4viz_path: "/opt/ds4viz/library/rust"
+  rust_ds4viz_path: "/home/waterrun/Coding/ds4viz/library/rust"
+  c_ds4viz_header_path: "../../../library/c/ds4viz.h"

@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-02-25
+:time: 2026-03-15
 """
 
 import os
@@ -259,6 +259,110 @@ class RustExecutor(LanguageExecutor):
         return ["rust-script", str(workspace / filename)]
 
 
+class CExecutor(LanguageExecutor):
+    r"""
+    C语言执行器，使用gcc编译后执行
+    """
+
+    def __init__(self, ds4viz_header_path: str = "") -> None:
+        r"""
+        初始化C执行器
+
+        :param ds4viz_header_path: ds4viz.h路径（可为绝对路径或相对src目录的路径）
+        """
+        self._ds4viz_header_path: str = ds4viz_header_path
+
+    @property
+    def language(self) -> SupportedLanguage:
+        r"""
+        获取支持的语言类型
+
+        :return SupportedLanguage: C
+        """
+        return SupportedLanguage.C
+
+    @property
+    def file_extension(self) -> str:
+        r"""
+        获取文件扩展名
+
+        :return str: .c
+        """
+        return ".c"
+
+    @staticmethod
+    def _src_base_dir() -> Path:
+        r"""
+        获取src目录路径
+
+        :return Path: src目录绝对路径
+        """
+        return Path(__file__).resolve().parent.parent
+
+    @classmethod
+    def _resolve_header_path(cls, configured_path: str) -> Path:
+        r"""
+        解析ds4viz.h路径
+
+        规则：
+        1. 绝对路径直接使用；
+        2. 相对路径按src目录解析。
+
+        :param configured_path: 配置中的路径
+        :return Path: 解析后的绝对路径
+        :raise FileNotFoundError: 路径为空或文件不存在
+        """
+        if not configured_path:
+            raise FileNotFoundError("未配置C库头文件路径: c_ds4viz_header_path")
+
+        raw_path: Path = Path(configured_path)
+        resolved_path: Path = (
+            raw_path.resolve()
+            if raw_path.is_absolute()
+            else (cls._src_base_dir() / raw_path).resolve()
+        )
+
+        if not resolved_path.exists() or not resolved_path.is_file():
+            raise FileNotFoundError(f"C库头文件不存在: {resolved_path}")
+
+        return resolved_path
+
+    def prepare_files(self, workspace: Path, code: str) -> str:
+        r"""
+        准备C执行文件，并拷贝ds4viz.h到工作目录
+
+        :param workspace: 工作目录
+        :param code: C源代码
+        :return str: 主文件名
+        :raise FileNotFoundError: 头文件路径无效
+        """
+        filename: str = f"main{self.file_extension}"
+        source_path: Path = workspace / filename
+        source_path.write_text(code, encoding="utf-8")
+
+        header_source_path: Path = self._resolve_header_path(
+            self._ds4viz_header_path)
+        header_target_path: Path = workspace / "ds4viz.h"
+        shutil.copy2(header_source_path, header_target_path)
+
+        return filename
+
+    def get_run_command(self, workspace: Path, filename: str) -> list[str]:
+        r"""
+        获取C执行命令（编译并运行）
+
+        :param workspace: 工作目录
+        :param filename: 主文件名
+        :return list[str]: 命令及参数列表
+        """
+        binary_name: str = "main"
+        compile_and_run: str = (
+            f"gcc -std=c2x -Wall -Wextra -Wpedantic "
+            f"{filename} -o {binary_name} -lm && ./{binary_name}"
+        )
+        return ["sh", "-c", compile_and_run]
+
+
 def _get_executor(language: SupportedLanguage) -> LanguageExecutor:
     r"""
     获取语言执行器
@@ -280,6 +384,12 @@ def _get_executor(language: SupportedLanguage) -> LanguageExecutor:
                 getattr(config, "library", None), "rust_ds4viz_path", ""
             ) if hasattr(config, "library") else ""
             return RustExecutor(ds4viz_path=ds4viz_path)
+        case SupportedLanguage.C:
+            config = get_config()
+            c_header_path: str = getattr(
+                getattr(config, "library", None), "c_ds4viz_header_path", ""
+            ) if hasattr(config, "library") else ""
+            return CExecutor(ds4viz_header_path=c_header_path)
         case _:
             raise ValueError(f"不支持的语言: {language}")
 
@@ -409,7 +519,7 @@ def _run_with_timeout(
     ]
 
     try:
-        result: subprocess.CompletedProcess = subprocess.run(
+        result: subprocess.CompletedProcess[str] = subprocess.run(
             timeout_command,
             capture_output=True,
             text=True,
@@ -468,7 +578,7 @@ def _run_with_systemd(
     ]
 
     try:
-        result: subprocess.CompletedProcess = subprocess.run(
+        result: subprocess.CompletedProcess[str] = subprocess.run(
             systemd_command,
             capture_output=True,
             text=True,
@@ -515,7 +625,7 @@ def _check_systemd_available() -> bool:
         return False
 
     try:
-        result: subprocess.CompletedProcess = subprocess.run(
+        result: subprocess.CompletedProcess[str] = subprocess.run(
             ["systemd-run", "--user", "--scope", "--quiet", "--", "true"],
             capture_output=True,
             text=True,
@@ -587,7 +697,6 @@ def run_code(
 
     executor: LanguageExecutor = _get_executor(language)
     workspace: Path | None = None
-
     start_time: float = time.perf_counter()
 
     try:
@@ -598,7 +707,10 @@ def run_code(
             f.name for f in workspace.iterdir() if f.is_file()}
 
         proc_result: SubprocessResult = _run_in_sandbox(
-            executor, workspace, filename, config
+            executor=executor,
+            workspace=workspace,
+            filename=filename,
+            config=config,
         )
 
         execution_time_ms: int = int((time.perf_counter() - start_time) * 1000)

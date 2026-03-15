@@ -3,12 +3,13 @@ ds4viz 功能测试
 
 :file: test/function_test.py
 :author: WaterRun
-:time: 2026-02-28
+:time: 2026-03-15
 """
 
 import time
 from datetime import datetime, timezone, timedelta
 
+import shutil
 import psycopg
 import pytest
 import requests
@@ -1425,6 +1426,7 @@ class TestTemplateDetail:
                 {"language": "python", "code": "python code"},
                 {"language": "lua", "code": "lua code"},
                 {"language": "rust", "code": "rust code"},
+                {"language": "c", "code": 'c code'},
             ],
         )
 
@@ -1434,6 +1436,7 @@ class TestTemplateDetail:
         assert "python" in languages
         assert "lua" in languages
         assert "rust" in languages
+        assert "c" in languages
 
     def test_get_template_explanation_null(self) -> None:
         r"""
@@ -1535,6 +1538,24 @@ class TestTemplateCode:
         )
         assert resp.status_code == 200
         assert resp.json()["language"] == "rust"
+        
+    def test_get_template_code_c(self) -> None:
+        r"""
+        获取 C 实现
+        """
+        template_id: int = create_template(
+            "模板",
+            "分类",
+            "描述",
+            codes=[
+                {"language": "c", "code": '#include "ds4viz.h"\nint main(void){return 0;}'}],
+        )
+
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}/code/c")
+        )
+        assert resp.status_code == 200
+        assert resp.json()["language"] == "c"
 
     def test_get_template_code_template_not_found(self) -> None:
         r"""
@@ -2072,6 +2093,47 @@ fn main() -> ds4viz::Result<()> {
         data: dict = resp.json()
         assert data["status"] == "Success"
         assert data["toml_output"] is not None
+
+    def test_execute_c_success(self) -> None:
+        r"""
+        C 代码执行成功，返回 TOML
+        """
+        if shutil.which("gcc") is None:
+            pytest.skip("gcc 未安装，跳过 C 执行测试")
+
+        token: str = create_user_and_login()
+        code: str = r'''
+#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+    dvConfig((dvConfigOptions){
+        .output_path = "trace.toml",
+        .title = "C Test",
+        .author = "WaterRun",
+        .comment = "function test"
+    });
+
+    dvStack(s, "c_stack") {
+        dvStackPush(s, 1);
+        dvStackPush(s, 2);
+        dvStackPop(s);
+    }
+
+    return 0;
+}
+'''
+        resp: requests.Response = requests.post(
+            api_url("/api/execute"),
+            headers=auth_header(token),
+            json={"language": "c", "code": code},
+        )
+        assert resp.status_code == 200
+        data: dict = resp.json()
+        assert data["status"] == "Success"
+        assert data["toml_output"] is not None
+        assert "[meta]" in data["toml_output"]
 
     def test_execute_python_syntax_error(self) -> None:
         r"""

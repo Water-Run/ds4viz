@@ -3,7 +3,7 @@ r"""
 
 :file: src/model/execution.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-03-15
 """
 
 from datetime import datetime
@@ -30,6 +30,7 @@ class SupportedLanguage(StrEnum):
     PYTHON = "python"
     LUA = "lua"
     RUST = "rust"
+    C = "c"
 
 
 class ExecuteRequest(BaseModel):
