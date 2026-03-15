@@ -55,6 +55,7 @@ export function registerDs4vizCompletions(monaco: typeof import('monaco-editor')
   completionsRegistered = true
 
   registerLanguageCompletions(monaco, 'python', buildPythonCompletions(), ['.'])
+  registerLanguageCompletions(monaco, 'c', buildCCompletions(), ['.', '>', '#'])
   registerLanguageCompletions(monaco, 'lua', buildLuaCompletions(), ['.', ':'])
   registerLanguageCompletions(monaco, 'rust', buildRustCompletions(), ['.', ':'])
 }
@@ -220,6 +221,92 @@ function buildPythonMethods(): CompletionDef[] {
     { label: 'remove_edge', insert: 'remove_edge(${1:from_id}, ${2:to_id})', detail: 'Graph: 删除边', kind: 'method' },
     { label: 'update_node_label', insert: 'update_node_label(${1:node_id}, "${2:label}")', detail: 'Graph: 更新标签', kind: 'method' },
     { label: 'update_weight', insert: 'update_weight(${1:from_id}, ${2:to_id}, ${3:weight})', detail: 'WeightedGraph: 更新权重', kind: 'method' },
+  ]
+}
+
+/* ----------------------------------------------------------------
+ *  C 补全
+ * ---------------------------------------------------------------- */
+
+function buildCCompletions(): CompletionDef[] {
+  return [
+    ...buildCKeywords(),
+    ...buildCBuiltins(),
+    ...buildDs4vizCSnippets(),
+  ]
+}
+
+function buildCKeywords(): CompletionDef[] {
+  return [
+    { label: '#include', insert: '#include <${0}>', detail: '包含头文件', kind: 'keyword' },
+    { label: '#define', insert: '#define ${1:NAME} ${0}', detail: '宏定义', kind: 'keyword' },
+    { label: 'int main', insert: 'int main(void) {\n  $0\n  return 0;\n}', detail: '主函数模板', kind: 'snippet' },
+    { label: 'if', insert: 'if (${1:condition}) {\n  $0\n}', detail: '条件判断', kind: 'keyword' },
+    { label: 'for', insert: 'for (${1:int i = 0}; ${2:i < n}; ${3:i++}) {\n  $0\n}', detail: 'for 循环', kind: 'keyword' },
+    { label: 'while', insert: 'while (${1:condition}) {\n  $0\n}', detail: 'while 循环', kind: 'keyword' },
+    { label: 'switch', insert: 'switch (${1:expr}) {\n  case ${2:value}:\n    $0\n    break;\n  default:\n    break;\n}', detail: 'switch 分支', kind: 'keyword' },
+    { label: 'typedef struct', insert: 'typedef struct {\n  $0\n} ${1:Name};', detail: '结构体定义', kind: 'snippet' },
+  ]
+}
+
+function buildCBuiltins(): CompletionDef[] {
+  return [
+    { label: 'printf', insert: 'printf("${1:%d\\\\n}", ${0});', detail: '标准输出', kind: 'function' },
+    { label: 'scanf', insert: 'scanf("${1:%d}", &${0});', detail: '标准输入', kind: 'function' },
+    { label: 'malloc', insert: 'malloc(${0})', detail: '动态分配内存', kind: 'function' },
+    { label: 'free', insert: 'free(${0});', detail: '释放内存', kind: 'function' },
+    { label: 'memset', insert: 'memset(${1:ptr}, ${2:0}, ${0});', detail: '内存填充', kind: 'function' },
+    { label: 'memcpy', insert: 'memcpy(${1:dst}, ${2:src}, ${0});', detail: '内存拷贝', kind: 'function' },
+  ]
+}
+
+function buildDs4vizCSnippets(): CompletionDef[] {
+  return [
+    {
+      label: 'ds4viz include',
+      insert: '#define DS4VIZ_IMPLEMENTATION\n#define DS4VIZ_SHORT_NAMES\n#include "ds4viz.h"',
+      detail: '引入 ds4viz C 单头文件',
+      kind: 'snippet',
+    },
+    {
+      label: 'dvConfig',
+      insert: 'dvConfig((dvConfigOptions){\n  .output_path = "${1:trace.toml}",\n  .title = "${2}",\n  .author = "${3}",\n  .comment = "${4}"\n});',
+      detail: '配置 trace 输出',
+      kind: 'function',
+    },
+    {
+      label: 'dvStack',
+      insert: 'dvStack(${1:s}, "${2:stack}") {\n  $0\n}',
+      detail: '创建栈作用域',
+      kind: 'snippet',
+    },
+    {
+      label: 'dvQueue',
+      insert: 'dvQueue(${1:q}, "${2:queue}") {\n  $0\n}',
+      detail: '创建队列作用域',
+      kind: 'snippet',
+    },
+    {
+      label: 'dvBinaryTree',
+      insert: 'dvBinaryTree(${1:t}, "${2:tree}") {\n  $0\n}',
+      detail: '创建二叉树作用域',
+      kind: 'snippet',
+    },
+    {
+      label: 'dvGraphUndirected',
+      insert: 'dvGraphUndirected(${1:g}, "${2:graph}") {\n  $0\n}',
+      detail: '创建无向图作用域',
+      kind: 'snippet',
+    },
+    { label: 'dvStackPush', insert: 'dvStackPush(${1:s}, ${0});', detail: '栈压入', kind: 'method' },
+    { label: 'dvStackPop', insert: 'dvStackPop(${0});', detail: '栈弹出', kind: 'method' },
+    { label: 'dvQueueEnqueue', insert: 'dvQueueEnqueue(${1:q}, ${0});', detail: '队列入队', kind: 'method' },
+    { label: 'dvQueueDequeue', insert: 'dvQueueDequeue(${0});', detail: '队列出队', kind: 'method' },
+    { label: 'dvBtInsertRoot', insert: 'int ${1:root} = dvBtInsertRoot(${2:t}, ${0});', detail: '树插入根节点', kind: 'method' },
+    { label: 'dvBtInsertLeft', insert: 'int ${1:left} = dvBtInsertLeft(${2:t}, ${3:parent_id}, ${0});', detail: '树插入左子', kind: 'method' },
+    { label: 'dvBtInsertRight', insert: 'int ${1:right} = dvBtInsertRight(${2:t}, ${3:parent_id}, ${0});', detail: '树插入右子', kind: 'method' },
+    { label: 'dvGuAddNode', insert: 'dvGuAddNode(${1:g}, ${2:id}, "${0:label}");', detail: '图添加节点', kind: 'method' },
+    { label: 'dvGuAddEdge', insert: 'dvGuAddEdge(${1:g}, ${2:from}, ${0:to});', detail: '图添加边', kind: 'method' },
   ]
 }
 

@@ -7,7 +7,7 @@
  *
  * @file src/components/common/TemplateDetailPanel.vue
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-15
  * @component TemplateDetailPanel
  */
 
@@ -126,6 +126,7 @@ const languageDotColor = computed<string>(() => {
   if (selectedLanguage.value === 'python') return 'var(--color-lang-python)'
   if (selectedLanguage.value === 'lua') return 'var(--color-lang-lua)'
   if (selectedLanguage.value === 'rust') return 'var(--color-lang-rust)'
+  if (selectedLanguage.value === 'c') return 'var(--color-lang-c)'
   return 'var(--color-text-tertiary)'
 })
 

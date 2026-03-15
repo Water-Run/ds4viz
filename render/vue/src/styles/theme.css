@@ -6,7 +6,7 @@
  *
  *  @file src/styles/theme.css
  *  @author WaterRun
- *  @date 2026-02-26
+ *  @date 2026-03-15
  * ============================================================ */
 
 :root {
@@ -50,6 +50,7 @@
     --color-lang-python: #3572a5;
     --color-lang-lua: #000080;
     --color-lang-rust: #dea584;
+    --color-lang-c: #555555;
 
     /* -------- 圆角 -------- */
     --radius-sm: 4px;

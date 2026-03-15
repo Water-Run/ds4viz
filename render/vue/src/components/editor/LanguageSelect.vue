@@ -35,7 +35,7 @@ const emit = defineEmits<Emits>()
 /**
  * 可选语言列表
  */
-const options = computed<Language[]>(() => ['python', 'lua', 'rust'])
+const options = computed<Language[]>(() => ['python', 'lua', 'rust', 'c'])
 
 /**
  * 语言颜色映射
@@ -44,6 +44,7 @@ const languageColor = computed<string>(() => {
   if (props.modelValue === 'python') return 'var(--color-lang-python)'
   if (props.modelValue === 'lua') return 'var(--color-lang-lua)'
   if (props.modelValue === 'rust') return 'var(--color-lang-rust)'
+  if (props.modelValue === 'c') return 'var(--color-lang-c)'
   return 'var(--color-text-tertiary)'
 })
 

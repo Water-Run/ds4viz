@@ -3,7 +3,7 @@
  * 文档页面
  *
  * @component Docs
- * @date 2026-03-03
+ * @date 2026-03-15
  */
 
 import { computed, onMounted, ref } from 'vue'
@@ -81,7 +81,7 @@ const docTree = computed<DocNode[]>(() => [
         id: 'intro-principle',
         title: '基础原理',
         content:
-          'ds4viz 采用 代码 → 中间语言 → 渲染 三层解耦架构。第一层是语言库：用户在 Python、Lua、Rust 等语言中以指定语法调用 ds4viz API，每次操作都会记录状态变化。第二层是中间语言 IR：所有语言统一产出 .toml 文件，该文件描述一次完整 trace，渲染器不需要读取源码，只需读取 TOML 即可复原整个过程。第三层是渲染器：按 object.kind 解析结构类型，按 states 和 steps 进行展示，同一份 TOML 可在不同渲染端复用。一类特定的、不设计用于交互的渲染器在 ds4viz 中被称为编译器，例如输出到 PowerPoint 演示文稿等。',
+          'ds4viz 采用 代码 → 中间语言 → 渲染 三层解耦架构。第一层是语言库：用户在 Python、Lua、Rust、C 等语言中以指定语法调用 ds4viz API，每次操作都会记录状态变化。第二层是中间语言 IR：所有语言统一产出 .toml 文件，该文件描述一次完整 trace，渲染器不需要读取源码，只需读取 TOML 即可复原整个过程。第三层是渲染器：按 object.kind 解析结构类型，按 states 和 steps 进行展示，同一份 TOML 可在不同渲染端复用。一类特定的、不设计用于交互的渲染器在 ds4viz 中被称为编译器，例如输出到 PowerPoint 演示文稿等。',
       },
     ],
   },
@@ -121,7 +121,7 @@ const docTree = computed<DocNode[]>(() => [
     id: 'syntax',
     title: '语法',
     content:
-      'ds4viz 支持 Python、Lua、Rust 三种语言，遵循大体相同的设计：创建结构对象，在受控上下文中执行操作，自动生成 trace.toml，成功写入 [result]，失败写入 [error]。不同语言保持各自命名习惯，但语义一致。因需要确保 TOML IR 始终写入，需要使用对应语言提供的上下文闭包能力：Python 使用 with，Lua 使用 withContext，Rust 使用闭包 + Result。值类型仅支持 integer、float、string、boolean。',
+      'ds4viz 支持 Python、Lua、Rust、C 四种语言，遵循大体相同的设计：创建结构对象，在受控上下文中执行操作，自动生成 trace.toml，成功写入 [result]，失败写入 [error]。不同语言保持各自命名习惯，但语义一致。因需要确保 TOML IR 始终写入，需要使用对应语言提供的上下文闭包能力：Python 使用 with，Lua 使用 withContext，Rust 使用闭包 + Result，C 使用结构作用域宏。值类型仅支持 integer、float、string、boolean。',
     children: [
       {
         id: 'syntax-config',
@@ -154,13 +154,27 @@ ds4viz::config(
         .comment("示例")
         .build()
 );`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){
+    .output_path = "trace.toml",
+    .title = "Demo",
+    .author = "WaterRun",
+    .comment = "示例"
+  });
+
+  return 0;
+}`,
         },
       },
       {
         id: 'syntax-context',
         title: '上下文管理',
         content:
-          '使用上下文管理器确保无论成功或失败，都会生成 trace.toml。成功时写入 [result]，异常时写入 [error]。Python 使用 with 语句，Lua 使用 withContext 函数，Rust 使用闭包 + Result。',
+          '使用上下文管理器确保无论成功或失败，都会生成 trace.toml。成功时写入 [result]，异常时写入 [error]。Python 使用 with 语句，Lua 使用 withContext 函数，Rust 使用闭包 + Result，C 使用结构作用域宏。注意不要在 C 的结构作用域中使用 return 或 goto 跳出。',
         codeBlocks: {
           python: `import ds4viz as dv
 
@@ -184,6 +198,21 @@ fn main() -> ds4viz::Result<()> {
         graph.add_edge(0, 1)?;
         Ok(())
     })
+}`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvGraphUndirected(graph, "demo_graph") {
+    dvGuAddNode(graph, 0, "A");
+    dvGuAddNode(graph, 1, "B");
+    dvGuAddEdge(graph, 0, 1);
+  }
+
+  return 0;
 }`,
         },
       },
@@ -234,6 +263,25 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvStack(s, "demo_stack") {
+    dvStackPush(s, 10);
+    dvStackPush(s, 20);
+    dvStackPush(s, 30);
+    dvStackPop(s);
+    dvStackPush(s, 40);
+    dvStackPop(s);
+    dvStackPop(s);
+  }
+
+  return 0;
+}`,
         },
       },
       {
@@ -273,6 +321,24 @@ fn main() -> ds4viz::Result<()> {
         q.dequeue()?;
         Ok(())
     })
+}`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvQueue(q, "demo_queue") {
+    dvQueueEnqueue(q, "A");
+    dvQueueEnqueue(q, "B");
+    dvQueueEnqueue(q, "C");
+    dvQueueDequeue(q);
+    dvQueueEnqueue(q, "D");
+    dvQueueDequeue(q);
+  }
+
+  return 0;
 }`,
         },
       },
@@ -314,6 +380,26 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvSingleLinkedList(slist, "demo_slist") {
+    int node_a = dvSlInsertHead(slist, 10);
+    dvSlInsertTail(slist, 20);
+    int node_c = dvSlInsertTail(slist, 30);
+
+    dvSlInsertAfter(slist, node_a, 15);
+
+    dvSlDelete(slist, node_c);
+    dvSlReverse(slist);
+  }
+
+  return 0;
+}`,
         },
       },
       {
@@ -353,6 +439,26 @@ fn main() -> ds4viz::Result<()> {
         dlist.reverse()?;
         Ok(())
     })
+}`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvDoubleLinkedList(dlist, "demo_dlist") {
+    int node_a = dvDlInsertHead(dlist, 10);
+    int node_b = dvDlInsertTail(dlist, 30);
+
+    dvDlInsertAfter(dlist, node_a, 20);
+    dvDlInsertBefore(dlist, node_b, 25);
+
+    dvDlDeleteTail(dlist);
+    dvDlReverse(dlist);
+  }
+
+  return 0;
 }`,
         },
       },
@@ -406,6 +512,28 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvBinaryTree(tree, "demo_tree") {
+    int root = dvBtInsertRoot(tree, 1);
+    int left = dvBtInsertLeft(tree, root, 2);
+    int right = dvBtInsertRight(tree, root, 3);
+
+    dvBtInsertLeft(tree, left, 4);
+    dvBtInsertRight(tree, left, 5);
+    dvBtInsertLeft(tree, right, 6);
+
+    dvBtUpdateValue(tree, right, 30);
+    dvBtDelete(tree, left);
+  }
+
+  return 0;
+}`,
         },
       },
       {
@@ -455,6 +583,28 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvBinarySearchTree(bst, "demo_bst") {
+    dvBstInsert(bst, 50);
+    dvBstInsert(bst, 30);
+    dvBstInsert(bst, 70);
+    dvBstInsert(bst, 20);
+    dvBstInsert(bst, 40);
+    dvBstInsert(bst, 60);
+    dvBstInsert(bst, 80);
+
+    dvBstDelete(bst, 30);
+    dvBstInsert(bst, 35);
+  }
+
+  return 0;
+}`,
         },
       },
       {
@@ -503,6 +653,27 @@ fn main() -> ds4viz::Result<()> {
         h.extract()?;
         Ok(())
     })
+}`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvHeap(min_heap, "demo_min_heap", dvHeapOrderMin) {
+    dvHeapInsert(min_heap, 15);
+    dvHeapInsert(min_heap, 10);
+    dvHeapInsert(min_heap, 20);
+    dvHeapInsert(min_heap, 5);
+    dvHeapInsert(min_heap, 30);
+
+    dvHeapExtract(min_heap);
+    dvHeapInsert(min_heap, 2);
+    dvHeapExtract(min_heap);
+  }
+
+  return 0;
 }`,
         },
       },
@@ -562,6 +733,30 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvGraphUndirected(g, "demo_graph") {
+    dvGuAddNode(g, 0, "A");
+    dvGuAddNode(g, 1, "B");
+    dvGuAddNode(g, 2, "C");
+    dvGuAddNode(g, 3, "D");
+
+    dvGuAddEdge(g, 0, 1);
+    dvGuAddEdge(g, 0, 2);
+    dvGuAddEdge(g, 1, 2);
+    dvGuAddEdge(g, 2, 3);
+
+    dvGuRemoveEdge(g, 0, 2);
+    dvGuRemoveNode(g, 3);
+  }
+
+  return 0;
+}`,
         },
       },
       {
@@ -613,6 +808,30 @@ fn main() -> ds4viz::Result<()> {
         g.add_edge(0, 2)?;
         Ok(())
     })
+}`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvGraphDirected(g, "demo_digraph") {
+    dvGdAddNode(g, 0, "A");
+    dvGdAddNode(g, 1, "B");
+    dvGdAddNode(g, 2, "C");
+    dvGdAddNode(g, 3, "D");
+
+    dvGdAddEdge(g, 0, 1);
+    dvGdAddEdge(g, 1, 2);
+    dvGdAddEdge(g, 2, 3);
+    dvGdAddEdge(g, 3, 0);
+
+    dvGdRemoveEdge(g, 3, 0);
+    dvGdAddEdge(g, 0, 2);
+  }
+
+  return 0;
 }`,
         },
       },
@@ -666,6 +885,30 @@ fn main() -> ds4viz::Result<()> {
         Ok(())
     })
 }`,
+          c: `#define DS4VIZ_IMPLEMENTATION
+#define DS4VIZ_SHORT_NAMES
+#include "ds4viz.h"
+
+int main(void) {
+  dvConfig((dvConfigOptions){ .output_path = "trace.toml" });
+
+  dvGraphWeighted(g, "demo_weighted", false) {
+    dvGwAddNode(g, 0, "A");
+    dvGwAddNode(g, 1, "B");
+    dvGwAddNode(g, 2, "C");
+    dvGwAddNode(g, 3, "D");
+
+    dvGwAddEdge(g, 0, 1, 4.0);
+    dvGwAddEdge(g, 0, 2, 2.0);
+    dvGwAddEdge(g, 1, 3, 5.0);
+    dvGwAddEdge(g, 2, 3, 1.0);
+
+    dvGwUpdateWeight(g, 0, 1, 3.0);
+    dvGwRemoveEdge(g, 2, 3);
+  }
+
+  return 0;
+}`,
         },
       },
     ],
@@ -684,6 +927,7 @@ fn main() -> ds4viz::Result<()> {
           python: 'pip install ds4viz',
           lua: 'luarocks install ds4viz',
           rust: 'cargo add ds4viz',
+          c: '下载 ds4viz.h，并使用 gcc -std=c2x 编译',
         },
       },
     ],
@@ -741,6 +985,7 @@ const getLanguageDotColor = (language: Language): string => {
     python: 'var(--color-lang-python)',
     lua: 'var(--color-lang-lua)',
     rust: 'var(--color-lang-rust)',
+    c: 'var(--color-lang-c)',
   }
   return colors[language] ?? 'var(--color-text-tertiary)'
 }

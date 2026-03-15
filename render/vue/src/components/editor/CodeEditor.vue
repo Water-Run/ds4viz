@@ -10,7 +10,7 @@
  *
  * @file src/components/editor/CodeEditor.vue
  * @author WaterRun
- * @date 2026-03-03
+ * @date 2026-03-15
  * @component CodeEditor
  *
  * @example
@@ -54,6 +54,7 @@ const editorLanguage = computed<string>(() => {
   if (props.language === 'python') return 'python'
   if (props.language === 'lua') return 'lua'
   if (props.language === 'rust') return 'rust'
+  if (props.language === 'c') return 'c'
   return 'plaintext'
 })
 

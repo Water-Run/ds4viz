@@ -9,7 +9,7 @@
  *
  * @file src/views/Profile.vue
  * @author WaterRun
- * @date 2026-03-03
+ * @date 2026-03-15
  * @component Profile
  */
 
@@ -97,6 +97,7 @@ const LANG_COLORS: Record<string, string> = {
   python: '#3572a5',
   lua: '#000080',
   rust: '#dea584',
+  c: '#555555',
 }
 
 const STATUS_CHART_COLORS: Record<string, string> = {
