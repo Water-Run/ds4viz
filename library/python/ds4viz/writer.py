@@ -1,9 +1,9 @@
 r"""
-TOML 文件写入器，将 Trace 对象序列化为 TOML 格式
+TOML 文件写入器, 将 Trace 对象序列化为 TOML 格式
 
 :file: ds4viz/writer.py
 :author: WaterRun
-:time: 2025-12-23
+:time: 2026-03-23
 """
 
 from typing import Any
@@ -99,11 +99,14 @@ class TomlWriter:
         """
         lines: list[str] = ["[remarks]"]
         if self._trace.remarks.title:
-            lines.append(f'title = "{self._escape_string(self._trace.remarks.title)}"')
+            lines.append(
+                f'title = "{self._escape_string(self._trace.remarks.title)}"')
         if self._trace.remarks.author:
-            lines.append(f'author = "{self._escape_string(self._trace.remarks.author)}"')
+            lines.append(
+                f'author = "{self._escape_string(self._trace.remarks.author)}"')
         if self._trace.remarks.comment:
-            lines.append(f'comment = "{self._escape_string(self._trace.remarks.comment)}"')
+            lines.append(
+                f'comment = "{self._escape_string(self._trace.remarks.comment)}"')
         return lines
 
     def _serialize_object(self) -> list[str]:
@@ -117,7 +120,8 @@ class TomlWriter:
             f'kind = "{self._trace.object.kind}"',
         ]
         if self._trace.object.label:
-            lines.append(f'label = "{self._escape_string(self._trace.object.label)}"')
+            lines.append(
+                f'label = "{self._escape_string(self._trace.object.label)}"')
         return lines
 
     def _serialize_state(self, state: State) -> list[str]:
@@ -146,7 +150,8 @@ class TomlWriter:
         lines: list[str] = []
         for key, value in data.items():
             if key in ("nodes", "edges"):
-                lines.append(f"{key} = {self._serialize_inline_table_array(value)}")
+                lines.append(
+                    f"{key} = {self._serialize_inline_table_array(value)}")
             elif key == "items":
                 lines.append(f"{key} = {self._serialize_simple_array(value)}")
             else:
@@ -164,7 +169,8 @@ class TomlWriter:
             return "[]"
         items: list[str] = []
         for item in arr:
-            pairs: list[str] = [f"{k} = {self._serialize_value(v)}" for k, v in item.items()]
+            pairs: list[str] = [
+                f"{k} = {self._serialize_value(v)}" for k, v in item.items()]
             items.append("{ " + ", ".join(pairs) + " }")
         return "[\n  " + ",\n  ".join(items) + "\n]"
 
@@ -191,29 +197,30 @@ class TomlWriter:
             "[[steps]]",
             f"id = {step.id}",
             f'op = "{step.op}"',
-            f"before = {step.before}",
         ]
+        if step.phase is not None:
+            lines.append(f'phase = "{self._escape_string(step.phase)}"')
+        lines.append(f"before = {step.before}")
         if step.after is not None:
             lines.append(f"after = {step.after}")
         if step.ret is not None:
             lines.append(f"ret = {self._serialize_value(step.ret)}")
-        if step.note:
+        if step.note is not None:
             lines.append(f'note = "{self._escape_string(step.note)}"')
-
+        if step.highlights is not None:
+            lines.append(
+                f"highlights = {self._serialize_inline_table_array(step.highlights)}")
         lines.append("")
         lines.append("[steps.args]")
-
         if step.args:
             for key, value in step.args.items():
                 lines.append(f"{key} = {self._serialize_value(value)}")
-
         if step.code is not None:
             lines.append("")
             lines.append("[steps.code]")
             lines.append(f"line = {step.code.line}")
             if step.code.col is not None:
                 lines.append(f"col = {step.code.col}")
-
         return lines
 
     def _serialize_result(self) -> list[str]:
@@ -277,7 +284,8 @@ class TomlWriter:
             case list():
                 return self._serialize_simple_array(value)
             case dict():
-                pairs = [f"{k} = {self._serialize_value(v)}" for k, v in value.items()]
+                pairs: list[str] = [
+                    f"{k} = {self._serialize_value(v)}" for k, v in value.items()]
                 return "{ " + ", ".join(pairs) + " }"
             case _:
                 return f'"{self._escape_string(str(value))}"'
@@ -291,4 +299,3 @@ class TomlWriter:
         :return str: 转义后的字符串
         """
         return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
-    

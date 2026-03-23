@@ -1,15 +1,14 @@
 r"""
-线性数据结构实现：栈、队列、单链表、双向链表
+线性数据结构实现: 栈、队列、单链表、双向链表
 
 :file: ds4viz/structures/linear.py
 :author: WaterRun
-:time: 2025-12-23
+:time: 2026-03-23
 """
 
 from typing import Any
 
 from ds4viz.structures._base import BaseStructure, ValueType
-from ds4viz.session import get_caller_line
 
 
 class Stack(BaseStructure):
@@ -46,39 +45,21 @@ class Stack(BaseStructure):
         :param value: 要压入的值
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         self._items.append(value)
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="push",
-            before=before,
-            after=after,
-            args={"value": value},
-            line=line
-        )
+        self._record_step("push", {"value": value})
 
-    def pop(self) -> None:
+    def pop(self) -> ValueType:
         r"""
         弹栈操作
 
-        :return None: 无返回值
+        :return ValueType: 弹出的栈顶元素值
         :raise RuntimeError: 当栈为空时抛出异常
         """
         if not self._items:
             self._raise_error("Cannot pop from empty stack")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         popped: ValueType = self._items.pop()
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="pop",
-            before=before,
-            after=after,
-            args={},
-            ret=popped,
-            line=line
-        )
+        self._record_step("pop", {}, ret=popped)
+        return popped
 
     def clear(self) -> None:
         r"""
@@ -86,17 +67,8 @@ class Stack(BaseStructure):
 
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         self._items.clear()
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="clear",
-            before=before,
-            after=after,
-            args={},
-            line=line
-        )
+        self._record_step("clear", {})
 
 
 class Queue(BaseStructure):
@@ -136,39 +108,21 @@ class Queue(BaseStructure):
         :param value: 要入队的值
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         self._items.append(value)
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="enqueue",
-            before=before,
-            after=after,
-            args={"value": value},
-            line=line
-        )
+        self._record_step("enqueue", {"value": value})
 
-    def dequeue(self) -> None:
+    def dequeue(self) -> ValueType:
         r"""
         出队操作
 
-        :return None: 无返回值
+        :return ValueType: 出队的队首元素值
         :raise RuntimeError: 当队列为空时抛出异常
         """
         if not self._items:
             self._raise_error("Cannot dequeue from empty queue")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         dequeued: ValueType = self._items.pop(0)
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="dequeue",
-            before=before,
-            after=after,
-            args={},
-            ret=dequeued,
-            line=line
-        )
+        self._record_step("dequeue", {}, ret=dequeued)
+        return dequeued
 
     def clear(self) -> None:
         r"""
@@ -176,17 +130,8 @@ class Queue(BaseStructure):
 
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         self._items.clear()
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="clear",
-            before=before,
-            after=after,
-            args={},
-            line=line
-        )
+        self._record_step("clear", {})
 
 
 class SingleLinkedList(BaseStructure):
@@ -207,23 +152,36 @@ class SingleLinkedList(BaseStructure):
         self._head: int = -1
         self._next_id: int = 0
 
+    def _node_exists(self, node_id: int) -> bool:
+        r"""
+        检查节点是否存在
+
+        :param node_id: 节点 ID
+        :return bool: 节点是否存在
+        """
+        return node_id in self._nodes
+
     def _build_data(self) -> dict[str, Any]:
         r"""
         构建单链表的状态数据
 
         :return dict[str, Any]: 状态数据字典
         """
-        nodes_list: list[dict[str, Any]] = [
-            {"id": nid, "value": data["value"], "next": data["next"]}
-            for nid, data in sorted(self._nodes.items())
-        ]
+        nodes_list: list[dict[str, Any]] = []
+        for nid, data in sorted(self._nodes.items()):
+            node_dict: dict[str, Any] = {"id": nid}
+            if nid in self._aliases:
+                node_dict["alias"] = self._aliases[nid]
+            node_dict["value"] = data["value"]
+            node_dict["next"] = data["next"]
+            nodes_list.append(node_dict)
         return {"head": self._head, "nodes": nodes_list}
 
     def _find_tail(self) -> int:
         r"""
         查找尾节点 ID
 
-        :return int: 尾节点 ID，若链表为空则返回 -1
+        :return int: 尾节点 ID, 若链表为空则返回 -1
         """
         if self._head == -1:
             return -1
@@ -237,7 +195,7 @@ class SingleLinkedList(BaseStructure):
         查找指定节点的前驱节点 ID
 
         :param node_id: 目标节点 ID
-        :return int: 前驱节点 ID，若为头节点或不存在则返回 -1
+        :return int: 前驱节点 ID, 若为头节点或不存在则返回 -1
         """
         if self._head == -1 or self._head == node_id:
             return -1
@@ -255,21 +213,11 @@ class SingleLinkedList(BaseStructure):
         :param value: 要插入的值
         :return int: 新插入节点的 id
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         self._nodes[new_id] = {"value": value, "next": self._head}
         self._head = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_head",
-            before=before,
-            after=after,
-            args={"value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step("insert_head", {"value": value}, ret=new_id)
         return new_id
 
     def insert_tail(self, value: ValueType) -> int:
@@ -279,8 +227,6 @@ class SingleLinkedList(BaseStructure):
         :param value: 要插入的值
         :return int: 新插入节点的 id
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         self._nodes[new_id] = {"value": value, "next": -1}
@@ -289,15 +235,7 @@ class SingleLinkedList(BaseStructure):
         else:
             tail: int = self._find_tail()
             self._nodes[tail]["next"] = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_tail",
-            before=before,
-            after=after,
-            args={"value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step("insert_tail", {"value": value}, ret=new_id)
         return new_id
 
     def insert_after(self, node_id: int, value: ValueType) -> int:
@@ -311,22 +249,13 @@ class SingleLinkedList(BaseStructure):
         """
         if node_id not in self._nodes:
             self._raise_error(f"Node not found: {node_id}")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         old_next: int = self._nodes[node_id]["next"]
         self._nodes[new_id] = {"value": value, "next": old_next}
         self._nodes[node_id]["next"] = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_after",
-            before=before,
-            after=after,
-            args={"node_id": node_id, "value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step(
+            "insert_after", {"node_id": node_id, "value": value}, ret=new_id)
         return new_id
 
     def delete(self, node_id: int) -> None:
@@ -339,8 +268,6 @@ class SingleLinkedList(BaseStructure):
         """
         if node_id not in self._nodes:
             self._raise_error(f"Node not found: {node_id}")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         deleted_value: ValueType = self._nodes[node_id]["value"]
         if self._head == node_id:
             self._head = self._nodes[node_id]["next"]
@@ -349,15 +276,8 @@ class SingleLinkedList(BaseStructure):
             if prev != -1:
                 self._nodes[prev]["next"] = self._nodes[node_id]["next"]
         del self._nodes[node_id]
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="delete",
-            before=before,
-            after=after,
-            args={"node_id": node_id},
-            ret=deleted_value,
-            line=line
-        )
+        self._aliases.pop(node_id, None)
+        self._record_step("delete", {"node_id": node_id}, ret=deleted_value)
 
     def delete_head(self) -> None:
         r"""
@@ -368,21 +288,12 @@ class SingleLinkedList(BaseStructure):
         """
         if self._head == -1:
             self._raise_error("Cannot delete from empty list")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         old_head: int = self._head
         deleted_value: ValueType = self._nodes[old_head]["value"]
         self._head = self._nodes[old_head]["next"]
         del self._nodes[old_head]
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="delete_head",
-            before=before,
-            after=after,
-            args={},
-            ret=deleted_value,
-            line=line
-        )
+        self._aliases.pop(old_head, None)
+        self._record_step("delete_head", {}, ret=deleted_value)
 
     def reverse(self) -> None:
         r"""
@@ -390,8 +301,6 @@ class SingleLinkedList(BaseStructure):
 
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         prev: int = -1
         current: int = self._head
         while current != -1:
@@ -400,14 +309,7 @@ class SingleLinkedList(BaseStructure):
             prev = current
             current = next_node
         self._head = prev
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="reverse",
-            before=before,
-            after=after,
-            args={},
-            line=line
-        )
+        self._record_step("reverse", {})
 
 
 class DoubleLinkedList(BaseStructure):
@@ -429,17 +331,53 @@ class DoubleLinkedList(BaseStructure):
         self._tail: int = -1
         self._next_id: int = 0
 
+    def _node_exists(self, node_id: int) -> bool:
+        r"""
+        检查节点是否存在
+
+        :param node_id: 节点 ID
+        :return bool: 节点是否存在
+        """
+        return node_id in self._nodes
+
     def _build_data(self) -> dict[str, Any]:
         r"""
         构建双向链表的状态数据
 
         :return dict[str, Any]: 状态数据字典
         """
-        nodes_list: list[dict[str, Any]] = [
-            {"id": nid, "value": data["value"], "prev": data["prev"], "next": data["next"]}
-            for nid, data in sorted(self._nodes.items())
-        ]
+        nodes_list: list[dict[str, Any]] = []
+        for nid, data in sorted(self._nodes.items()):
+            node_dict: dict[str, Any] = {"id": nid}
+            if nid in self._aliases:
+                node_dict["alias"] = self._aliases[nid]
+            node_dict["value"] = data["value"]
+            node_dict["prev"] = data["prev"]
+            node_dict["next"] = data["next"]
+            nodes_list.append(node_dict)
         return {"head": self._head, "tail": self._tail, "nodes": nodes_list}
+
+    def _unlink_node(self, node_id: int) -> ValueType:
+        r"""
+        从链表中摘除指定节点并返回其值
+
+        :param node_id: 要摘除的节点 id
+        :return ValueType: 被摘除节点的值
+        """
+        deleted_value: ValueType = self._nodes[node_id]["value"]
+        prev_id: int = self._nodes[node_id]["prev"]
+        next_id: int = self._nodes[node_id]["next"]
+        if prev_id != -1:
+            self._nodes[prev_id]["next"] = next_id
+        else:
+            self._head = next_id
+        if next_id != -1:
+            self._nodes[next_id]["prev"] = prev_id
+        else:
+            self._tail = prev_id
+        del self._nodes[node_id]
+        self._aliases.pop(node_id, None)
+        return deleted_value
 
     def insert_head(self, value: ValueType) -> int:
         r"""
@@ -448,8 +386,6 @@ class DoubleLinkedList(BaseStructure):
         :param value: 要插入的值
         :return int: 新插入节点的 id
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         self._nodes[new_id] = {"value": value, "prev": -1, "next": self._head}
@@ -458,15 +394,7 @@ class DoubleLinkedList(BaseStructure):
         self._head = new_id
         if self._tail == -1:
             self._tail = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_head",
-            before=before,
-            after=after,
-            args={"value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step("insert_head", {"value": value}, ret=new_id)
         return new_id
 
     def insert_tail(self, value: ValueType) -> int:
@@ -476,8 +404,6 @@ class DoubleLinkedList(BaseStructure):
         :param value: 要插入的值
         :return int: 新插入节点的 id
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         self._nodes[new_id] = {"value": value, "prev": self._tail, "next": -1}
@@ -486,15 +412,7 @@ class DoubleLinkedList(BaseStructure):
         self._tail = new_id
         if self._head == -1:
             self._head = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_tail",
-            before=before,
-            after=after,
-            args={"value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step("insert_tail", {"value": value}, ret=new_id)
         return new_id
 
     def insert_before(self, node_id: int, value: ValueType) -> int:
@@ -508,26 +426,18 @@ class DoubleLinkedList(BaseStructure):
         """
         if node_id not in self._nodes:
             self._raise_error(f"Node not found: {node_id}")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         old_prev: int = self._nodes[node_id]["prev"]
-        self._nodes[new_id] = {"value": value, "prev": old_prev, "next": node_id}
+        self._nodes[new_id] = {"value": value,
+                               "prev": old_prev, "next": node_id}
         self._nodes[node_id]["prev"] = new_id
         if old_prev != -1:
             self._nodes[old_prev]["next"] = new_id
         else:
             self._head = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_before",
-            before=before,
-            after=after,
-            args={"node_id": node_id, "value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step("insert_before", {
+                          "node_id": node_id, "value": value}, ret=new_id)
         return new_id
 
     def insert_after(self, node_id: int, value: ValueType) -> int:
@@ -541,26 +451,18 @@ class DoubleLinkedList(BaseStructure):
         """
         if node_id not in self._nodes:
             self._raise_error(f"Node not found: {node_id}")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         new_id: int = self._next_id
         self._next_id += 1
         old_next: int = self._nodes[node_id]["next"]
-        self._nodes[new_id] = {"value": value, "prev": node_id, "next": old_next}
+        self._nodes[new_id] = {"value": value,
+                               "prev": node_id, "next": old_next}
         self._nodes[node_id]["next"] = new_id
         if old_next != -1:
             self._nodes[old_next]["prev"] = new_id
         else:
             self._tail = new_id
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="insert_after",
-            before=before,
-            after=after,
-            args={"node_id": node_id, "value": value},
-            ret=new_id,
-            line=line
-        )
+        self._record_step(
+            "insert_after", {"node_id": node_id, "value": value}, ret=new_id)
         return new_id
 
     def delete(self, node_id: int) -> None:
@@ -573,29 +475,8 @@ class DoubleLinkedList(BaseStructure):
         """
         if node_id not in self._nodes:
             self._raise_error(f"Node not found: {node_id}")
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
-        deleted_value: ValueType = self._nodes[node_id]["value"]
-        prev_id: int = self._nodes[node_id]["prev"]
-        next_id: int = self._nodes[node_id]["next"]
-        if prev_id != -1:
-            self._nodes[prev_id]["next"] = next_id
-        else:
-            self._head = next_id
-        if next_id != -1:
-            self._nodes[next_id]["prev"] = prev_id
-        else:
-            self._tail = prev_id
-        del self._nodes[node_id]
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="delete",
-            before=before,
-            after=after,
-            args={"node_id": node_id},
-            ret=deleted_value,
-            line=line
-        )
+        deleted_value: ValueType = self._unlink_node(node_id)
+        self._record_step("delete", {"node_id": node_id}, ret=deleted_value)
 
     def delete_head(self) -> None:
         r"""
@@ -606,7 +487,8 @@ class DoubleLinkedList(BaseStructure):
         """
         if self._head == -1:
             self._raise_error("Cannot delete from empty list")
-        self.delete(self._head)
+        deleted_value: ValueType = self._unlink_node(self._head)
+        self._record_step("delete_head", {}, ret=deleted_value)
 
     def delete_tail(self) -> None:
         r"""
@@ -617,7 +499,8 @@ class DoubleLinkedList(BaseStructure):
         """
         if self._tail == -1:
             self._raise_error("Cannot delete from empty list")
-        self.delete(self._tail)
+        deleted_value: ValueType = self._unlink_node(self._tail)
+        self._record_step("delete_tail", {}, ret=deleted_value)
 
     def reverse(self) -> None:
         r"""
@@ -625,19 +508,10 @@ class DoubleLinkedList(BaseStructure):
 
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
         current: int = self._head
         while current != -1:
             node: dict[str, Any] = self._nodes[current]
             node["prev"], node["next"] = node["next"], node["prev"]
             current = node["prev"]
         self._head, self._tail = self._tail, self._head
-        after: int = self._session.add_state(self._build_data())
-        self._session.add_step(
-            op="reverse",
-            before=before,
-            after=after,
-            args={},
-            line=line
-        )
+        self._record_step("reverse", {})

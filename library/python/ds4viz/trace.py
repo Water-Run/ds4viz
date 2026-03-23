@@ -1,9 +1,9 @@
 r"""
-Trace 数据结构定义，用于记录操作轨迹
+Trace 数据结构定义, 用于记录操作轨迹
 
 :file: ds4viz/trace.py
 :author: WaterRun
-:time: 2025-12-23
+:time: 2026-03-23
 """
 
 from dataclasses import dataclass, field
@@ -88,6 +88,8 @@ class Step:
     code: CodeLocation | None = None
     ret: Any = None
     note: str | None = None
+    phase: str | None = None
+    highlights: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -133,3 +135,4 @@ class Trace:
     steps: list[Step] = field(default_factory=list)
     result: Result | None = None
     error: Error | None = None
+    

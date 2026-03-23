@@ -1,9 +1,9 @@
 r"""
-会话管理模块，提供上下文管理和全局配置
+会话管理模块, 提供上下文管理和全局配置
 
 :file: ds4viz/session.py
 :author: WaterRun
-:time: 2025-12-23
+:time: 2026-03-23
 """
 
 import inspect
@@ -44,7 +44,7 @@ def config(
     r"""
     配置全局参数
 
-    :param output_path: 输出文件路径，默认为 "trace.toml"
+    :param output_path: 输出文件路径, 默认为 "trace.toml"
     :param title: 可视化标题
     :param author: 作者信息
     :param comment: 注释说明
@@ -96,7 +96,7 @@ def get_caller_line(depth: int = 2) -> int:
 
 class Session:
     r"""
-    会话管理器，用于管理数据结构的操作轨迹记录
+    会话管理器, 用于管理数据结构的操作轨迹记录
     """
 
     def __init__(
@@ -110,7 +110,7 @@ class Session:
 
         :param kind: 数据结构类型
         :param label: 数据结构标签
-        :param output: 输出文件路径，若为 None 则使用全局配置
+        :param output: 输出文件路径, 若为 None 则使用全局配置
         :return None: 无返回值
         """
         self._kind: str = kind
@@ -130,7 +130,7 @@ class Session:
         r"""
         获取失败步骤 ID
 
-        :return int | None: 失败步骤 ID，如果没有失败则为 None
+        :return int | None: 失败步骤 ID, 如果没有失败则为 None
         """
         return self._failed_step_id
 
@@ -163,22 +163,27 @@ class Session:
         args: dict[str, Any],
         ret: Any = None,
         note: str | None = None,
-        line: int | None = None
+        line: int | None = None,
+        phase: str | None = None,
+        highlights: list[dict[str, Any]] | None = None
     ) -> int:
         r"""
         添加操作步骤
 
         :param op: 操作名称
         :param before: 操作前状态 ID
-        :param after: 操作后状态 ID，失败时为 None
+        :param after: 操作后状态 ID, 失败时为 None
         :param args: 操作参数
         :param ret: 返回值
         :param note: 备注
         :param line: 代码行号
+        :param phase: 阶段标记
+        :param highlights: 高亮标记列表
         :return int: 新步骤的 ID
         """
         step_id: int = self._step_counter
-        code_loc: CodeLocation | None = CodeLocation(line=line) if line is not None else None
+        code_loc: CodeLocation | None = CodeLocation(
+            line=line) if line is not None else None
         self._steps.append(Step(
             id=step_id,
             op=op,
@@ -187,10 +192,20 @@ class Session:
             args=args,
             code=code_loc,
             ret=ret,
-            note=note
+            note=note,
+            phase=phase,
+            highlights=highlights
         ))
         self._step_counter += 1
         return step_id
+
+    def get_last_step(self) -> Step | None:
+        r"""
+        获取最后一个步骤
+
+        :return Step | None: 最后一个步骤, 若无步骤则返回 None
+        """
+        return self._steps[-1] if self._steps else None
 
     def set_error(
         self,
@@ -240,7 +255,7 @@ class Session:
         r"""
         获取最后一个状态的 ID
 
-        :return int: 最后一个状态的 ID，若无状态则返回 -1
+        :return int: 最后一个状态的 ID, 若无状态则返回 -1
         """
         return self._states[-1].id if self._states else -1
 
@@ -297,7 +312,7 @@ class Session:
 
 class ContextManager:
     r"""
-    上下文管理器基类，用于管理数据结构的生命周期
+    上下文管理器基类, 用于管理数据结构的生命周期
     """
 
     def __init__(
@@ -383,40 +398,8 @@ class ContextManager:
 
     def _initialize(self) -> None:
         r"""
-        初始化数据结构，子类需要重写此方法添加初始状态
+        初始化数据结构, 子类需要重写此方法添加初始状态
 
         :return None: 无返回值
         """
         ...
-
-    def _record_step(
-        self,
-        op: str,
-        args: dict[str, Any],
-        data_builder: Any,
-        ret: Any = None,
-        note: str | None = None
-    ) -> None:
-        r"""
-        记录操作步骤并添加新状态
-
-        :param op: 操作名称
-        :param args: 操作参数
-        :param data_builder: 构建状态数据的可调用对象
-        :param ret: 返回值
-        :param note: 备注
-        :return None: 无返回值
-        """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(3)
-        new_data: dict[str, Any] = data_builder()
-        after: int = self._session.add_state(new_data)
-        self._session.add_step(
-            op=op,
-            before=before,
-            after=after,
-            args=args,
-            ret=ret,
-            note=note,
-            line=line
-        )

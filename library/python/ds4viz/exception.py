@@ -3,7 +3,7 @@ r"""
 
 :file: ds4viz/exception.py
 :author: WaterRun
-:time: 2025-12-23
+:time: 2026-03-23
 """
 
 from enum import Enum
@@ -11,7 +11,7 @@ from enum import Enum
 
 class ErrorType(Enum):
     r"""
-    错误类型枚举，对应 IR 定义中的 error.type
+    错误类型枚举, 对应 IR 定义中的 error.type
     """
     RUNTIME = "runtime"
     TIMEOUT = "timeout"
@@ -20,7 +20,7 @@ class ErrorType(Enum):
     UNKNOWN = "unknown"
 
 
-class DS4VizError(Exception):
+class DS4VizError(RuntimeError):
     r"""
     ds4viz 库的基础异常类
     """

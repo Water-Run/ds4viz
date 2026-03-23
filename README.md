@@ -69,12 +69,12 @@
 | `C#`                         | `dotnet add package Ds4Viz`                                                              | [csharp-ds4viz](./library/csharp/Ds4Viz/README.md)       | 未测试 |
 | `F#`                         | -                                                                                        | -                                                        | 规划中 |
 | `Java`*                      | -                                                                                        | -                                                        | 规划中 |
-| `JavaScript`*                | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js` | [js-ds4viz](./library/javascript/README.md)              | 已编写 |
-| `TypeScript`*                | `pnpm install ds4viz`                                                                    | [ts-ds4viz](./library/typescript/README.md)              | 已编写 |
-| `Lua`                        | `luarocks install ds4viz`                                                                | [lua-ds4viz](./library/lua/README.md)                    | 已就绪 |
-| `PHP`*                       | `composer require ds4viz/ds4viz`                                                         | [php-ds4viz](./library/php/README.md)                    | 已编写 |
+| `JavaScript`*                | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js` | [js-ds4viz](./library/javascript/README.md)              | 旧版 |
+| `TypeScript`*                | `pnpm install ds4viz`                                                                    | [ts-ds4viz](./library/typescript/README.md)              | 旧版 |
+| `Lua`                        | `luarocks install ds4viz`                                                                | [lua-ds4viz](./library/lua/README.md)                    | 旧版 |
+| `PHP`*                       | `composer require ds4viz/ds4viz`                                                         | [php-ds4viz](./library/php/README.md)                    | 旧版 |
 | `Nim`                        | -                                                                                        | -                                                        | 规划中 |
-| `Rust`                       | `cargo add ds4viz`                                                                       | [rust-ds4viz](./library/rust/README.md)                  | 已就绪 |
+| `Rust`                       | `cargo add ds4viz`                                                                       | [rust-ds4viz](./library/rust/README.md)                  | 旧版 |
 | `Zig`*                       | -                                                                                        | -                                                        | 规划中 |
 | `MiniScript`(仅内嵌于WinUI3) | 随WinUI3渲染器发布                                                                       | 参见[WinUI3渲染器](./render/winui3/Ds4Viz/README.md)文档 | 规划中 |
 
@@ -87,7 +87,7 @@
 
 | 渲染器     | 平台                           | 下载 | 文档                                          | 状态   |
 |------------|--------------------------------|------|-----------------------------------------------|--------|
-| `simp-web` | Web (本地HTML, 对应Demo服务器) | -    | [Simp-Web渲染器](./render/simp-web/README.md) | 已完成 |
+| `simp-web` | Web (本地HTML, 对应Demo服务器) | -    | [Simp-Web渲染器](./render/simp-web/README.md) | 已完成(旧版) |
 | `vue`      | Web (SPA, 在线服务)            | -    | -                                             | 开发中 |
 | `tui`      | 终端                           | -    | -                                             | 规划中 |
 | `winui3`   | Windows桌面 (在线服务)         | -    | -                                             | 规划中 |
