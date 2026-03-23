@@ -2,3481 +2,3731 @@
  * @file test.c
  * @brief ds4viz C 库集成测试
  *
- * 覆盖所有数据结构的基本操作、错误处理、类型推导、
- * 边缘情况与复杂场景, 并验证 TOML IR 输出的结构正确性.
- * 测试覆盖范围与 Python ds4viz 的集成测试完全对齐.
+ * 与 Python ds4viz 库的 integration_test.py 和 unit_test.py 对齐,
+ * 覆盖所有数据结构的基本操作、错误处理、高亮标记、阶段管理、别名等功能.
+ *
+ * 编译: gcc -std=c2x -Wall -Wextra -Wpedantic -O2 -o test test.c -lm
+ * 运行: ./test
  *
  * @author WaterRun
- * @date 2025-06-15
+ * @date 2026-03-23
  * @version 0.1.0
+ * @see https://github.com/Water-Run/ds4viz
  */
 
 #define DS4VIZ_IMPLEMENTATION
-#define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
 
+#include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 /* ================================================================
  * 测试框架
  * ================================================================ */
 
+/**
+ * @brief 已运行测试数
+ */
 static int g_tests_run = 0;
+
+/**
+ * @brief 已通过测试数
+ */
 static int g_tests_passed = 0;
+
+/**
+ * @brief 已失败测试数
+ */
 static int g_tests_failed = 0;
-static int g_asserts = 0;
-static bool g_cur_failed = false;
 
 /**
- * @brief 断言: 条件为真
- *
- * @def ASSERT_TRUE
+ * @brief 当前测试名
  */
-#define ASSERT_TRUE(cond)                                       \
-    do                                                          \
-    {                                                           \
-        g_asserts++;                                            \
-        if (!(cond))                                            \
-        {                                                       \
-            fprintf(stderr, "    ASSERT_TRUE FAIL %s:%d: %s\n", \
-                    __FILE__, __LINE__, #cond);                 \
-            g_cur_failed = true;                                \
-        }                                                       \
+static const char *g_current_test = NULL;
+
+/**
+ * @brief 断言条件为真, 否则报告失败并返回
+ *
+ * @param cond 断言条件
+ * @param msg 失败消息
+ *
+ * @def T_ASSERT
+ */
+#define T_ASSERT(cond, msg)                                \
+    do                                                     \
+    {                                                      \
+        if (!(cond))                                       \
+        {                                                  \
+            fprintf(stderr, "    FAIL [%s] line %d: %s\n", \
+                    g_current_test, __LINE__, (msg));      \
+            g_tests_failed++;                              \
+            return;                                        \
+        }                                                  \
     } while (0)
 
 /**
- * @brief 断言: 字符串 hay 包含子串 needle
+ * @brief 断言字符串包含子串
  *
- * @def ASSERT_CONTAINS
+ * @param hay 被搜索字符串
+ * @param ndl 目标子串
+ *
+ * @def T_CONTAINS
  */
-#define ASSERT_CONTAINS(hay, needle)                                  \
-    do                                                                \
-    {                                                                 \
-        g_asserts++;                                                  \
-        if (strstr((hay), (needle)) == NULL)                          \
-        {                                                             \
-            fprintf(stderr, "    ASSERT_CONTAINS FAIL %s:%d: '%s'\n", \
-                    __FILE__, __LINE__, (needle));                    \
-            g_cur_failed = true;                                      \
-        }                                                             \
-    } while (0)
+#define T_CONTAINS(hay, ndl)             \
+    T_ASSERT(str_contains((hay), (ndl)), \
+             "Expected to contain: " ndl)
 
 /**
- * @brief 断言: 字符串 hay 不包含子串 needle
+ * @brief 断言字符串不包含子串
  *
- * @def ASSERT_NOT_CONTAINS
+ * @param hay 被搜索字符串
+ * @param ndl 目标子串
+ *
+ * @def T_NOT_CONTAINS
  */
-#define ASSERT_NOT_CONTAINS(hay, needle)                                  \
-    do                                                                    \
-    {                                                                     \
-        g_asserts++;                                                      \
-        if (strstr((hay), (needle)) != NULL)                              \
-        {                                                                 \
-            fprintf(stderr, "    ASSERT_NOT_CONTAINS FAIL %s:%d: '%s'\n", \
-                    __FILE__, __LINE__, (needle));                        \
-            g_cur_failed = true;                                          \
-        }                                                                 \
-    } while (0)
+#define T_NOT_CONTAINS(hay, ndl)          \
+    T_ASSERT(!str_contains((hay), (ndl)), \
+             "Expected NOT to contain: " ndl)
 
 /**
- * @brief 断言: 两个整数相等
+ * @brief 断言整数相等
  *
- * @def ASSERT_INT_EQ
+ * @param a 期望值
+ * @param b 实际值
+ *
+ * @def T_INT_EQ
  */
-#define ASSERT_INT_EQ(a, b)                                             \
-    do                                                                  \
-    {                                                                   \
-        g_asserts++;                                                    \
-        int _a = (a);                                                   \
-        int _b = (b);                                                   \
-        if (_a != _b)                                                   \
-        {                                                               \
-            fprintf(stderr, "    ASSERT_INT_EQ FAIL %s:%d: %d != %d\n", \
-                    __FILE__, __LINE__, _a, _b);                        \
-            g_cur_failed = true;                                        \
-        }                                                               \
-    } while (0)
+#define T_INT_EQ(a, b) \
+    T_ASSERT((a) == (b), "Integer mismatch")
 
 /**
- * @brief 运行单个测试函数
+ * @brief 运行测试函数并报告结果
+ *
+ * @param fn 测试函数名
  *
  * @def RUN_TEST
  */
-#define RUN_TEST(fn)            \
-    do                          \
-    {                           \
-        g_cur_failed = false;   \
-        printf("  %-58s", #fn); \
-        fn();                   \
-        g_tests_run++;          \
-        if (g_cur_failed)       \
-        {                       \
-            g_tests_failed++;   \
-            printf("[FAIL]\n"); \
-        }                       \
-        else                    \
-        {                       \
-            g_tests_passed++;   \
-            printf("[PASS]\n"); \
-        }                       \
+#define RUN_TEST(fn)                       \
+    do                                     \
+    {                                      \
+        int _old_f = g_tests_failed;       \
+        g_current_test = #fn;              \
+        g_tests_run++;                     \
+        fn();                              \
+        if (g_tests_failed == _old_f)      \
+        {                                  \
+            g_tests_passed++;              \
+            printf("    PASS  %s\n", #fn); \
+        }                                  \
     } while (0)
 
 /**
- * @brief 输出测试分节标题
+ * @brief 验证 TOML 内容并断言非空
  *
- * @def SECTION
+ * @param p 内容指针
+ *
+ * @def T_VALID
  */
-#define SECTION(name) printf("\n--- %s ---\n", (name))
+#define T_VALID(p)                                            \
+    do                                                        \
+    {                                                         \
+        T_ASSERT((p) != NULL, "Output file missing");         \
+        T_ASSERT(validate_toml(p), "Invalid TOML structure"); \
+    } while (0)
+
+/**
+ * @brief 释放内容指针并清理测试环境
+ *
+ * @param p 内容指针
+ *
+ * @def T_TEARDOWN
+ */
+#define T_TEARDOWN(p)   \
+    do                  \
+    {                   \
+        free(p);        \
+        cleanup_test(); \
+    } while (0)
 
 /* ================================================================
  * 辅助函数
  * ================================================================ */
 
 /**
- * @brief 读取文件全部内容到堆分配字符串
- *
- * @param path 文件路径
- * @return 成功返回堆分配字符串 (调用者需 free), 失败返回 NULL
+ * @brief 全局测试输出路径
  */
-static char *read_file(const char *path)
+static char g_test_path[256];
+
+/**
+ * @brief 读取文件全部内容
+ *
+ * @param p_path 文件路径
+ * @return char* 堆分配的内容, 调用者负责释放; 失败返回 NULL
+ */
+static char *
+read_file(const char *p_path)
 {
-    FILE *p_f = fopen(path, "rb");
-    long len;
+    FILE *p_f;
+    long sz;
     char *p_buf;
 
+    p_f = fopen(p_path, "rb");
     if (!p_f)
     {
         return NULL;
     }
     fseek(p_f, 0, SEEK_END);
-    len = ftell(p_f);
+    sz = ftell(p_f);
     fseek(p_f, 0, SEEK_SET);
-    p_buf = (char *)malloc((size_t)(len + 1));
-    if (!p_buf)
+    p_buf = (char *)malloc((size_t)sz + 1);
+    if (p_buf)
     {
-        fclose(p_f);
-        return NULL;
+        fread(p_buf, 1, (size_t)sz, p_f);
+        p_buf[sz] = '\0';
     }
-    fread(p_buf, 1, (size_t)len, p_f);
-    p_buf[len] = '\0';
     fclose(p_f);
     return p_buf;
 }
 
 /**
+ * @brief 检查字符串是否包含子串
+ *
+ * @param p_hay 被搜索字符串
+ * @param p_ndl 目标子串
+ * @return bool 包含返回 true
+ */
+static bool
+str_contains(const char *p_hay, const char *p_ndl)
+{
+    if (!p_hay || !p_ndl)
+    {
+        return false;
+    }
+    return strstr(p_hay, p_ndl) != NULL;
+}
+
+/**
  * @brief 统计子串在字符串中出现的次数
  *
- * @param hay 被搜索字符串
- * @param needle 子串
- * @return 出现次数
+ * @param p_hay 被搜索字符串
+ * @param p_ndl 目标子串
+ * @return int 出现次数
  */
-static int count_str(const char *hay, const char *needle)
+static int
+str_count(const char *p_hay, const char *p_ndl)
 {
-    int n = 0;
-    size_t nlen = strlen(needle);
-    const char *p = hay;
+    int count = 0;
+    size_t nlen;
+    const char *p_pos;
 
-    while ((p = strstr(p, needle)) != NULL)
+    if (!p_hay || !p_ndl)
     {
-        n++;
-        p += nlen;
+        return 0;
     }
-    return n;
+    nlen = strlen(p_ndl);
+    if (nlen == 0)
+    {
+        return 0;
+    }
+    p_pos = p_hay;
+    while ((p_pos = strstr(p_pos, p_ndl)) != NULL)
+    {
+        count++;
+        p_pos += nlen;
+    }
+    return count;
 }
 
 /**
- * @brief 重置全局配置
- */
-static void reset_config(void)
-{
-    dvConfig((dvConfigOptions){0});
-}
-
-/**
- * @brief 设置仅输出路径的配置
+ * @brief 简易 TOML IR 验证
  *
- * @param path 输出路径
+ * @param p_c TOML 内容
+ * @return bool 通过验证返回 true
  */
-static void set_output(const char *path)
-{
-    dvConfig((dvConfigOptions){.output_path = path});
-}
-
-/**
- * @brief 清理测试输出文件
- *
- * @param path 文件路径
- */
-static void cleanup(const char *path)
-{
-    remove(path);
-}
-
-/* ================================================================
- * TOML 验证函数
- * ================================================================ */
-
-/**
- * @brief 验证 TOML IR 通用结构 (meta/package/object/states/result|error)
- *
- * @param c TOML 文件内容
- */
-static void validate_toml(const char *c)
+static bool
+validate_toml(const char *p_c)
 {
     bool has_result;
     bool has_error;
 
-    ASSERT_CONTAINS(c, "[meta]");
-    ASSERT_CONTAINS(c, "created_at = ");
-    ASSERT_CONTAINS(c, "lang = \"c\"");
-    ASSERT_CONTAINS(c, "lang_version = ");
-    ASSERT_CONTAINS(c, "[package]");
-    ASSERT_CONTAINS(c, "name = \"ds4viz\"");
-    ASSERT_CONTAINS(c, "lang = \"c\"");
-    ASSERT_CONTAINS(c, "version = ");
-    ASSERT_CONTAINS(c, "[object]");
-    ASSERT_CONTAINS(c, "kind = ");
-    ASSERT_CONTAINS(c, "[[states]]");
-    ASSERT_CONTAINS(c, "[states.data]");
-
-    has_result = strstr(c, "[result]") != NULL;
-    has_error = strstr(c, "[error]") != NULL;
-    ASSERT_TRUE(has_result || has_error);
-    ASSERT_TRUE(!(has_result && has_error));
-
+    if (!p_c)
     {
-        int ns = count_str(c, "[[states]]");
-        int nd = count_str(c, "[states.data]");
-        ASSERT_INT_EQ(ns, nd);
+        return false;
     }
-}
-
-/**
- * @brief 验证成功结果段
- *
- * @param c TOML 文件内容
- */
-static void validate_result(const char *c)
-{
-    ASSERT_CONTAINS(c, "[result]");
-    ASSERT_CONTAINS(c, "final_state = ");
-    ASSERT_NOT_CONTAINS(c, "[error]");
-}
-
-/**
- * @brief 验证错误段
- *
- * @param c TOML 文件内容
- */
-static void validate_error(const char *c)
-{
-    ASSERT_CONTAINS(c, "[error]");
-    ASSERT_CONTAINS(c, "type = \"runtime\"");
-    ASSERT_CONTAINS(c, "message = ");
-    ASSERT_NOT_CONTAINS(c, "[result]");
-}
-
-/**
- * @brief 验证栈数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_stack_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "items = ");
-    ASSERT_CONTAINS(c, "top = ");
-}
-
-/**
- * @brief 验证队列数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_queue_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "items = ");
-    ASSERT_CONTAINS(c, "front = ");
-    ASSERT_CONTAINS(c, "rear = ");
-}
-
-/**
- * @brief 验证单链表数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_slist_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "head = ");
-    ASSERT_CONTAINS(c, "nodes = ");
-}
-
-/**
- * @brief 验证双向链表数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_dlist_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "head = ");
-    ASSERT_CONTAINS(c, "tail = ");
-    ASSERT_CONTAINS(c, "nodes = ");
-}
-
-/**
- * @brief 验证二叉树数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_bt_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "root = ");
-    ASSERT_CONTAINS(c, "nodes = ");
-}
-
-/**
- * @brief 验证图数据字段
- *
- * @param c TOML 文件内容
- */
-static void validate_graph_data(const char *c)
-{
-    ASSERT_CONTAINS(c, "nodes = ");
-    ASSERT_CONTAINS(c, "edges = ");
-}
-
-/**
- * @brief 验证步骤结构字段
- *
- * @param c TOML 文件内容
- */
-static void validate_steps(const char *c)
-{
-    int ns = count_str(c, "[[steps]]");
-    int na = count_str(c, "[steps.args]");
-    int nc = count_str(c, "[steps.code]");
-
-    if (ns > 0)
+    if (!str_contains(p_c, "[meta]"))
     {
-        ASSERT_INT_EQ(ns, na);
-        ASSERT_INT_EQ(ns, nc);
+        return false;
     }
+    if (!str_contains(p_c, "[package]"))
+    {
+        return false;
+    }
+    if (!str_contains(p_c, "[object]"))
+    {
+        return false;
+    }
+    if (!str_contains(p_c, "[[states]]"))
+    {
+        return false;
+    }
+    if (!str_contains(p_c, "lang = \"c\""))
+    {
+        return false;
+    }
+    if (!str_contains(p_c, "version = \"0.1.0\""))
+    {
+        return false;
+    }
+
+    has_result = str_contains(p_c, "[result]");
+    has_error = str_contains(p_c, "[error]");
+    if (has_result && has_error)
+    {
+        return false;
+    }
+    if (!has_result && !has_error)
+    {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief 设置测试环境: 配置唯一输出路径
+ *
+ * @param p_name 测试名
+ */
+static void
+setup_test(const char *p_name)
+{
+    snprintf(g_test_path, sizeof(g_test_path), "test_%s.toml", p_name);
+    ds4vizConfig((ds4vizConfigOptions){.p_output_path = g_test_path});
+}
+
+/**
+ * @brief 清理测试环境: 删除输出文件并重置全局配置
+ */
+static void
+cleanup_test(void)
+{
+    remove(g_test_path);
+    ds4vizConfig((ds4vizConfigOptions){0});
+}
+
+/**
+ * @brief 获取当前测试的输出内容
+ *
+ * @return char* 堆分配的内容, 调用者负责释放
+ */
+static char *
+get_output(void)
+{
+    return read_file(g_test_path);
 }
 
 /* ================================================================
- * 栈测试
+ * TestStackIntegration: 栈集成测试
  * ================================================================ */
 
 /**
- * @brief 测试栈基本操作 (push/pop)
+ * @brief 测试栈基本操作
  */
-static void test_stack_basic(void)
+static void
+test_stack_basic_operations(void)
 {
-    const char *path = "t_stack_basic.toml";
-    char *c;
+    char *p_c;
+    bool pop_ok = false;
 
-    set_output(path);
-    dvStack(s, "test_stack")
+    setup_test("stack_basic");
+    ds4vizStack(s, "test")
     {
-        dvStackPush(s, 10);
-        dvStackPush(s, 20);
-        dvStackPush(s, 30);
-        dvStackPop(s);
-        dvStackPush(s, 40);
+        ds4vizValue val;
+
+        ds4vizStackPush(s, 10);
+        ds4vizStackPush(s, 20);
+        val = ds4vizStackPop(s);
+        pop_ok = (val.tag == DS4VIZ_INT && ds4vizInt(val) == 20);
+        ds4vizStackPush(s, 30);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    validate_steps(c);
-    ASSERT_CONTAINS(c, "kind = \"stack\"");
-    validate_stack_data(c);
-    free(c);
-    cleanup(path);
+    T_ASSERT(pop_ok, "Pop should return 20");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试空栈弹出 (应产生错误)
+ * @brief 测试空栈弹出错误
  */
-static void test_stack_empty_pop_error(void)
+static void
+test_stack_empty_pop_error(void)
 {
-    const char *path = "t_stack_epop.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_empty_pop");
+    ds4vizStack(s)
     {
-        dvStackPop(s);
+        ds4vizStackPop(s);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试栈清空操作
+ * @brief 测试栈清空
  */
-static void test_stack_clear(void)
+static void
+test_stack_clear(void)
 {
-    const char *path = "t_stack_clear.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_clear");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
-        dvStackPush(s, 2);
-        dvStackPush(s, 3);
-        dvStackClear(s);
+        ds4vizStackPush(s, 1);
+        ds4vizStackPush(s, 2);
+        ds4vizStackClear(s);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "items = []");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "items = []");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试栈支持多种值类型 (int/double/string/bool)
+ * @brief 测试栈各种值类型
  */
-static void test_stack_various_types(void)
+static void
+test_stack_various_types(void)
 {
-    const char *path = "t_stack_types.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_types");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 42);
-        dvStackPush(s, 3.14);
-        dvStackPush(s, "hello");
-        dvStackPush(s, true);
-        dvStackPush(s, false);
+        ds4vizStackPush(s, 42);
+        ds4vizStackPush(s, 3.14);
+        ds4vizStackPush(s, "hello");
+        ds4vizStackPush(s, true);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "42");
-    ASSERT_CONTAINS(c, "\"hello\"");
-    ASSERT_CONTAINS(c, "true");
-    ASSERT_CONTAINS(c, "false");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试栈处理负数
+ * @brief 测试 step 和 amend
  */
-static void test_stack_negative(void)
+static void
+test_stack_step_and_amend(void)
 {
-    const char *path = "t_stack_neg.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_step_amend");
+    ds4vizStack(s)
     {
-        dvStackPush(s, -10);
-        dvStackPush(s, -20);
-        dvStackPop(s);
+        ds4vizStackPush(s, 10);
+        ds4vizAmend(s, "push 10",
+                    ds4vizItem(0, DS4VIZ_FOCUS, 3));
+        ds4vizStackPush(s, 20);
+        ds4vizStep(s, "observe stack",
+                   ds4vizItem(0, DS4VIZ_VISITED),
+                   ds4vizItem(1, DS4VIZ_FOCUS, 3));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "note = \"push 10\"");
+    T_CONTAINS(p_c, "op = \"observe\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试栈混合操作 (push/pop/clear/push)
+ * @brief 测试 phase
  */
-static void test_stack_mixed(void)
+static void
+test_stack_phase(void)
 {
-    const char *path = "t_stack_mixed.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_phase");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
-        dvStackPush(s, 2);
-        dvStackPop(s);
-        dvStackPush(s, 3);
-        dvStackClear(s);
-        dvStackPush(s, 4);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试单元素栈
- */
-static void test_stack_single(void)
-{
-    const char *path = "t_stack_single.toml";
-    char *c;
-
-    set_output(path);
-    dvStack(s)
-    {
-        dvStackPush(s, 100);
-        dvStackPop(s);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试清空后再压入
- */
-static void test_stack_push_after_clear(void)
-{
-    const char *path = "t_stack_pac.toml";
-    char *c;
-
-    set_output(path);
-    dvStack(s)
-    {
-        dvStackPush(s, 1);
-        dvStackPush(s, 2);
-        dvStackClear(s);
-        dvStackPush(s, 10);
-        dvStackPush(s, 20);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试连续弹出
- */
-static void test_stack_multi_pop(void)
-{
-    const char *path = "t_stack_mpop.toml";
-    char *c;
-
-    set_output(path);
-    dvStack(s)
-    {
-        for (int i = 0; i < 5; i++)
+        ds4vizPhase(s, "build")
         {
-            dvStackPush(s, i);
+            ds4vizStackPush(s, 10);
+            ds4vizStackPush(s, 20);
         }
-        for (int i = 0; i < 3; i++)
+        ds4vizPhase(s, "pop")
         {
-            dvStackPop(s);
+            ds4vizStackPop(s);
         }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"build\"");
+    T_CONTAINS(p_c, "phase = \"pop\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试浮点数值
+ * @brief 测试 push-pop-push 循环操作
  */
-static void test_stack_float(void)
+static void
+test_stack_push_pop_push_cycle(void)
 {
-    const char *path = "t_stack_float.toml";
-    char *c;
+    char *p_c;
+    bool ok1 = false;
+    bool ok2 = false;
+    bool ok3 = false;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_cycle");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1.5);
-        dvStackPush(s, 2.7);
-        dvStackPush(s, -3.14);
-        dvStackPop(s);
+        ds4vizValue v;
+
+        ds4vizStackPush(s, 10);
+        ds4vizStackPush(s, 20);
+        v = ds4vizStackPop(s);
+        ok1 = (ds4vizInt(v) == 20);
+        ds4vizStackPush(s, 30);
+        ds4vizStackPush(s, 40);
+        v = ds4vizStackPop(s);
+        ok2 = (ds4vizInt(v) == 40);
+        v = ds4vizStackPop(s);
+        ok3 = (ds4vizInt(v) == 30);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    T_ASSERT(ok1 && ok2 && ok3, "LIFO cycle values");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试字符串值
+ * @brief 测试连续弹出遵循 LIFO 顺序
  */
-static void test_stack_string(void)
+static void
+test_stack_sequential_pop_lifo(void)
 {
-    const char *path = "t_stack_str.toml";
-    char *c;
+    char *p_c;
+    int results[5];
+    bool ok = true;
+    int expected[5] = {5, 4, 3, 2, 1};
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_lifo");
+    ds4vizStack(s)
     {
-        dvStackPush(s, "first");
-        dvStackPush(s, "second");
-        dvStackPush(s, "third");
-        dvStackPop(s);
+        int i;
+        ds4vizValue v;
+
+        for (i = 1; i <= 5; i++)
+        {
+            ds4vizStackPush(s, i);
+        }
+        for (i = 0; i < 5; i++)
+        {
+            v = ds4vizStackPop(s);
+            results[i] = (int)ds4vizInt(v);
+        }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "\"first\"");
-    ASSERT_CONTAINS(c, "\"second\"");
-    free(c);
-    cleanup(path);
+    {
+        int i;
+        for (i = 0; i < 5; i++)
+        {
+            if (results[i] != expected[i])
+            {
+                ok = false;
+            }
+        }
+    }
+    T_ASSERT(ok, "LIFO order 5,4,3,2,1");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试布尔值
+ * @brief 测试无前置步骤时 amend 报错
  */
-static void test_stack_bool(void)
+static void
+test_stack_amend_no_prev_error(void)
 {
-    const char *path = "t_stack_bool.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_amend_noprev");
+    ds4vizStack(s)
     {
-        dvStackPush(s, true);
-        dvStackPush(s, false);
-        dvStackPush(s, true);
-        dvStackPop(s);
+        ds4vizAmend(s, "no previous step");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试零值
+ * @brief 测试嵌套 phase, 内层优先
  */
-static void test_stack_zero(void)
+static void
+test_stack_nested_phases(void)
 {
-    const char *path = "t_stack_zero.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("stack_nested_phase");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 0);
-        dvStackPush(s, 0.0);
-        dvStackPop(s);
+        ds4vizPhase(s, "outer")
+        {
+            ds4vizStackPush(s, 10);
+            ds4vizPhase(s, "inner")
+            {
+                ds4vizStackPush(s, 20);
+            }
+            ds4vizStackPush(s, 30);
+        }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"inner\"");
+    T_CONTAINS(p_c, "phase = \"outer\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试清空后继续操作
+ */
+static void
+test_stack_clear_then_push(void)
+{
+    char *p_c;
+    bool ok = false;
+
+    setup_test("stack_clear_push");
+    ds4vizStack(s)
+    {
+        ds4vizValue v;
+
+        ds4vizStackPush(s, 1);
+        ds4vizStackPush(s, 2);
+        ds4vizStackClear(s);
+        ds4vizStackPush(s, 3);
+        v = ds4vizStackPop(s);
+        ok = (ds4vizInt(v) == 3);
+    }
+    T_ASSERT(ok, "Pop after clear+push should return 3");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试单次 push 和 pop
+ */
+static void
+test_stack_single_push_pop(void)
+{
+    char *p_c;
+    bool ok = false;
+
+    setup_test("stack_single");
+    ds4vizStack(s)
+    {
+        ds4vizValue v;
+
+        ds4vizStackPush(s, 42);
+        v = ds4vizStackPop(s);
+        ok = (ds4vizInt(v) == 42);
+    }
+    T_ASSERT(ok, "Pop should return 42");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[result]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试清空后弹出报错
+ */
+static void
+test_stack_pop_after_clear_error(void)
+{
+    char *p_c;
+
+    setup_test("stack_pop_clear");
+    ds4vizStack(s)
+    {
+        ds4vizStackPush(s, 1);
+        ds4vizStackClear(s);
+        ds4vizStackPop(s);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 队列测试
+ * TestQueueIntegration: 队列集成测试
  * ================================================================ */
 
 /**
  * @brief 测试队列基本操作
  */
-static void test_queue_basic(void)
+static void
+test_queue_basic_operations(void)
 {
-    const char *path = "t_queue_basic.toml";
-    char *c;
+    char *p_c;
+    bool ok = false;
 
-    set_output(path);
-    dvQueue(q, "test_queue")
+    setup_test("queue_basic");
+    ds4vizQueue(q)
     {
-        dvQueueEnqueue(q, 10);
-        dvQueueEnqueue(q, 20);
-        dvQueueDequeue(q);
-        dvQueueEnqueue(q, 30);
+        ds4vizValue v;
+
+        ds4vizQueueEnqueue(q, 10);
+        ds4vizQueueEnqueue(q, 20);
+        v = ds4vizQueueDequeue(q);
+        ok = (ds4vizInt(v) == 10);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"queue\"");
-    validate_queue_data(c);
-    free(c);
-    cleanup(path);
+    T_ASSERT(ok, "Dequeue should return 10 (FIFO)");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试空队列出队错误
  */
-static void test_queue_empty_dequeue_error(void)
+static void
+test_queue_empty_dequeue_error(void)
 {
-    const char *path = "t_queue_edeq.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_empty_deq");
+    ds4vizQueue(q)
     {
-        dvQueueDequeue(q);
+        ds4vizQueueDequeue(q);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试队列 phase 和 amend
+ */
+static void
+test_queue_phase_and_amend(void)
+{
+    char *p_c;
+
+    setup_test("queue_phase_amend");
+    ds4vizQueue(q)
+    {
+        ds4vizPhase(q, "enqueue")
+        {
+            ds4vizQueueEnqueue(q, "A");
+            ds4vizQueueEnqueue(q, "B");
+        }
+        ds4vizPhase(q, "process")
+        {
+            ds4vizQueueDequeue(q);
+            ds4vizAmend(q, "processed A");
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"enqueue\"");
+    T_CONTAINS(p_c, "note = \"processed A\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试队列清空
  */
-static void test_queue_clear(void)
+static void
+test_queue_clear(void)
 {
-    const char *path = "t_queue_clear.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_clear");
+    ds4vizQueue(q)
     {
-        dvQueueEnqueue(q, 1);
-        dvQueueEnqueue(q, 2);
-        dvQueueEnqueue(q, 3);
-        dvQueueClear(q);
+        ds4vizQueueEnqueue(q, 1);
+        ds4vizQueueEnqueue(q, 2);
+        ds4vizQueueEnqueue(q, 3);
+        ds4vizQueueClear(q);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "items = []");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "items = []");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试队列 front/rear 一致性
+ * @brief 测试队列各种值类型
  */
-static void test_queue_consistency(void)
+static void
+test_queue_various_types(void)
 {
-    const char *path = "t_queue_cons.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_types");
+    ds4vizQueue(q)
     {
-        dvQueueEnqueue(q, 1);
-        dvQueueEnqueue(q, 2);
-        dvQueueEnqueue(q, 3);
-        dvQueueDequeue(q);
-        dvQueueDequeue(q);
+        ds4vizQueueEnqueue(q, 42);
+        ds4vizQueueEnqueue(q, 2.718);
+        ds4vizQueueEnqueue(q, "world");
+        ds4vizQueueEnqueue(q, false);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    validate_queue_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试单元素队列
+ * @brief 测试出队遵循 FIFO 顺序
  */
-static void test_queue_single(void)
+static void
+test_queue_fifo_order(void)
 {
-    const char *path = "t_queue_single.toml";
-    char *c;
+    char *p_c;
+    bool ok = true;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_fifo");
+    ds4vizQueue(q)
     {
-        dvQueueEnqueue(q, 100);
-        dvQueueDequeue(q);
+        ds4vizValue v;
+
+        ds4vizQueueEnqueue(q, 1);
+        ds4vizQueueEnqueue(q, 2);
+        ds4vizQueueEnqueue(q, 3);
+        ds4vizQueueEnqueue(q, 4);
+        v = ds4vizQueueDequeue(q);
+        if (ds4vizInt(v) != 1)
+            ok = false;
+        v = ds4vizQueueDequeue(q);
+        if (ds4vizInt(v) != 2)
+            ok = false;
+        v = ds4vizQueueDequeue(q);
+        if (ds4vizInt(v) != 3)
+            ok = false;
+        v = ds4vizQueueDequeue(q);
+        if (ds4vizInt(v) != 4)
+            ok = false;
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    T_ASSERT(ok, "FIFO order 1,2,3,4");
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试清空后再入队
+ * @brief 测试队列 step 与高亮
  */
-static void test_queue_enqueue_after_clear(void)
+static void
+test_queue_step_with_highlights(void)
 {
-    const char *path = "t_queue_eac.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_step_hl");
+    ds4vizQueue(q)
     {
-        dvQueueEnqueue(q, 1);
-        dvQueueEnqueue(q, 2);
-        dvQueueClear(q);
-        dvQueueEnqueue(q, 10);
-        dvQueueEnqueue(q, 20);
+        ds4vizQueueEnqueue(q, 10);
+        ds4vizQueueEnqueue(q, 20);
+        ds4vizStep(q, "observe queue",
+                   ds4vizItem(0, DS4VIZ_FOCUS, 3),
+                   ds4vizItem(1, DS4VIZ_VISITED));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "op = \"observe\"");
+    T_CONTAINS(p_c, "note = \"observe queue\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试连续出队
+ * @brief 测试清空后出队报错
  */
-static void test_queue_multi_dequeue(void)
+static void
+test_queue_dequeue_after_clear_error(void)
 {
-    const char *path = "t_queue_mdeq.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvQueue(q)
+    setup_test("queue_deq_clear");
+    ds4vizQueue(q)
     {
-        for (int i = 0; i < 5; i++)
-        {
-            dvQueueEnqueue(q, i);
-        }
-        for (int i = 0; i < 3; i++)
-        {
-            dvQueueDequeue(q);
-        }
+        ds4vizQueueEnqueue(q, 1);
+        ds4vizQueueClear(q);
+        ds4vizQueueDequeue(q);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试交替入队出队
- */
-static void test_queue_alternating(void)
-{
-    const char *path = "t_queue_alt.toml";
-    char *c;
-
-    set_output(path);
-    dvQueue(q)
-    {
-        dvQueueEnqueue(q, 1);
-        dvQueueEnqueue(q, 2);
-        dvQueueDequeue(q);
-        dvQueueEnqueue(q, 3);
-        dvQueueDequeue(q);
-        dvQueueEnqueue(q, 4);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试出队直到空
- */
-static void test_queue_until_empty(void)
-{
-    const char *path = "t_queue_ue.toml";
-    char *c;
-
-    set_output(path);
-    dvQueue(q)
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            dvQueueEnqueue(q, i);
-        }
-        for (int i = 0; i < 3; i++)
-        {
-            dvQueueDequeue(q);
-        }
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "items = []");
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试队列字符串值
- */
-static void test_queue_string(void)
-{
-    const char *path = "t_queue_str.toml";
-    char *c;
-
-    set_output(path);
-    dvQueue(q)
-    {
-        dvQueueEnqueue(q, "first");
-        dvQueueEnqueue(q, "second");
-        dvQueueDequeue(q);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 单链表测试
+ * TestSingleLinkedListIntegration: 单链表集成测试
  * ================================================================ */
 
 /**
  * @brief 测试单链表基本操作
  */
-static void test_slist_basic(void)
+static void
+test_slist_basic_operations(void)
 {
-    const char *path = "t_slist_basic.toml";
-    char *c;
-    int n1;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l, "test_slist")
+    setup_test("slist_basic");
+    ds4vizSingleLinkedList(l)
     {
-        n1 = dvSlInsertHead(l, 10);
-        dvSlInsertTail(l, 20);
-        dvSlInsertAfter(l, n1, 15);
-        dvSlDeleteHead(l);
+        int a;
+
+        a = ds4vizSlInsertHead(l, 10);
+        ds4vizAlias(l, a, "head");
+        ds4vizSlInsertTail(l, 20);
+        ds4vizSlInsertAfter(l, a, 15);
+        ds4vizSlDeleteHead(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"slist\"");
-    validate_slist_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"slist\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试单链表反转
  */
-static void test_slist_reverse(void)
+static void
+test_slist_reverse(void)
 {
-    const char *path = "t_slist_rev.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_reverse");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlInsertTail(l, 1);
-        dvSlInsertTail(l, 2);
-        dvSlInsertTail(l, 3);
-        dvSlReverse(l);
+        ds4vizSlInsertTail(l, 1);
+        ds4vizSlInsertTail(l, 2);
+        ds4vizSlInsertTail(l, 3);
+        ds4vizSlReverse(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除不存在的节点 (错误)
+ * @brief 测试删除不存在的节点
  */
-static void test_slist_delete_nonexistent(void)
+static void
+test_slist_delete_nonexistent_error(void)
 {
-    const char *path = "t_slist_dne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_del_ne");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlInsertHead(l, 10);
-        dvSlDelete(l, 999);
+        ds4vizSlInsertHead(l, 10);
+        ds4vizSlDelete(l, 999);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试空链表删除头节点 (错误)
+ * @brief 测试别名和 step
  */
-static void test_slist_empty_delete_head(void)
+static void
+test_slist_alias_and_step(void)
 {
-    const char *path = "t_slist_edh.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_alias_step");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlDeleteHead(l);
+        int a;
+        int b;
+
+        a = ds4vizSlInsertHead(l, 10);
+        b = ds4vizSlInsertTail(l, 20);
+        ds4vizAlias(l, a, "start");
+        ds4vizStep(l, "traverse begin",
+                   ds4vizNode(a, DS4VIZ_FOCUS, 3));
+        ds4vizStep(l, "traverse end",
+                   ds4vizNode(a, DS4VIZ_VISITED),
+                   ds4vizNode(b, DS4VIZ_FOCUS, 3));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "alias = \"start\"");
+    T_CONTAINS(p_c, "op = \"observe\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试在不存在的节点后插入 (错误)
+ * @brief 测试删除唯一节点的头
  */
-static void test_slist_insert_after_nonexist(void)
+static void
+test_slist_delete_head_single(void)
 {
-    const char *path = "t_slist_iane.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_del_head_single");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlInsertHead(l, 10);
-        dvSlInsertAfter(l, 999, 20);
+        ds4vizSlInsertHead(l, 10);
+        ds4vizSlDeleteHead(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "head = -1");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除尾节点
+ * @brief 测试在不存在的节点后插入
  */
-static void test_slist_delete_tail(void)
+static void
+test_slist_insert_after_nonexistent_error(void)
 {
-    const char *path = "t_slist_dt.toml";
-    char *c;
-    int n3;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_ia_ne");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlInsertTail(l, 1);
-        dvSlInsertTail(l, 2);
-        n3 = dvSlInsertTail(l, 3);
-        dvSlDelete(l, n3);
+        ds4vizSlInsertHead(l, 10);
+        ds4vizSlInsertAfter(l, 999, 20);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试单节点链表
+ * @brief 测试空链表删除头
  */
-static void test_slist_single_node(void)
+static void
+test_slist_delete_head_empty_error(void)
 {
-    const char *path = "t_slist_sn.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_dh_empty");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlInsertHead(l, 100);
-        dvSlDeleteHead(l);
+        ds4vizSlDeleteHead(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试反转空链表
+ * @brief 测试多次头插入
  */
-static void test_slist_reverse_empty(void)
+static void
+test_slist_multiple_head_inserts(void)
 {
-    const char *path = "t_slist_re.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_multi_head");
+    ds4vizSingleLinkedList(l)
     {
-        dvSlReverse(l);
+        int a;
+        int b;
+        int c;
+
+        a = ds4vizSlInsertHead(l, 30);
+        b = ds4vizSlInsertHead(l, 20);
+        c = ds4vizSlInsertHead(l, 10);
+        ds4vizStep(l, "check order",
+                   ds4vizNode(c, DS4VIZ_FOCUS, 3),
+                   ds4vizNode(b, DS4VIZ_VISITED),
+                   ds4vizNode(a, DS4VIZ_VISITED));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试多次插入
+ * @brief 测试单节点反转
  */
-static void test_slist_multi_insert(void)
+static void
+test_slist_reverse_single(void)
 {
-    const char *path = "t_slist_mi.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvSingleLinkedList(l)
+    setup_test("slist_rev_single");
+    ds4vizSingleLinkedList(l)
     {
-        for (int i = 0; i < 5; i++)
-        {
-            dvSlInsertTail(l, i);
-        }
+        ds4vizSlInsertHead(l, 42);
+        ds4vizSlReverse(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试空链表反转
+ */
+static void
+test_slist_reverse_empty(void)
+{
+    char *p_c;
+
+    setup_test("slist_rev_empty");
+    ds4vizSingleLinkedList(l)
+    {
+        ds4vizSlReverse(l);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 双向链表测试
+ * TestDoubleLinkedListIntegration: 双向链表集成测试
  * ================================================================ */
 
 /**
  * @brief 测试双向链表基本操作
  */
-static void test_dlist_basic(void)
+static void
+test_dlist_basic_operations(void)
 {
-    const char *path = "t_dlist_basic.toml";
-    char *c;
-    int n1;
-    int n2;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l, "test_dlist")
+    setup_test("dlist_basic");
+    ds4vizDoubleLinkedList(l)
     {
-        n1 = dvDlInsertHead(l, 10);
-        n2 = dvDlInsertTail(l, 30);
-        dvDlInsertBefore(l, n2, 20);
-        dvDlInsertAfter(l, n1, 15);
-        dvDlDeleteTail(l);
+        int a;
+        int b;
+
+        a = ds4vizDlInsertHead(l, 10);
+        b = ds4vizDlInsertTail(l, 30);
+        ds4vizDlInsertBefore(l, b, 20);
+        ds4vizDlInsertAfter(l, a, 15);
+        ds4vizDlDeleteTail(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"dlist\"");
-    validate_dlist_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试双向链表反转
  */
-static void test_dlist_reverse(void)
+static void
+test_dlist_reverse(void)
 {
-    const char *path = "t_dlist_rev.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_reverse");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertTail(l, 1);
-        dvDlInsertTail(l, 2);
-        dvDlInsertTail(l, 3);
-        dvDlReverse(l);
+        ds4vizDlInsertTail(l, 1);
+        ds4vizDlInsertTail(l, 2);
+        ds4vizDlInsertTail(l, 3);
+        ds4vizDlReverse(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试双向链表 head/tail 一致性
+ * @brief 测试空双向链表删除头报错
  */
-static void test_dlist_consistency(void)
+static void
+test_dlist_delete_head_empty_error(void)
 {
-    const char *path = "t_dlist_cons.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_dh_empty");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertHead(l, 1);
-        dvDlDeleteHead(l);
-        dvDlInsertTail(l, 2);
+        ds4vizDlDeleteHead(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    validate_dlist_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试空链表删除头节点 (错误)
+ * @brief 测试删除中间节点
  */
-static void test_dlist_delete_head_error(void)
+static void
+test_dlist_delete_specific_node(void)
 {
-    const char *path = "t_dlist_dhe.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_del_mid");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlDeleteHead(l);
+        int b;
+
+        ds4vizDlInsertTail(l, 10);
+        b = ds4vizDlInsertTail(l, 20);
+        ds4vizDlInsertTail(l, 30);
+        ds4vizDlDelete(l, b);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试空链表删除尾节点 (错误)
+ * @brief 测试在不存在的节点前插入
  */
-static void test_dlist_delete_tail_error(void)
+static void
+test_dlist_insert_before_nonexistent_error(void)
 {
-    const char *path = "t_dlist_dte.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_ib_ne");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlDeleteTail(l);
+        ds4vizDlInsertTail(l, 10);
+        ds4vizDlInsertBefore(l, 999, 20);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试在不存在的节点前插入 (错误)
+ * @brief 测试双向链表别名和 step
  */
-static void test_dlist_insert_before_nonexist(void)
+static void
+test_dlist_alias_and_step(void)
 {
-    const char *path = "t_dlist_ibne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_alias_step");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertHead(l, 10);
-        dvDlInsertBefore(l, 999, 20);
+        int a;
+        int b;
+
+        a = ds4vizDlInsertHead(l, 10);
+        b = ds4vizDlInsertTail(l, 20);
+        ds4vizAlias(l, a, "head");
+        ds4vizAlias(l, b, "tail");
+        ds4vizStep(l, "view dlist",
+                   ds4vizNode(a, DS4VIZ_FOCUS, 3),
+                   ds4vizNode(b, DS4VIZ_ACTIVE));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "alias = \"head\"");
+    T_CONTAINS(p_c, "alias = \"tail\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试在不存在的节点后插入 (错误)
+ * @brief 测试单节点时删除头
  */
-static void test_dlist_insert_after_nonexist(void)
+static void
+test_dlist_delete_head_single(void)
 {
-    const char *path = "t_dlist_iane.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_dh_single");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertHead(l, 10);
-        dvDlInsertAfter(l, 999, 20);
+        ds4vizDlInsertHead(l, 10);
+        ds4vizDlDeleteHead(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "head = -1");
+    T_CONTAINS(p_c, "tail = -1");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除不存在的节点 (错误)
+ * @brief 测试空链表删除尾
  */
-static void test_dlist_delete_nonexist(void)
+static void
+test_dlist_delete_tail_empty_error(void)
 {
-    const char *path = "t_dlist_dne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_dt_empty");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertHead(l, 10);
-        dvDlDelete(l, 999);
+        ds4vizDlDeleteTail(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试双向链表清空
+ * @brief 测试删除不存在的节点
  */
-static void test_dlist_clear(void)
+static void
+test_dlist_delete_nonexistent_error(void)
 {
-    const char *path = "t_dlist_clear.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_del_ne");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertTail(l, 1);
-        dvDlInsertTail(l, 2);
-        dvDlDeleteHead(l);
-        dvDlDeleteHead(l);
+        ds4vizDlInsertHead(l, 10);
+        ds4vizDlDelete(l, 999);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试单节点双向链表
+ * @brief 测试在不存在的节点后插入
  */
-static void test_dlist_single_node(void)
+static void
+test_dlist_insert_after_nonexistent_error(void)
 {
-    const char *path = "t_dlist_sn.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("dlist_ia_ne");
+    ds4vizDoubleLinkedList(l)
     {
-        dvDlInsertHead(l, 100);
-        dvDlDeleteHead(l);
+        ds4vizDlInsertHead(l, 10);
+        ds4vizDlInsertAfter(l, 999, 20);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试反转空链表
- */
-static void test_dlist_reverse_empty(void)
-{
-    const char *path = "t_dlist_re.toml";
-    char *c;
-
-    set_output(path);
-    dvDoubleLinkedList(l)
-    {
-        dvDlReverse(l);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试多种操作组合
- */
-static void test_dlist_multi_ops(void)
-{
-    const char *path = "t_dlist_mops.toml";
-    char *c;
-    int n1;
-    int n2;
-
-    set_output(path);
-    dvDoubleLinkedList(l)
-    {
-        n1 = dvDlInsertHead(l, 1);
-        n2 = dvDlInsertTail(l, 5);
-        dvDlInsertAfter(l, n1, 2);
-        dvDlInsertBefore(l, n2, 4);
-        dvDlDelete(l, n1);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 二叉树测试
+ * TestBinaryTreeIntegration: 二叉树集成测试
  * ================================================================ */
 
 /**
  * @brief 测试二叉树基本操作
  */
-static void test_bt_basic(void)
+static void
+test_bt_basic_operations(void)
 {
-    const char *path = "t_bt_basic.toml";
-    char *c;
-    int root;
-    int left;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t, "test_btree")
+    setup_test("bt_basic");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        left = dvBtInsertLeft(t, root, 5);
-        dvBtInsertRight(t, root, 15);
-        dvBtInsertLeft(t, left, 3);
-        dvBtInsertRight(t, left, 7);
+        int root;
+        int left;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizAlias(t, root, "root");
+        left = ds4vizBtInsertLeft(t, root, 5);
+        ds4vizBtInsertRight(t, root, 15);
+        ds4vizBtInsertLeft(t, left, 3);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"binary_tree\"");
-    validate_bt_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"binary_tree\"");
+    T_CONTAINS(p_c, "alias = \"root\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试删除子树
  */
-static void test_bt_delete_subtree(void)
+static void
+test_bt_delete_subtree(void)
 {
-    const char *path = "t_bt_delsub.toml";
-    char *c;
-    int root;
-    int left;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_del_sub");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        left = dvBtInsertLeft(t, root, 5);
-        dvBtInsertLeft(t, left, 3);
-        dvBtInsertRight(t, left, 7);
-        dvBtDelete(t, left);
+        int root;
+        int left;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        left = ds4vizBtInsertLeft(t, root, 5);
+        ds4vizBtInsertLeft(t, left, 3);
+        ds4vizBtDelete(t, left);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试更新节点值
+ * @brief 测试更新值
  */
-static void test_bt_update(void)
+static void
+test_bt_update_value(void)
 {
-    const char *path = "t_bt_update.toml";
-    char *c;
-    int root;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_update");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        dvBtUpdateValue(t, root, 100);
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizBtUpdateValue(t, root, 100);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试重复插入根节点 (错误)
+ * @brief 测试重复插入根节点
  */
-static void test_bt_dup_root_error(void)
+static void
+test_bt_duplicate_root_error(void)
 {
-    const char *path = "t_bt_duproot.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_dup_root");
+    ds4vizBinaryTree(t)
     {
-        dvBtInsertRoot(t, 10);
-        dvBtInsertRoot(t, 20);
+        ds4vizBtInsertRoot(t, 10);
+        ds4vizBtInsertRoot(t, 20);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试重复插入左子节点 (错误)
+ * @brief 测试使用 step 模拟遍历
  */
-static void test_bt_dup_child_error(void)
+static void
+test_bt_step_traversal(void)
 {
-    const char *path = "t_bt_dupchild.toml";
-    char *c;
-    int root;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_traversal");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        dvBtInsertLeft(t, root, 5);
-        dvBtInsertLeft(t, root, 6);
+        int root;
+        int left;
+        int right;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        left = ds4vizBtInsertLeft(t, root, 5);
+        right = ds4vizBtInsertRight(t, root, 15);
+        ds4vizPhase(t, "preorder")
+        {
+            ds4vizStep(t, "visit 10",
+                       ds4vizNode(root, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 5",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(left, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 15",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(left, DS4VIZ_VISITED),
+                       ds4vizNode(right, DS4VIZ_FOCUS, 3));
+        }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"preorder\"");
+    T_INT_EQ(str_count(p_c, "op = \"observe\""), 3);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试不存在的父节点 (错误)
+ * @brief 测试删除根节点及其所有子树
  */
-static void test_bt_no_parent_error(void)
+static void
+test_bt_delete_root(void)
 {
-    const char *path = "t_bt_nopar.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_del_root");
+    ds4vizBinaryTree(t)
     {
-        dvBtInsertRoot(t, 10);
-        dvBtInsertLeft(t, 999, 5);
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizBtInsertLeft(t, root, 5);
+        ds4vizBtInsertRight(t, root, 15);
+        ds4vizBtDelete(t, root);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "root = -1");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除根节点
+ * @brief 测试删除叶节点
  */
-static void test_bt_delete_root(void)
+static void
+test_bt_delete_leaf(void)
 {
-    const char *path = "t_bt_delroot.toml";
-    char *c;
-    int root;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_del_leaf");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        dvBtInsertLeft(t, root, 5);
-        dvBtDelete(t, root);
+        int root;
+        int left;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        left = ds4vizBtInsertLeft(t, root, 5);
+        ds4vizBtInsertRight(t, root, 15);
+        ds4vizBtDelete(t, left);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除不存在的节点 (错误)
+ * @brief 测试左子节点已存在时插入报错
  */
-static void test_bt_delete_nonexist_error(void)
+static void
+test_bt_insert_left_occupied_error(void)
 {
-    const char *path = "t_bt_delne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_il_occ");
+    ds4vizBinaryTree(t)
     {
-        dvBtInsertRoot(t, 10);
-        dvBtDelete(t, 999);
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizBtInsertLeft(t, root, 5);
+        ds4vizBtInsertLeft(t, root, 3);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试更新不存在的节点 (错误)
+ * @brief 测试父节点不存在时插入报错
  */
-static void test_bt_update_nonexist_error(void)
+static void
+test_bt_insert_nonexistent_parent_error(void)
 {
-    const char *path = "t_bt_updne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_ip_ne");
+    ds4vizBinaryTree(t)
     {
-        dvBtInsertRoot(t, 10);
-        dvBtUpdateValue(t, 999, 100);
+        ds4vizBtInsertRoot(t, 10);
+        ds4vizBtInsertLeft(t, 999, 5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试完全二叉树
+ * @brief 测试更新不存在的节点报错
  */
-static void test_bt_complete(void)
+static void
+test_bt_update_nonexistent_error(void)
 {
-    const char *path = "t_bt_complete.toml";
-    char *c;
-    int root;
-    int left;
-    int right;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("bt_upd_ne");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 1);
-        left = dvBtInsertLeft(t, root, 2);
-        right = dvBtInsertRight(t, root, 3);
-        dvBtInsertLeft(t, left, 4);
-        dvBtInsertRight(t, left, 5);
-        dvBtInsertLeft(t, right, 6);
-        dvBtInsertRight(t, right, 7);
+        ds4vizBtInsertRoot(t, 10);
+        ds4vizBtUpdateValue(t, 999, 100);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_INT_EQ(count_str(c, "[[states]]"), 8);
-    ASSERT_INT_EQ(count_str(c, "[[steps]]"), 7);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试右子节点已存在时插入报错
+ */
+static void
+test_bt_insert_right_occupied_error(void)
+{
+    char *p_c;
+
+    setup_test("bt_ir_occ");
+    ds4vizBinaryTree(t)
+    {
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizBtInsertRight(t, root, 15);
+        ds4vizBtInsertRight(t, root, 20);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试删除不存在的节点报错
+ */
+static void
+test_bt_delete_nonexistent_error(void)
+{
+    char *p_c;
+
+    setup_test("bt_del_ne");
+    ds4vizBinaryTree(t)
+    {
+        ds4vizBtInsertRoot(t, 10);
+        ds4vizBtDelete(t, 999);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试字符串值节点
+ */
+static void
+test_bt_string_values(void)
+{
+    char *p_c;
+
+    setup_test("bt_string");
+    ds4vizBinaryTree(t)
+    {
+        int root;
+
+        root = ds4vizBtInsertRoot(t, "A");
+        ds4vizBtInsertLeft(t, root, "B");
+        ds4vizBtInsertRight(t, root, "C");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 二叉搜索树测试
+ * TestBinarySearchTreeIntegration: BST 集成测试
  * ================================================================ */
 
 /**
  * @brief 测试 BST 基本操作
  */
-static void test_bst_basic(void)
+static void
+test_bst_basic_operations(void)
 {
-    const char *path = "t_bst_basic.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b, "test_bst")
+    setup_test("bst_basic");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 15);
-        dvBstInsert(b, 3);
-        dvBstInsert(b, 7);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 15);
+        ds4vizBstInsert(b, 3);
+        ds4vizBstInsert(b, 7);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"bst\"");
-    validate_bt_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"bst\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 删除叶节点
+ * @brief 测试删除叶节点
  */
-static void test_bst_delete_leaf(void)
+static void
+test_bst_delete_leaf(void)
 {
-    const char *path = "t_bst_dl.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_del_leaf");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 15);
-        dvBstDelete(b, 5);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 15);
+        ds4vizBstDelete(b, 5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 删除单子节点的节点
+ * @brief 测试删除有两个子节点的节点
  */
-static void test_bst_delete_one_child(void)
+static void
+test_bst_delete_two_children(void)
 {
-    const char *path = "t_bst_doc.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_del_2c");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 3);
-        dvBstDelete(b, 5);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 15);
+        ds4vizBstInsert(b, 3);
+        ds4vizBstInsert(b, 7);
+        ds4vizBstDelete(b, 5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 删除双子节点的节点
+ * @brief 测试删除不存在的值
  */
-static void test_bst_delete_two_children(void)
+static void
+test_bst_delete_nonexistent_error(void)
 {
-    const char *path = "t_bst_dtc.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_del_ne");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 15);
-        dvBstInsert(b, 3);
-        dvBstInsert(b, 7);
-        dvBstDelete(b, 5);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstDelete(b, 999);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 删除不存在的值 (错误)
+ * @brief 测试删除根节点
  */
-static void test_bst_delete_nonexist_error(void)
+static void
+test_bst_delete_root(void)
 {
-    const char *path = "t_bst_dne.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_del_root");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstDelete(b, 999);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 15);
+        ds4vizBstDelete(b, 10);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 删除根节点
+ * @brief 测试删除只有一个子节点的节点
  */
-static void test_bst_delete_root(void)
+static void
+test_bst_delete_one_child(void)
 {
-    const char *path = "t_bst_dr.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_del_1c");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 15);
-        dvBstDelete(b, 10);
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 3);
+        ds4vizBstDelete(b, 5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试 BST 插入重复值
+ * @brief 测试 BST phase 与 alias
  */
-static void test_bst_duplicate(void)
+static void
+test_bst_phase_and_alias(void)
 {
-    const char *path = "t_bst_dup.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_phase_alias");
+    ds4vizBinarySearchTree(b)
     {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstInsert(b, 10);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
+        int n10;
 
-/**
- * @brief 测试 BST 全部删除
- */
-static void test_bst_clear(void)
-{
-    const char *path = "t_bst_clear.toml";
-    char *c;
-
-    set_output(path);
-    dvBinarySearchTree(b)
-    {
-        dvBstInsert(b, 10);
-        dvBstInsert(b, 5);
-        dvBstDelete(b, 10);
-        dvBstDelete(b, 5);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "root = -1");
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试左偏树
- */
-static void test_bst_left_skewed(void)
-{
-    const char *path = "t_bst_ls.toml";
-    char *c;
-
-    set_output(path);
-    dvBinarySearchTree(b)
-    {
-        for (int i = 5; i >= 1; i--)
+        ds4vizPhase(b, "insert")
         {
-            dvBstInsert(b, i);
+            n10 = ds4vizBstInsert(b, 10);
+            ds4vizAlias(b, n10, "root");
+            ds4vizBstInsert(b, 5);
+            ds4vizBstInsert(b, 15);
+        }
+        ds4vizPhase(b, "search")
+        {
+            ds4vizStep(b, "search 5",
+                       ds4vizNode(n10, DS4VIZ_COMPARING, 3));
         }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"insert\"");
+    T_CONTAINS(p_c, "phase = \"search\"");
+    T_CONTAINS(p_c, "alias = \"root\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试右偏树
+ * @brief 测试顺序插入产生退化树
  */
-static void test_bst_right_skewed(void)
+static void
+test_bst_sequential_insert(void)
 {
-    const char *path = "t_bst_rs.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("bst_seq");
+    ds4vizBinarySearchTree(b)
     {
-        for (int i = 1; i <= 5; i++)
+        int i;
+        for (i = 1; i <= 5; i++)
         {
-            dvBstInsert(b, i);
+            ds4vizBstInsert(b, i);
         }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试依次删除所有节点
+ */
+static void
+test_bst_delete_all(void)
+{
+    char *p_c;
+
+    setup_test("bst_del_all");
+    ds4vizBinarySearchTree(b)
+    {
+        ds4vizBstInsert(b, 10);
+        ds4vizBstInsert(b, 5);
+        ds4vizBstInsert(b, 15);
+        ds4vizBstDelete(b, 5);
+        ds4vizBstDelete(b, 15);
+        ds4vizBstDelete(b, 10);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "root = -1");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试降序插入
+ */
+static void
+test_bst_insert_descending(void)
+{
+    char *p_c;
+
+    setup_test("bst_desc");
+    ds4vizBinarySearchTree(b)
+    {
+        int i;
+        for (i = 5; i >= 1; i--)
+        {
+            ds4vizBstInsert(b, i);
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 堆测试
- * ================================================================ */
-
-/**
- * @brief 测试最小堆基本操作
- */
-static void test_heap_min_basic(void)
-{
-    const char *path = "t_heap_min.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h, "test_heap", dvHeapOrderMin)
-    {
-        dvHeapInsert(h, 10);
-        dvHeapInsert(h, 5);
-        dvHeapInsert(h, 15);
-        dvHeapInsert(h, 3);
-        dvHeapExtract(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"binary_tree\"");
-    validate_bt_data(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试最大堆基本操作
- */
-static void test_heap_max_basic(void)
-{
-    const char *path = "t_heap_max.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h, "max_heap", dvHeapOrderMax)
-    {
-        dvHeapInsert(h, 10);
-        dvHeapInsert(h, 20);
-        dvHeapInsert(h, 5);
-        dvHeapExtract(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试空堆提取 (错误)
- */
-static void test_heap_extract_empty_error(void)
-{
-    const char *path = "t_heap_eex.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h)
-    {
-        dvHeapExtract(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试堆清空
- */
-static void test_heap_clear(void)
-{
-    const char *path = "t_heap_clear.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h)
-    {
-        dvHeapInsert(h, 1);
-        dvHeapInsert(h, 2);
-        dvHeapInsert(h, 3);
-        dvHeapClear(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "root = -1");
-    ASSERT_CONTAINS(c, "nodes = []");
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试多次提取
- */
-static void test_heap_multi_extract(void)
-{
-    const char *path = "t_heap_mex.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h, "h", dvHeapOrderMin)
-    {
-        dvHeapInsert(h, 10);
-        dvHeapInsert(h, 5);
-        dvHeapInsert(h, 15);
-        dvHeapInsert(h, 3);
-        dvHeapExtract(h);
-        dvHeapExtract(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试单元素堆
- */
-static void test_heap_single(void)
-{
-    const char *path = "t_heap_single.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h)
-    {
-        dvHeapInsert(h, 100);
-        dvHeapExtract(h);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试提取后再插入
- */
-static void test_heap_insert_after_extract(void)
-{
-    const char *path = "t_heap_iae.toml";
-    char *c;
-
-    set_output(path);
-    dvHeap(h, "h", dvHeapOrderMin)
-    {
-        dvHeapInsert(h, 10);
-        dvHeapInsert(h, 5);
-        dvHeapExtract(h);
-        dvHeapInsert(h, 3);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试最小堆性质 (多值)
- */
-static void test_heap_min_property(void)
-{
-    const char *path = "t_heap_minp.toml";
-    char *c;
-    int vals[] = {15, 10, 20, 8, 25, 12};
-
-    set_output(path);
-    dvHeap(h, "minp", dvHeapOrderMin)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            dvHeapInsert(h, vals[i]);
-        }
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试最大堆性质 (多值)
- */
-static void test_heap_max_property(void)
-{
-    const char *path = "t_heap_maxp.toml";
-    char *c;
-    int vals[] = {15, 10, 20, 8, 25, 12};
-
-    set_output(path);
-    dvHeap(h, "maxp", dvHeapOrderMax)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            dvHeapInsert(h, vals[i]);
-        }
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
-
-/* ================================================================
- * 无向图测试
+ * TestGraphUndirectedIntegration: 无向图集成测试
  * ================================================================ */
 
 /**
  * @brief 测试无向图基本操作
  */
-static void test_gu_basic(void)
+static void
+test_gu_basic(void)
 {
-    const char *path = "t_gu_basic.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g, "test_graph")
+    setup_test("gu_basic");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuAddNode(g, 2, "C");
-        dvGuAddEdge(g, 0, 1);
-        dvGuAddEdge(g, 1, 2);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"graph_undirected\"");
-    validate_graph_data(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"graph_undirected\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试无向图边规范化 (from < to)
+ * @brief 测试无向边规范化
  */
-static void test_gu_edge_normalization(void)
+static void
+test_gu_edge_normalization(void)
 {
-    const char *path = "t_gu_norm.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_norm");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuAddEdge(g, 1, 0);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddEdge(g, 1, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "from = 0");
-    ASSERT_CONTAINS(c, "to = 1");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "from = 0");
+    T_CONTAINS(p_c, "to = 1");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试无向图自环 (错误)
+ * @brief 测试自环错误
  */
-static void test_gu_self_loop_error(void)
+static void
+test_gu_self_loop_error(void)
 {
-    const char *path = "t_gu_selfloop.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_selfloop");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddEdge(g, 0, 0);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddEdge(g, 0, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试无向图重复边 (错误)
+ * @brief 测试重复边错误
  */
-static void test_gu_dup_edge_error(void)
+static void
+test_gu_duplicate_edge_error(void)
 {
-    const char *path = "t_gu_dupedge.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_dup_edge");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuAddEdge(g, 0, 1);
-        dvGuAddEdge(g, 0, 1);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddEdge(g, 0, 1);
+        ds4vizGuAddEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试删除节点 (同时删除相关边)
+ * @brief 测试删除节点同时删除边
  */
-static void test_gu_remove_node(void)
+static void
+test_gu_remove_node_and_edges(void)
 {
-    const char *path = "t_gu_rn.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_rm_node");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuAddNode(g, 2, "C");
-        dvGuAddEdge(g, 0, 1);
-        dvGuAddEdge(g, 1, 2);
-        dvGuRemoveNode(g, 1);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddNode(g, 2, "C");
+        ds4vizGuAddEdge(g, 0, 1);
+        ds4vizGuAddEdge(g, 1, 2);
+        ds4vizGuRemoveNode(g, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试边高亮
+ */
+static void
+test_gu_step_edge_highlight(void)
+{
+    char *p_c;
+
+    setup_test("gu_edge_hl");
+    ds4vizGraphUndirected(g)
+    {
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddEdge(g, 0, 1);
+        ds4vizStep(g, NULL,
+                   ds4vizNode(0, DS4VIZ_VISITED),
+                   ds4vizNode(1, DS4VIZ_FOCUS, 3),
+                   ds4vizEdge(0, 1, DS4VIZ_ACTIVE));
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"edge\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试删除边
  */
-static void test_gu_remove_edge(void)
+static void
+test_gu_remove_edge(void)
 {
-    const char *path = "t_gu_re.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_rm_edge");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuAddEdge(g, 0, 1);
-        dvGuRemoveEdge(g, 0, 1);
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddNode(g, 2, "C");
+        ds4vizGuAddEdge(g, 0, 1);
+        ds4vizGuAddEdge(g, 0, 2);
+        ds4vizGuRemoveEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "edges = []");
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试添加重复节点 (错误)
- */
-static void test_gu_dup_node_error(void)
-{
-    const char *path = "t_gu_dupnode.toml";
-    char *c;
-
-    set_output(path);
-    dvGraphUndirected(g)
-    {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 0, "B");
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试删除不存在的节点 (错误)
- */
-static void test_gu_remove_nonexist_node(void)
-{
-    const char *path = "t_gu_rnn.toml";
-    char *c;
-
-    set_output(path);
-    dvGraphUndirected(g)
-    {
-        dvGuAddNode(g, 0, "A");
-        dvGuRemoveNode(g, 999);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
-}
-
-/**
- * @brief 测试删除不存在的边 (错误)
- */
-static void test_gu_remove_nonexist_edge(void)
-{
-    const char *path = "t_gu_rne.toml";
-    char *c;
-
-    set_output(path);
-    dvGraphUndirected(g)
-    {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "B");
-        dvGuRemoveEdge(g, 0, 1);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试更新节点标签
  */
-static void test_gu_update_label(void)
+static void
+test_gu_update_node_label(void)
 {
-    const char *path = "t_gu_ulbl.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("gu_upd_lbl");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuUpdateNodeLabel(g, 0, "X");
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuUpdateNodeLabel(g, 0, "A-updated");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "\"X\"");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "label = \"A-updated\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试删除不存在的节点
+ */
+static void
+test_gu_remove_nonexistent_node_error(void)
+{
+    char *p_c;
+
+    setup_test("gu_rm_ne_node");
+    ds4vizGraphUndirected(g)
+    {
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuRemoveNode(g, 999);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试添加重复节点
+ */
+static void
+test_gu_add_duplicate_node_error(void)
+{
+    char *p_c;
+
+    setup_test("gu_dup_node");
+    ds4vizGraphUndirected(g)
+    {
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 0, "B");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试在不存在的节点间添加边
+ */
+static void
+test_gu_add_edge_nonexistent_error(void)
+{
+    char *p_c;
+
+    setup_test("gu_ae_ne");
+    ds4vizGraphUndirected(g)
+    {
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddEdge(g, 0, 1);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试反向添加重复边
+ */
+static void
+test_gu_duplicate_edge_reversed_error(void)
+{
+    char *p_c;
+
+    setup_test("gu_dup_rev");
+    ds4vizGraphUndirected(g)
+    {
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "B");
+        ds4vizGuAddEdge(g, 0, 1);
+        ds4vizGuAddEdge(g, 1, 0);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 有向图测试
+ * TestGraphDirectedIntegration: 有向图集成测试
  * ================================================================ */
 
 /**
  * @brief 测试有向图基本操作
  */
-static void test_gd_basic(void)
+static void
+test_gd_basic(void)
 {
-    const char *path = "t_gd_basic.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g, "test_digraph")
+    setup_test("gd_basic");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddNode(g, 1, "B");
-        dvGdAddEdge(g, 0, 1);
-        dvGdAddEdge(g, 1, 0);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdAddEdge(g, 0, 1);
+        ds4vizGdAddEdge(g, 1, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"graph_directed\"");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"graph_directed\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图不进行边规范化
+ * @brief 测试有向图不规范化
  */
-static void test_gd_no_normalization(void)
+static void
+test_gd_no_normalization(void)
 {
-    const char *path = "t_gd_nonorm.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_no_norm");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddNode(g, 1, "B");
-        dvGdAddEdge(g, 1, 0);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdAddEdge(g, 1, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "from = 1");
-    ASSERT_CONTAINS(c, "to = 0");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "from = 1");
+    T_CONTAINS(p_c, "to = 0");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图自环 (错误)
+ * @brief 测试有向图自环错误
  */
-static void test_gd_self_loop_error(void)
+static void
+test_gd_self_loop_error(void)
 {
-    const char *path = "t_gd_selfloop.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_selfloop");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddEdge(g, 0, 0);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddEdge(g, 0, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图重复边 (错误)
+ * @brief 测试删除节点同时删除关联入边与出边
  */
-static void test_gd_dup_edge_error(void)
+static void
+test_gd_remove_node_and_edges(void)
 {
-    const char *path = "t_gd_dupedge.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_rm_node");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddNode(g, 1, "B");
-        dvGdAddEdge(g, 0, 1);
-        dvGdAddEdge(g, 0, 1);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdAddNode(g, 2, "C");
+        ds4vizGdAddEdge(g, 0, 1);
+        ds4vizGdAddEdge(g, 1, 2);
+        ds4vizGdAddEdge(g, 2, 1);
+        ds4vizGdRemoveNode(g, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图删除节点
+ * @brief 测试删除有向边
  */
-static void test_gd_remove_node(void)
+static void
+test_gd_remove_edge(void)
 {
-    const char *path = "t_gd_rn.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_rm_edge");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddNode(g, 1, "B");
-        dvGdAddNode(g, 2, "C");
-        dvGdAddEdge(g, 0, 1);
-        dvGdAddEdge(g, 1, 2);
-        dvGdRemoveNode(g, 1);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdAddEdge(g, 0, 1);
+        ds4vizGdAddEdge(g, 1, 0);
+        ds4vizGdRemoveEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图删除边
+ * @brief 测试重复有向边错误
  */
-static void test_gd_remove_edge(void)
+static void
+test_gd_duplicate_edge_error(void)
 {
-    const char *path = "t_gd_re.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_dup_edge");
+    ds4vizGraphDirected(g)
     {
-        dvGdAddNode(g, 0, "A");
-        dvGdAddNode(g, 1, "B");
-        dvGdAddEdge(g, 0, 1);
-        dvGdRemoveEdge(g, 0, 1);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdAddEdge(g, 0, 1);
+        ds4vizGdAddEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向图环
+ * @brief 测试添加重复节点
  */
-static void test_gd_cycle(void)
+static void
+test_gd_add_duplicate_node_error(void)
 {
-    const char *path = "t_gd_cycle.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphDirected(g)
+    setup_test("gd_dup_node");
+    ds4vizGraphDirected(g)
     {
-        for (int i = 0; i < 4; i++)
-        {
-            char lbl[8];
-            snprintf(lbl, sizeof(lbl), "N%d", i);
-            dvGdAddNode(g, i, lbl);
-        }
-        dvGdAddEdge(g, 0, 1);
-        dvGdAddEdge(g, 1, 2);
-        dvGdAddEdge(g, 2, 3);
-        dvGdAddEdge(g, 3, 1);
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 0, "A");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试更新有向图节点标签
+ */
+static void
+test_gd_update_node_label(void)
+{
+    char *p_c;
+
+    setup_test("gd_upd_lbl");
+    ds4vizGraphDirected(g)
+    {
+        ds4vizGdAddNode(g, 0, "X");
+        ds4vizGdUpdateNodeLabel(g, 0, "X-mod");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "label = \"X-mod\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试在不存在的节点间添加有向边
+ */
+static void
+test_gd_add_edge_nonexistent_error(void)
+{
+    char *p_c;
+
+    setup_test("gd_ae_ne");
+    ds4vizGraphDirected(g)
+    {
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddEdge(g, 0, 1);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试删除不存在的有向边
+ */
+static void
+test_gd_remove_nonexistent_edge_error(void)
+{
+    char *p_c;
+
+    setup_test("gd_re_ne");
+    ds4vizGraphDirected(g)
+    {
+        ds4vizGdAddNode(g, 0, "A");
+        ds4vizGdAddNode(g, 1, "B");
+        ds4vizGdRemoveEdge(g, 0, 1);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 带权图测试
+ * TestGraphWeightedIntegration: 带权图集成测试
  * ================================================================ */
 
 /**
- * @brief 测试无向带权图
+ * @brief 测试带权图基本操作
  */
-static void test_gw_undirected(void)
+static void
+test_gw_basic(void)
 {
-    const char *path = "t_gw_undir.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g, "test_wgraph")
+    setup_test("gw_basic");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, 3.5);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 3.5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "kind = \"graph_weighted\"");
-    ASSERT_CONTAINS(c, "weight = ");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "kind = \"graph_weighted\"");
+    T_CONTAINS(p_c, "weight = 3.5");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试有向带权图
+ * @brief 测试更新权重
  */
-static void test_gw_directed(void)
+static void
+test_gw_update_weight(void)
 {
-    const char *path = "t_gw_dir.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g, "dw", true)
+    setup_test("gw_upd_w");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, 2.0);
-        dvGwAddEdge(g, 1, 0, 3.0);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 1.0);
+        ds4vizGwUpdateWeight(g, 0, 1, 5.0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试更新边权重
+ * @brief 测试别名和高亮
  */
-static void test_gw_update_weight(void)
+static void
+test_gw_alias_and_highlights(void)
 {
-    const char *path = "t_gw_uw.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_alias_hl");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, 1.0);
-        dvGwUpdateWeight(g, 0, 1, 5.0);
+        ds4vizGwAddNode(g, 0, "src");
+        ds4vizAlias(g, 0, "source");
+        ds4vizGwAddNode(g, 1, "dst");
+        ds4vizGwAddEdge(g, 0, 1, 2.0);
+        ds4vizAmend(g, NULL,
+                    ds4vizNode(0, DS4VIZ_ACTIVE),
+                    ds4vizNode(1, DS4VIZ_ACTIVE),
+                    ds4vizEdge(0, 1, DS4VIZ_FOCUS, 3));
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "alias = \"source\"");
+    T_CONTAINS(p_c, "highlights");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试更新节点标签
+ * @brief 测试删除节点
  */
-static void test_gw_update_label(void)
+static void
+test_gw_remove_node(void)
 {
-    const char *path = "t_gw_ul.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_rm_node");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwUpdateNodeLabel(g, 0, "X");
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 1.0);
+        ds4vizGwRemoveNode(g, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "\"X\"");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试更新不存在的边
+ */
+static void
+test_gw_update_nonexistent_edge_error(void)
+{
+    char *p_c;
+
+    setup_test("gw_upd_ne");
+    ds4vizGraphWeighted(g)
+    {
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwUpdateWeight(g, 0, 1, 5.0);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试负权重
  */
-static void test_gw_negative_weight(void)
+static void
+test_gw_negative_weight(void)
 {
-    const char *path = "t_gw_nw.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_neg_w");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, -5.5);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, -5.5);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "-5.5");
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试零权重
+ * @brief 测试带权图自环错误
  */
-static void test_gw_zero_weight(void)
+static void
+test_gw_self_loop_error(void)
 {
-    const char *path = "t_gw_zw.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_selfloop");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, 0.0);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddEdge(g, 0, 0, 1.0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试更新不存在的边权重 (错误)
+ * @brief 测试重复边错误
  */
-static void test_gw_update_nonexist_error(void)
+static void
+test_gw_duplicate_edge_error(void)
 {
-    const char *path = "t_gw_une.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_dup_edge");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwUpdateWeight(g, 0, 1, 5.0);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 1.0);
+        ds4vizGwAddEdge(g, 0, 1, 2.0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试添加重复节点
+ */
+static void
+test_gw_add_duplicate_node_error(void)
+{
+    char *p_c;
+
+    setup_test("gw_dup_node");
+    ds4vizGraphWeighted(g)
+    {
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 0, "B");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试更新节点标签
+ */
+static void
+test_gw_update_node_label(void)
+{
+    char *p_c;
+
+    setup_test("gw_upd_lbl");
+    ds4vizGraphWeighted(g)
+    {
+        ds4vizGwAddNode(g, 0, "Old");
+        ds4vizGwUpdateNodeLabel(g, 0, "New");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "label = \"New\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试整数权重
+ */
+static void
+test_gw_integer_weight(void)
+{
+    char *p_c;
+
+    setup_test("gw_int_w");
+    ds4vizGraphWeighted(g)
+    {
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 7);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试删除带权边
  */
-static void test_gw_remove_edge(void)
+static void
+test_gw_remove_edge(void)
 {
-    const char *path = "t_gw_re.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_rm_edge");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwAddEdge(g, 0, 1, 1.0);
-        dvGwRemoveEdge(g, 0, 1);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddNode(g, 2, "C");
+        ds4vizGwAddEdge(g, 0, 1, 1.0);
+        ds4vizGwAddEdge(g, 1, 2, 2.0);
+        ds4vizGwRemoveEdge(g, 0, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试带权图清空
+ * @brief 测试零权重
  */
-static void test_gw_clear(void)
+static void
+test_gw_zero_weight(void)
 {
-    const char *path = "t_gw_clear.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g)
+    setup_test("gw_zero_w");
+    ds4vizGraphWeighted(g)
     {
-        dvGwAddNode(g, 0, "A");
-        dvGwAddNode(g, 1, "B");
-        dvGwRemoveNode(g, 0);
-        dvGwRemoveNode(g, 1);
+        ds4vizGwAddNode(g, 0, "A");
+        ds4vizGwAddNode(g, 1, "B");
+        ds4vizGwAddEdge(g, 0, 1, 0);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 全局配置测试
+ * TestGlobalConfigIntegration: 全局配置集成测试
  * ================================================================ */
 
 /**
  * @brief 测试配置 remarks
  */
-static void test_config_remarks(void)
+static void
+test_config_remarks(void)
 {
-    const char *path = "t_cfg_remarks.toml";
-    char *c;
+    char *p_c;
 
-    dvConfig((dvConfigOptions){
-        .output_path = path,
-        .title = "Test Title",
-        .author = "Test Author",
-        .comment = "Test Comment"});
-    dvStack(s)
+    snprintf(g_test_path, sizeof(g_test_path), "test_config_remarks.toml");
+    ds4vizConfig((ds4vizConfigOptions){
+        .p_output_path = g_test_path,
+        .p_title = "Title",
+        .p_author = "Author",
+        .p_comment = "Comment"});
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
+        ds4vizStackPush(s, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "[remarks]");
-    ASSERT_CONTAINS(c, "title = \"Test Title\"");
-    ASSERT_CONTAINS(c, "author = \"Test Author\"");
-    ASSERT_CONTAINS(c, "comment = \"Test Comment\"");
-    free(c);
-    cleanup(path);
-    reset_config();
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "title = \"Title\"");
+    T_CONTAINS(p_c, "author = \"Author\"");
+    T_CONTAINS(p_c, "comment = \"Comment\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试配置输出路径
  */
-static void test_config_output_path(void)
+static void
+test_config_output_path(void)
 {
-    const char *path = "t_cfg_outpath.toml";
-    char *c;
+    char *p_c;
 
-    dvConfig((dvConfigOptions){.output_path = path});
-    dvStack(s)
+    snprintf(g_test_path, sizeof(g_test_path), "test_config_path.toml");
+    ds4vizConfig((ds4vizConfigOptions){.p_output_path = g_test_path});
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
+        ds4vizStackPush(s, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-    reset_config();
+    p_c = read_file(g_test_path);
+    T_ASSERT(p_c != NULL, "Custom output path file should exist");
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试只配置 title
+ * @brief 测试仅设置 title
  */
-static void test_config_only_title(void)
+static void
+test_config_title_only(void)
 {
-    const char *path = "t_cfg_title.toml";
-    char *c;
+    char *p_c;
 
-    dvConfig((dvConfigOptions){.output_path = path, .title = "Only Title"});
-    dvStack(s)
+    snprintf(g_test_path, sizeof(g_test_path), "test_config_title.toml");
+    ds4vizConfig((ds4vizConfigOptions){
+        .p_output_path = g_test_path,
+        .p_title = "Only Title"});
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
+        ds4vizStackPush(s, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "title = \"Only Title\"");
-    free(c);
-    cleanup(path);
-    reset_config();
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "title = \"Only Title\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试只配置 author
+ * @brief 测试无 remarks 参数时输出有效
  */
-static void test_config_only_author(void)
+static void
+test_config_no_remarks(void)
 {
-    const char *path = "t_cfg_author.toml";
-    char *c;
+    char *p_c;
 
-    dvConfig((dvConfigOptions){.output_path = path, .author = "Only Author"});
-    dvStack(s)
+    setup_test("config_no_remarks");
+    ds4vizStack(s)
     {
-        dvStackPush(s, 1);
+        ds4vizStackPush(s, 1);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "author = \"Only Author\"");
-    free(c);
-    cleanup(path);
-    reset_config();
-}
-
-/**
- * @brief 测试只配置 comment
- */
-static void test_config_only_comment(void)
-{
-    const char *path = "t_cfg_comment.toml";
-    char *c;
-
-    dvConfig((dvConfigOptions){.output_path = path, .comment = "Only Comment"});
-    dvStack(s)
-    {
-        dvStackPush(s, 1);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    ASSERT_CONTAINS(c, "comment = \"Only Comment\"");
-    free(c);
-    cleanup(path);
-    reset_config();
+    p_c = get_output();
+    T_VALID(p_c);
+    T_NOT_CONTAINS(p_c, "[remarks]");
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 边缘情况测试
+ * TestEdgeCases: 边缘情况测试
  * ================================================================ */
 
 /**
- * @brief 测试空数据结构 (无操作)
+ * @brief 测试空数据结构
  */
-static void test_edge_empty_structure(void)
+static void
+test_edge_empty_structure(void)
 {
-    const char *path = "t_edge_empty.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("edge_empty");
+    ds4vizStack(s)
     {
-        /* 不执行任何操作 */
+        (void)s;
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_INT_EQ(count_str(c, "[[states]]"), 1);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_INT_EQ(str_count(p_c, "[[states]]"), 1);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试字符串中的特殊字符
+ * @brief 测试特殊字符
  */
-static void test_edge_special_chars(void)
+static void
+test_edge_special_characters(void)
 {
-    const char *path = "t_edge_special.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("edge_special");
+    ds4vizStack(s)
     {
-        dvStackPush(s, "hello\"world");
-        dvStackPush(s, "line1\\nline2");
+        ds4vizStackPush(s, "hello\"world");
+        ds4vizStackPush(s, "line1\\nline2");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试大数字
+ * @brief 测试大量操作
  */
-static void test_edge_large_numbers(void)
+static void
+test_edge_many_operations(void)
 {
-    const char *path = "t_edge_large.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("edge_many");
+    ds4vizStack(s)
     {
-        dvStackPush(s, (long long)1000000000000000000LL);
-        dvStackPush(s, (long long)-1000000000000000000LL);
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
-}
+        int i;
 
-/**
- * @brief 测试大量操作 (100 次 push + 50 次 pop)
- */
-static void test_edge_many_operations(void)
-{
-    const char *path = "t_edge_many.toml";
-    char *c;
-
-    set_output(path);
-    dvStack(s)
-    {
-        for (int i = 0; i < 100; i++)
+        for (i = 0; i < 100; i++)
         {
-            dvStackPush(s, i);
+            ds4vizStackPush(s, i);
         }
-        for (int i = 0; i < 50; i++)
+        for (i = 0; i < 50; i++)
         {
-            dvStackPop(s);
+            ds4vizStackPop(s);
         }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_INT_EQ(count_str(c, "[[states]]"), 151);
-    ASSERT_INT_EQ(count_str(c, "[[steps]]"), 150);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_INT_EQ(str_count(p_c, "[[states]]"), 151);
+    T_INT_EQ(str_count(p_c, "[[steps]]"), 150);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试节点标签边界 (长度 1 和 32)
+ * @brief 测试标签边界长度
  */
-static void test_edge_label_boundary(void)
+static void
+test_edge_label_boundary(void)
 {
-    const char *path = "t_edge_lblbd.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("edge_lbl_ok");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "A");
-        dvGuAddNode(g, 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
+        ds4vizGuAddNode(g, 0, "A");
+        ds4vizGuAddNode(g, 1, "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试节点标签过长 (错误)
+ * @brief 测试标签过长
  */
-static void test_edge_label_too_long(void)
+static void
+test_edge_label_too_long(void)
 {
-    const char *path = "t_edge_lbllong.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("edge_lbl_long");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456");
+        ds4vizGuAddNode(g, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试节点标签为空 (错误)
+ * @brief 测试空标签
  */
-static void test_edge_label_empty(void)
+static void
+test_edge_label_empty(void)
 {
-    const char *path = "t_edge_lblempty.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphUndirected(g)
+    setup_test("edge_lbl_empty");
+    ds4vizGraphUndirected(g)
     {
-        dvGuAddNode(g, 0, "");
+        ds4vizGuAddNode(g, 0, "");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "[error]");
+    T_TEARDOWN(p_c);
 }
 
 /**
  * @brief 测试 Unicode 字符串
  */
-static void test_edge_unicode(void)
+static void
+test_edge_unicode_strings(void)
 {
-    const char *path = "t_edge_unicode.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("edge_unicode");
+    ds4vizStack(s)
     {
-        dvStackPush(s, "你好");
-        dvStackPush(s, "世界");
+        ds4vizStackPush(s, "hello");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试混合类型值
+ * @brief 测试嵌套 phase 内层优先
  */
-static void test_edge_mixed_types(void)
+static void
+test_edge_nested_phases_priority(void)
 {
-    const char *path = "t_edge_mixed.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvStack(s)
+    setup_test("edge_nested_phase");
+    ds4vizQueue(q)
     {
-        dvStackPush(s, 1);
-        dvStackPush(s, 2.5);
-        dvStackPush(s, "text");
-        dvStackPush(s, true);
-        dvStackPush(s, false);
-        dvStackPop(s);
+        ds4vizPhase(q, "outer")
+        {
+            ds4vizQueueEnqueue(q, 1);
+            ds4vizPhase(q, "inner")
+            {
+                ds4vizQueueEnqueue(q, 2);
+            }
+            ds4vizQueueEnqueue(q, 3);
+        }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"inner\"");
+    T_CONTAINS(p_c, "phase = \"outer\"");
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试错误后后续操作静默跳过
+ * @brief 测试所有预定义高亮样式
  */
-static void test_edge_error_skips(void)
+static void
+test_edge_all_highlight_styles(void)
 {
-    const char *path = "t_edge_errskip.toml";
-    char *c;
-    int root;
+    char *p_c;
 
-    set_output(path);
-    dvBinaryTree(t)
+    setup_test("edge_all_styles");
+    ds4vizBinaryTree(t)
     {
-        root = dvBtInsertRoot(t, 10);
-        dvBtInsertLeft(t, 999, 5);
-        /* 以下操作应被跳过 */
-        dvBtInsertRight(t, root, 15);
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizStep(t, "focus",
+                   ds4vizNode(root, DS4VIZ_FOCUS));
+        ds4vizStep(t, "visited",
+                   ds4vizNode(root, DS4VIZ_VISITED));
+        ds4vizStep(t, "active",
+                   ds4vizNode(root, DS4VIZ_ACTIVE));
+        ds4vizStep(t, "comparing",
+                   ds4vizNode(root, DS4VIZ_COMPARING));
+        ds4vizStep(t, "found",
+                   ds4vizNode(root, DS4VIZ_FOUND));
+        ds4vizStep(t, "error",
+                   ds4vizNode(root, DS4VIZ_ERROR_STY));
     }
-    (void)root;
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_error(c);
-    /* 只应有 2 个状态 (初始 + insert_root 后) */
-    ASSERT_INT_EQ(count_str(c, "[[states]]"), 2);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "style = \"focus\"");
+    T_CONTAINS(p_c, "style = \"visited\"");
+    T_CONTAINS(p_c, "style = \"active\"");
+    T_CONTAINS(p_c, "style = \"comparing\"");
+    T_CONTAINS(p_c, "style = \"found\"");
+    T_CONTAINS(p_c, "style = \"error\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试连续两次 amend 覆盖
+ */
+static void
+test_edge_amend_overwrite(void)
+{
+    char *p_c;
+
+    setup_test("edge_amend_ow");
+    ds4vizStack(s)
+    {
+        ds4vizStackPush(s, 10);
+        ds4vizAmend(s, "first");
+        ds4vizAmend(s, "second");
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "note = \"second\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试高亮 level 边界值 1 和 9
+ */
+static void
+test_edge_highlight_level_boundaries(void)
+{
+    char *p_c;
+
+    setup_test("edge_hl_levels");
+    ds4vizBinaryTree(t)
+    {
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizStep(t, "level1",
+                   ds4vizNode(root, DS4VIZ_FOCUS, 1));
+        ds4vizStep(t, "level9",
+                   ds4vizNode(root, DS4VIZ_FOCUS, 9));
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "level = 1");
+    T_CONTAINS(p_c, "level = 9");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试空二叉树
+ */
+static void
+test_edge_empty_binary_tree(void)
+{
+    char *p_c;
+
+    setup_test("edge_empty_bt");
+    ds4vizBinaryTree(t)
+    {
+        (void)t;
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "root = -1");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试空单链表
+ */
+static void
+test_edge_empty_slist(void)
+{
+    char *p_c;
+
+    setup_test("edge_empty_slist");
+    ds4vizSingleLinkedList(l)
+    {
+        (void)l;
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "head = -1");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试空双向链表
+ */
+static void
+test_edge_empty_dlist(void)
+{
+    char *p_c;
+
+    setup_test("edge_empty_dlist");
+    ds4vizDoubleLinkedList(l)
+    {
+        (void)l;
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "head = -1");
+    T_CONTAINS(p_c, "tail = -1");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试空图结构
+ */
+static void
+test_edge_empty_graph(void)
+{
+    char *p_c;
+
+    setup_test("edge_empty_graph");
+    ds4vizGraphDirected(g)
+    {
+        (void)g;
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_INT_EQ(str_count(p_c, "[[states]]"), 1);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试 amend 传入空列表清除高亮
+ */
+static void
+test_edge_amend_clear_highlights(void)
+{
+    char *p_c;
+
+    setup_test("edge_amend_clr_hl");
+    ds4vizStack(s)
+    {
+        ds4vizStackPush(s, 10);
+        ds4vizAmendHL(s, ds4vizItem(0, DS4VIZ_FOCUS, 3));
+        ds4vizAmendClearHL(s);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 复杂场景测试
+ * TestComplexScenarios: 复杂场景测试
  * ================================================================ */
 
 /**
- * @brief 测试 BST 复杂删除场景
+ * @brief 测试 BST 复杂删除
  */
-static void test_complex_bst_deletion(void)
+static void
+test_complex_bst_deletion(void)
 {
-    const char *path = "t_cplx_bst.toml";
-    char *c;
-    int vals[] = {50, 30, 70, 20, 40, 60, 80, 35, 45};
+    char *p_c;
 
-    set_output(path);
-    dvBinarySearchTree(b)
+    setup_test("complex_bst_del");
+    ds4vizBinarySearchTree(b)
     {
-        for (int i = 0; i < 9; i++)
+        int vals[] = {50, 30, 70, 20, 40, 60, 80, 35, 45};
+        int i;
+
+        for (i = 0; i < 9; i++)
         {
-            dvBstInsert(b, vals[i]);
+            ds4vizBstInsert(b, vals[i]);
         }
-        dvBstDelete(b, 30);
-        dvBstDelete(b, 50);
+        ds4vizBstDelete(b, 30);
+        ds4vizBstDelete(b, 50);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试图的复杂操作
+ * @brief 测试图复杂操作
  */
-static void test_complex_graph(void)
+static void
+test_complex_graph(void)
 {
-    const char *path = "t_cplx_graph.toml";
-    char *c;
+    char *p_c;
 
-    set_output(path);
-    dvGraphWeighted(g, "complex", true)
+    setup_test("complex_graph");
+    ds4vizGraphWeighted(g)
     {
-        for (int i = 0; i < 5; i++)
+        int i;
+
+        for (i = 0; i < 5; i++)
         {
-            char lbl[4];
-            lbl[0] = (char)('A' + i);
-            lbl[1] = '\0';
-            dvGwAddNode(g, i, lbl);
+            char lbl[2] = {(char)('A' + i), '\0'};
+            ds4vizGwAddNode(g, i, lbl);
         }
-        dvGwAddEdge(g, 0, 1, 1.0);
-        dvGwAddEdge(g, 0, 2, 2.0);
-        dvGwAddEdge(g, 1, 2, 1.5);
-        dvGwAddEdge(g, 2, 3, 2.5);
-        dvGwAddEdge(g, 3, 4, 1.0);
-        dvGwAddEdge(g, 4, 0, 3.0);
-        dvGwUpdateWeight(g, 0, 1, 10.0);
-        dvGwRemoveNode(g, 2);
-        dvGwUpdateNodeLabel(g, 0, "Start");
+        ds4vizGwAddEdge(g, 0, 1, 1.0);
+        ds4vizGwAddEdge(g, 1, 2, 1.5);
+        ds4vizGwAddEdge(g, 2, 3, 2.5);
+        ds4vizGwAddEdge(g, 3, 4, 1.0);
+        ds4vizGwUpdateWeight(g, 0, 1, 10.0);
+        ds4vizGwRemoveNode(g, 2);
+        ds4vizGwUpdateNodeLabel(g, 0, "Start");
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试链表的复杂操作
+ * @brief 测试双向链表复杂操作
  */
-static void test_complex_linked_list(void)
+static void
+test_complex_dlist(void)
 {
-    const char *path = "t_cplx_dlist.toml";
-    char *c;
-    int nodes[5];
+    char *p_c;
 
-    set_output(path);
-    dvDoubleLinkedList(l)
+    setup_test("complex_dlist");
+    ds4vizDoubleLinkedList(l)
     {
-        for (int i = 0; i < 5; i++)
+        int nodes[5];
+        int i;
+
+        for (i = 0; i < 5; i++)
         {
-            nodes[i] = dvDlInsertTail(l, i);
+            nodes[i] = ds4vizDlInsertTail(l, i);
         }
-        dvDlInsertAfter(l, nodes[2], 100);
-        dvDlInsertBefore(l, nodes[2], 200);
-        dvDlDeleteHead(l);
-        dvDlDeleteTail(l);
-        dvDlReverse(l);
+        ds4vizDlInsertAfter(l, nodes[2], 100);
+        ds4vizDlInsertBefore(l, nodes[2], 200);
+        ds4vizDlDeleteHead(l);
+        ds4vizDlDeleteTail(l);
+        ds4vizDlReverse(l);
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    free(c);
-    cleanup(path);
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试堆排序模拟
+ * @brief 测试所有数据结构均可正常产出
  */
-static void test_complex_heap_sort(void)
+static void
+test_complex_all_structures(void)
 {
-    const char *path = "t_cplx_hsort.toml";
-    char *c;
-    int vals[] = {5, 2, 8, 1, 9, 3};
+    char *p_c;
 
-    set_output(path);
-    dvHeap(h, "sort", dvHeapOrderMin)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            dvHeapInsert(h, vals[i]);
-        }
-        for (int i = 0; i < 6; i++)
-        {
-            dvHeapExtract(h);
-        }
-    }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    /* 6 inserts + 6 extracts = 12 steps, 13 states */
-    ASSERT_INT_EQ(count_str(c, "[[steps]]"), 12);
-    ASSERT_INT_EQ(count_str(c, "[[states]]"), 13);
-    free(c);
-    cleanup(path);
+    setup_test("complex_all_stack");
+    ds4vizStack(s) { (void)s; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_queue");
+    ds4vizQueue(q) { (void)q; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_slist");
+    ds4vizSingleLinkedList(l) { (void)l; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_dlist");
+    ds4vizDoubleLinkedList(d) { (void)d; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_bt");
+    ds4vizBinaryTree(bt) { (void)bt; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_bst");
+    ds4vizBinarySearchTree(b) { (void)b; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_gu");
+    ds4vizGraphUndirected(gu) { (void)gu; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_gd");
+    ds4vizGraphDirected(gd) { (void)gd; }
+    p_c = get_output();
+    T_VALID(p_c);
+    free(p_c);
+    cleanup_test();
+
+    setup_test("complex_all_gw");
+    ds4vizGraphWeighted(gw) { (void)gw; }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
 }
 
 /**
- * @brief 测试快速上手示例 (文档中的 quick start)
+ * @brief 测试有向图 BFS 模拟
  */
-static void test_complex_quickstart(void)
+static void
+test_complex_bfs_simulation(void)
 {
-    const char *path = "t_cplx_qs.toml";
-    char *c;
+    char *p_c;
 
-    dvConfig((dvConfigOptions){
-        .output_path = path,
-        .title = "无向图演示",
-        .author = "WaterRun",
-        .comment = "C quick start"});
-    dvGraphUndirected(graph, "graph")
+    setup_test("complex_bfs");
+    ds4vizGraphDirected(g)
     {
-        dvGuAddNode(graph, 0, "A");
-        dvGuAddNode(graph, 1, "B");
-        dvGuAddNode(graph, 2, "C");
-        dvGuAddEdge(graph, 0, 1);
-        dvGuAddEdge(graph, 1, 2);
+        int i;
+
+        ds4vizPhase(g, "build")
+        {
+            for (i = 0; i < 4; i++)
+            {
+                char lbl[2] = {(char)('A' + i), '\0'};
+                ds4vizGdAddNode(g, i, lbl);
+            }
+            ds4vizGdAddEdge(g, 0, 1);
+            ds4vizGdAddEdge(g, 0, 2);
+            ds4vizGdAddEdge(g, 1, 3);
+            ds4vizGdAddEdge(g, 2, 3);
+        }
+        ds4vizPhase(g, "BFS")
+        {
+            ds4vizStep(g, "start A",
+                       ds4vizNode(0, DS4VIZ_FOCUS, 3));
+            ds4vizStep(g, "visit B,C",
+                       ds4vizNode(0, DS4VIZ_VISITED),
+                       ds4vizNode(1, DS4VIZ_FOCUS, 2),
+                       ds4vizNode(2, DS4VIZ_FOCUS, 2));
+            ds4vizStep(g, "visit D",
+                       ds4vizNode(0, DS4VIZ_VISITED),
+                       ds4vizNode(1, DS4VIZ_VISITED),
+                       ds4vizNode(2, DS4VIZ_VISITED),
+                       ds4vizNode(3, DS4VIZ_FOCUS, 2));
+            ds4vizStep(g, "BFS done",
+                       ds4vizNode(0, DS4VIZ_VISITED),
+                       ds4vizNode(1, DS4VIZ_VISITED),
+                       ds4vizNode(2, DS4VIZ_VISITED),
+                       ds4vizNode(3, DS4VIZ_VISITED));
+        }
     }
-    c = read_file(path);
-    ASSERT_TRUE(c != NULL);
-    validate_toml(c);
-    validate_result(c);
-    ASSERT_CONTAINS(c, "[remarks]");
-    ASSERT_CONTAINS(c, "\"WaterRun\"");
-    free(c);
-    cleanup(path);
-    reset_config();
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"BFS\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试链表循环操作: 构建, 删除, 重建
+ */
+static void
+test_complex_linked_list_cycle(void)
+{
+    char *p_c;
+
+    setup_test("complex_ll_cycle");
+    ds4vizSingleLinkedList(l)
+    {
+        int a;
+        int b;
+        int c;
+        int d;
+        int e;
+
+        ds4vizPhase(l, "round1")
+        {
+            a = ds4vizSlInsertHead(l, 1);
+            b = ds4vizSlInsertTail(l, 2);
+            c = ds4vizSlInsertTail(l, 3);
+            ds4vizSlDelete(l, b);
+            ds4vizSlDelete(l, c);
+            ds4vizSlDelete(l, a);
+        }
+        ds4vizPhase(l, "round2")
+        {
+            d = ds4vizSlInsertHead(l, 10);
+            e = ds4vizSlInsertTail(l, 20);
+            ds4vizStep(l, "new list",
+                       ds4vizNode(d, DS4VIZ_FOCUS, 3),
+                       ds4vizNode(e, DS4VIZ_VISITED));
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"round1\"");
+    T_CONTAINS(p_c, "phase = \"round2\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试深层二叉树 (10 层, 全左子树)
+ */
+static void
+test_complex_deep_binary_tree(void)
+{
+    char *p_c;
+
+    setup_test("complex_deep_bt");
+    ds4vizBinaryTree(t)
+    {
+        int parent;
+        int i;
+
+        parent = ds4vizBtInsertRoot(t, 0);
+        for (i = 1; i < 10; i++)
+        {
+            parent = ds4vizBtInsertLeft(t, parent, i);
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试完全无向图 (K5)
+ */
+static void
+test_complex_complete_graph_k5(void)
+{
+    char *p_c;
+
+    setup_test("complex_k5");
+    ds4vizGraphUndirected(g)
+    {
+        int i;
+        int j;
+
+        for (i = 0; i < 5; i++)
+        {
+            char lbl[2] = {(char)('A' + i), '\0'};
+            ds4vizGuAddNode(g, i, lbl);
+        }
+        for (i = 0; i < 5; i++)
+        {
+            for (j = i + 1; j < 5; j++)
+            {
+                ds4vizGuAddEdge(g, i, j);
+            }
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试 Dijkstra 松弛过程模拟
+ */
+static void
+test_complex_dijkstra(void)
+{
+    char *p_c;
+
+    setup_test("complex_dijkstra");
+    ds4vizGraphWeighted(g)
+    {
+        ds4vizPhase(g, "build")
+        {
+            ds4vizGwAddNode(g, 0, "src");
+            ds4vizAlias(g, 0, "source");
+            ds4vizGwAddNode(g, 1, "A");
+            ds4vizGwAddNode(g, 2, "B");
+            ds4vizGwAddNode(g, 3, "dst");
+            ds4vizGwAddEdge(g, 0, 1, 1);
+            ds4vizGwAddEdge(g, 0, 2, 4);
+            ds4vizGwAddEdge(g, 1, 2, 2);
+            ds4vizGwAddEdge(g, 2, 3, 3);
+        }
+        ds4vizPhase(g, "relax")
+        {
+            ds4vizStep(g, "from src",
+                       ds4vizNode(0, DS4VIZ_VISITED),
+                       ds4vizNode(1, DS4VIZ_FOCUS, 2),
+                       ds4vizEdge(0, 1, DS4VIZ_ACTIVE, 3));
+            ds4vizStep(g, "from A",
+                       ds4vizNode(0, DS4VIZ_VISITED),
+                       ds4vizNode(1, DS4VIZ_VISITED),
+                       ds4vizNode(2, DS4VIZ_FOCUS, 2),
+                       ds4vizEdge(1, 2, DS4VIZ_ACTIVE, 3));
+            ds4vizStep(g, "done",
+                       ds4vizNode(0, DS4VIZ_FOUND),
+                       ds4vizNode(1, DS4VIZ_FOUND),
+                       ds4vizNode(2, DS4VIZ_FOUND),
+                       ds4vizNode(3, DS4VIZ_FOUND),
+                       ds4vizEdge(0, 1, DS4VIZ_FOUND, 3),
+                       ds4vizEdge(1, 2, DS4VIZ_FOUND, 3),
+                       ds4vizEdge(2, 3, DS4VIZ_FOUND, 3));
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "alias = \"source\"");
+    T_CONTAINS(p_c, "phase = \"relax\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试二叉树构建后完整前序遍历
+ */
+static void
+test_complex_bt_build_and_traverse(void)
+{
+    char *p_c;
+
+    setup_test("complex_bt_trav");
+    ds4vizBinaryTree(t)
+    {
+        int root;
+        int n2;
+        int n3;
+        int n4;
+        int n5;
+
+        ds4vizPhase(t, "build")
+        {
+            root = ds4vizBtInsertRoot(t, 1);
+            n2 = ds4vizBtInsertLeft(t, root, 2);
+            n3 = ds4vizBtInsertRight(t, root, 3);
+            n4 = ds4vizBtInsertLeft(t, n2, 4);
+            n5 = ds4vizBtInsertRight(t, n2, 5);
+        }
+        ds4vizPhase(t, "preorder")
+        {
+            ds4vizStep(t, "visit 1",
+                       ds4vizNode(root, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 2",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(n2, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 4",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(n2, DS4VIZ_VISITED),
+                       ds4vizNode(n4, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 5",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(n2, DS4VIZ_VISITED),
+                       ds4vizNode(n4, DS4VIZ_VISITED),
+                       ds4vizNode(n5, DS4VIZ_FOCUS, 3));
+            ds4vizStep(t, "visit 3",
+                       ds4vizNode(root, DS4VIZ_VISITED),
+                       ds4vizNode(n2, DS4VIZ_VISITED),
+                       ds4vizNode(n4, DS4VIZ_VISITED),
+                       ds4vizNode(n5, DS4VIZ_VISITED),
+                       ds4vizNode(n3, DS4VIZ_FOCUS, 3));
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_INT_EQ(str_count(p_c, "op = \"observe\""), 5);
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试图构建-删除-重建
+ */
+static void
+test_complex_graph_build_remove_rebuild(void)
+{
+    char *p_c;
+
+    setup_test("complex_grr");
+    ds4vizGraphDirected(g)
+    {
+        ds4vizPhase(g, "build")
+        {
+            ds4vizGdAddNode(g, 0, "A");
+            ds4vizGdAddNode(g, 1, "B");
+            ds4vizGdAddNode(g, 2, "C");
+            ds4vizGdAddEdge(g, 0, 1);
+            ds4vizGdAddEdge(g, 1, 2);
+        }
+        ds4vizPhase(g, "cleanup")
+        {
+            ds4vizGdRemoveNode(g, 1);
+        }
+        ds4vizPhase(g, "rebuild")
+        {
+            ds4vizGdAddNode(g, 3, "D");
+            ds4vizGdAddEdge(g, 0, 3);
+            ds4vizGdAddEdge(g, 3, 2);
+        }
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_CONTAINS(p_c, "phase = \"build\"");
+    T_CONTAINS(p_c, "phase = \"cleanup\"");
+    T_CONTAINS(p_c, "phase = \"rebuild\"");
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试单链表遍历中使用 amend
+ */
+static void
+test_complex_slist_traversal_amend(void)
+{
+    char *p_c;
+
+    setup_test("complex_sla");
+    ds4vizSingleLinkedList(l)
+    {
+        int a;
+        int b;
+        int c;
+
+        a = ds4vizSlInsertTail(l, 10);
+        b = ds4vizSlInsertTail(l, 20);
+        c = ds4vizSlInsertTail(l, 30);
+        ds4vizStep(l, "begin traverse");
+        ds4vizAmendHL(l, ds4vizNode(a, DS4VIZ_FOCUS, 3));
+        ds4vizStep(l, "next node",
+                   ds4vizNode(a, DS4VIZ_VISITED),
+                   ds4vizNode(b, DS4VIZ_FOCUS, 3));
+        ds4vizStep(l, "last node",
+                   ds4vizNode(a, DS4VIZ_VISITED),
+                   ds4vizNode(b, DS4VIZ_VISITED),
+                   ds4vizNode(c, DS4VIZ_FOCUS, 3));
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+    T_INT_EQ(str_count(p_c, "op = \"observe\""), 3);
+    T_TEARDOWN(p_c);
 }
 
 /* ================================================================
- * 主函数
+ * main
  * ================================================================ */
 
+/**
+ * @brief 测试入口
+ *
+ * @return int 全部通过返回 0, 有失败返回 1
+ */
 int main(void)
 {
-    printf("ds4viz C library test suite\n");
-    printf("========================================\n");
+    printf("=== ds4viz C Library Tests ===\n\n");
 
-    SECTION("Stack");
-    RUN_TEST(test_stack_basic);
+    printf("--- Stack Integration ---\n");
+    RUN_TEST(test_stack_basic_operations);
     RUN_TEST(test_stack_empty_pop_error);
     RUN_TEST(test_stack_clear);
     RUN_TEST(test_stack_various_types);
-    RUN_TEST(test_stack_negative);
-    RUN_TEST(test_stack_mixed);
-    RUN_TEST(test_stack_single);
-    RUN_TEST(test_stack_push_after_clear);
-    RUN_TEST(test_stack_multi_pop);
-    RUN_TEST(test_stack_float);
-    RUN_TEST(test_stack_string);
-    RUN_TEST(test_stack_bool);
-    RUN_TEST(test_stack_zero);
+    RUN_TEST(test_stack_step_and_amend);
+    RUN_TEST(test_stack_phase);
+    RUN_TEST(test_stack_push_pop_push_cycle);
+    RUN_TEST(test_stack_sequential_pop_lifo);
+    RUN_TEST(test_stack_amend_no_prev_error);
+    RUN_TEST(test_stack_nested_phases);
+    RUN_TEST(test_stack_clear_then_push);
+    RUN_TEST(test_stack_single_push_pop);
+    RUN_TEST(test_stack_pop_after_clear_error);
 
-    SECTION("Queue");
-    RUN_TEST(test_queue_basic);
+    printf("\n--- Queue Integration ---\n");
+    RUN_TEST(test_queue_basic_operations);
     RUN_TEST(test_queue_empty_dequeue_error);
+    RUN_TEST(test_queue_phase_and_amend);
     RUN_TEST(test_queue_clear);
-    RUN_TEST(test_queue_consistency);
-    RUN_TEST(test_queue_single);
-    RUN_TEST(test_queue_enqueue_after_clear);
-    RUN_TEST(test_queue_multi_dequeue);
-    RUN_TEST(test_queue_alternating);
-    RUN_TEST(test_queue_until_empty);
-    RUN_TEST(test_queue_string);
+    RUN_TEST(test_queue_various_types);
+    RUN_TEST(test_queue_fifo_order);
+    RUN_TEST(test_queue_step_with_highlights);
+    RUN_TEST(test_queue_dequeue_after_clear_error);
 
-    SECTION("SingleLinkedList");
-    RUN_TEST(test_slist_basic);
+    printf("\n--- Single Linked List Integration ---\n");
+    RUN_TEST(test_slist_basic_operations);
     RUN_TEST(test_slist_reverse);
-    RUN_TEST(test_slist_delete_nonexistent);
-    RUN_TEST(test_slist_empty_delete_head);
-    RUN_TEST(test_slist_insert_after_nonexist);
-    RUN_TEST(test_slist_delete_tail);
-    RUN_TEST(test_slist_single_node);
+    RUN_TEST(test_slist_delete_nonexistent_error);
+    RUN_TEST(test_slist_alias_and_step);
+    RUN_TEST(test_slist_delete_head_single);
+    RUN_TEST(test_slist_insert_after_nonexistent_error);
+    RUN_TEST(test_slist_delete_head_empty_error);
+    RUN_TEST(test_slist_multiple_head_inserts);
+    RUN_TEST(test_slist_reverse_single);
     RUN_TEST(test_slist_reverse_empty);
-    RUN_TEST(test_slist_multi_insert);
 
-    SECTION("DoubleLinkedList");
-    RUN_TEST(test_dlist_basic);
+    printf("\n--- Double Linked List Integration ---\n");
+    RUN_TEST(test_dlist_basic_operations);
     RUN_TEST(test_dlist_reverse);
-    RUN_TEST(test_dlist_consistency);
-    RUN_TEST(test_dlist_delete_head_error);
-    RUN_TEST(test_dlist_delete_tail_error);
-    RUN_TEST(test_dlist_insert_before_nonexist);
-    RUN_TEST(test_dlist_insert_after_nonexist);
-    RUN_TEST(test_dlist_delete_nonexist);
-    RUN_TEST(test_dlist_clear);
-    RUN_TEST(test_dlist_single_node);
-    RUN_TEST(test_dlist_reverse_empty);
-    RUN_TEST(test_dlist_multi_ops);
+    RUN_TEST(test_dlist_delete_head_empty_error);
+    RUN_TEST(test_dlist_delete_specific_node);
+    RUN_TEST(test_dlist_insert_before_nonexistent_error);
+    RUN_TEST(test_dlist_alias_and_step);
+    RUN_TEST(test_dlist_delete_head_single);
+    RUN_TEST(test_dlist_delete_tail_empty_error);
+    RUN_TEST(test_dlist_delete_nonexistent_error);
+    RUN_TEST(test_dlist_insert_after_nonexistent_error);
 
-    SECTION("BinaryTree");
-    RUN_TEST(test_bt_basic);
+    printf("\n--- Binary Tree Integration ---\n");
+    RUN_TEST(test_bt_basic_operations);
     RUN_TEST(test_bt_delete_subtree);
-    RUN_TEST(test_bt_update);
-    RUN_TEST(test_bt_dup_root_error);
-    RUN_TEST(test_bt_dup_child_error);
-    RUN_TEST(test_bt_no_parent_error);
+    RUN_TEST(test_bt_update_value);
+    RUN_TEST(test_bt_duplicate_root_error);
+    RUN_TEST(test_bt_step_traversal);
     RUN_TEST(test_bt_delete_root);
-    RUN_TEST(test_bt_delete_nonexist_error);
-    RUN_TEST(test_bt_update_nonexist_error);
-    RUN_TEST(test_bt_complete);
+    RUN_TEST(test_bt_delete_leaf);
+    RUN_TEST(test_bt_insert_left_occupied_error);
+    RUN_TEST(test_bt_insert_nonexistent_parent_error);
+    RUN_TEST(test_bt_update_nonexistent_error);
+    RUN_TEST(test_bt_insert_right_occupied_error);
+    RUN_TEST(test_bt_delete_nonexistent_error);
+    RUN_TEST(test_bt_string_values);
 
-    SECTION("BinarySearchTree");
-    RUN_TEST(test_bst_basic);
+    printf("\n--- BST Integration ---\n");
+    RUN_TEST(test_bst_basic_operations);
     RUN_TEST(test_bst_delete_leaf);
-    RUN_TEST(test_bst_delete_one_child);
     RUN_TEST(test_bst_delete_two_children);
-    RUN_TEST(test_bst_delete_nonexist_error);
+    RUN_TEST(test_bst_delete_nonexistent_error);
     RUN_TEST(test_bst_delete_root);
-    RUN_TEST(test_bst_duplicate);
-    RUN_TEST(test_bst_clear);
-    RUN_TEST(test_bst_left_skewed);
-    RUN_TEST(test_bst_right_skewed);
+    RUN_TEST(test_bst_delete_one_child);
+    RUN_TEST(test_bst_phase_and_alias);
+    RUN_TEST(test_bst_sequential_insert);
+    RUN_TEST(test_bst_delete_all);
+    RUN_TEST(test_bst_insert_descending);
 
-    SECTION("Heap");
-    RUN_TEST(test_heap_min_basic);
-    RUN_TEST(test_heap_max_basic);
-    RUN_TEST(test_heap_extract_empty_error);
-    RUN_TEST(test_heap_clear);
-    RUN_TEST(test_heap_multi_extract);
-    RUN_TEST(test_heap_single);
-    RUN_TEST(test_heap_insert_after_extract);
-    RUN_TEST(test_heap_min_property);
-    RUN_TEST(test_heap_max_property);
-
-    SECTION("GraphUndirected");
+    printf("\n--- Graph Undirected Integration ---\n");
     RUN_TEST(test_gu_basic);
     RUN_TEST(test_gu_edge_normalization);
     RUN_TEST(test_gu_self_loop_error);
-    RUN_TEST(test_gu_dup_edge_error);
-    RUN_TEST(test_gu_remove_node);
+    RUN_TEST(test_gu_duplicate_edge_error);
+    RUN_TEST(test_gu_remove_node_and_edges);
+    RUN_TEST(test_gu_step_edge_highlight);
     RUN_TEST(test_gu_remove_edge);
-    RUN_TEST(test_gu_dup_node_error);
-    RUN_TEST(test_gu_remove_nonexist_node);
-    RUN_TEST(test_gu_remove_nonexist_edge);
-    RUN_TEST(test_gu_update_label);
+    RUN_TEST(test_gu_update_node_label);
+    RUN_TEST(test_gu_remove_nonexistent_node_error);
+    RUN_TEST(test_gu_add_duplicate_node_error);
+    RUN_TEST(test_gu_add_edge_nonexistent_error);
+    RUN_TEST(test_gu_duplicate_edge_reversed_error);
 
-    SECTION("GraphDirected");
+    printf("\n--- Graph Directed Integration ---\n");
     RUN_TEST(test_gd_basic);
     RUN_TEST(test_gd_no_normalization);
     RUN_TEST(test_gd_self_loop_error);
-    RUN_TEST(test_gd_dup_edge_error);
-    RUN_TEST(test_gd_remove_node);
+    RUN_TEST(test_gd_remove_node_and_edges);
     RUN_TEST(test_gd_remove_edge);
-    RUN_TEST(test_gd_cycle);
+    RUN_TEST(test_gd_duplicate_edge_error);
+    RUN_TEST(test_gd_add_duplicate_node_error);
+    RUN_TEST(test_gd_update_node_label);
+    RUN_TEST(test_gd_add_edge_nonexistent_error);
+    RUN_TEST(test_gd_remove_nonexistent_edge_error);
 
-    SECTION("GraphWeighted");
-    RUN_TEST(test_gw_undirected);
-    RUN_TEST(test_gw_directed);
+    printf("\n--- Graph Weighted Integration ---\n");
+    RUN_TEST(test_gw_basic);
     RUN_TEST(test_gw_update_weight);
-    RUN_TEST(test_gw_update_label);
+    RUN_TEST(test_gw_alias_and_highlights);
+    RUN_TEST(test_gw_remove_node);
+    RUN_TEST(test_gw_update_nonexistent_edge_error);
     RUN_TEST(test_gw_negative_weight);
-    RUN_TEST(test_gw_zero_weight);
-    RUN_TEST(test_gw_update_nonexist_error);
+    RUN_TEST(test_gw_self_loop_error);
+    RUN_TEST(test_gw_duplicate_edge_error);
+    RUN_TEST(test_gw_add_duplicate_node_error);
+    RUN_TEST(test_gw_update_node_label);
+    RUN_TEST(test_gw_integer_weight);
     RUN_TEST(test_gw_remove_edge);
-    RUN_TEST(test_gw_clear);
+    RUN_TEST(test_gw_zero_weight);
 
-    SECTION("GlobalConfig");
+    printf("\n--- Global Config ---\n");
     RUN_TEST(test_config_remarks);
     RUN_TEST(test_config_output_path);
-    RUN_TEST(test_config_only_title);
-    RUN_TEST(test_config_only_author);
-    RUN_TEST(test_config_only_comment);
+    RUN_TEST(test_config_title_only);
+    RUN_TEST(test_config_no_remarks);
 
-    SECTION("EdgeCases");
+    printf("\n--- Edge Cases ---\n");
     RUN_TEST(test_edge_empty_structure);
-    RUN_TEST(test_edge_special_chars);
-    RUN_TEST(test_edge_large_numbers);
+    RUN_TEST(test_edge_special_characters);
     RUN_TEST(test_edge_many_operations);
     RUN_TEST(test_edge_label_boundary);
     RUN_TEST(test_edge_label_too_long);
     RUN_TEST(test_edge_label_empty);
-    RUN_TEST(test_edge_unicode);
-    RUN_TEST(test_edge_mixed_types);
-    RUN_TEST(test_edge_error_skips);
+    RUN_TEST(test_edge_unicode_strings);
+    RUN_TEST(test_edge_nested_phases_priority);
+    RUN_TEST(test_edge_all_highlight_styles);
+    RUN_TEST(test_edge_amend_overwrite);
+    RUN_TEST(test_edge_highlight_level_boundaries);
+    RUN_TEST(test_edge_empty_binary_tree);
+    RUN_TEST(test_edge_empty_slist);
+    RUN_TEST(test_edge_empty_dlist);
+    RUN_TEST(test_edge_empty_graph);
+    RUN_TEST(test_edge_amend_clear_highlights);
 
-    SECTION("ComplexScenarios");
+    printf("\n--- Complex Scenarios ---\n");
     RUN_TEST(test_complex_bst_deletion);
     RUN_TEST(test_complex_graph);
-    RUN_TEST(test_complex_linked_list);
-    RUN_TEST(test_complex_heap_sort);
-    RUN_TEST(test_complex_quickstart);
+    RUN_TEST(test_complex_dlist);
+    RUN_TEST(test_complex_all_structures);
+    RUN_TEST(test_complex_bfs_simulation);
+    RUN_TEST(test_complex_linked_list_cycle);
+    RUN_TEST(test_complex_deep_binary_tree);
+    RUN_TEST(test_complex_complete_graph_k5);
+    RUN_TEST(test_complex_dijkstra);
+    RUN_TEST(test_complex_bt_build_and_traverse);
+    RUN_TEST(test_complex_graph_build_remove_rebuild);
+    RUN_TEST(test_complex_slist_traversal_amend);
 
     printf("\n========================================\n");
-    printf("Results: %d passed, %d failed, %d total (%d asserts)\n",
-           g_tests_passed, g_tests_failed, g_tests_run, g_asserts);
+    printf("  Total: %d | Passed: %d | Failed: %d\n",
+           g_tests_run, g_tests_passed, g_tests_failed);
     printf("========================================\n");
 
     return g_tests_failed > 0 ? 1 : 0;

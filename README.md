@@ -42,7 +42,6 @@
 
   * `binary_tree`（二叉树）
   * `binary_search_tree`（二叉搜索树）
-  * `heap`（堆：`heap_type="min"` / `heap_type="max"`）
 
 * **图结构**
 
