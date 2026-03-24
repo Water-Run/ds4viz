@@ -1,15 +1,16 @@
 -- ============================================
--- 数据库完整重建脚本（开发用，会清空所有数据）
+-- ds4viz 数据库完整重建脚本
+-- 支持语言: python, c
 -- ============================================
 
--- 先删除触发器依赖的函数
+-- 清理触发器及函数
 DROP TRIGGER IF EXISTS trigger_update_favorite_count ON user_favorites;
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 DROP TRIGGER IF EXISTS update_templates_updated_at ON templates;
 DROP FUNCTION IF EXISTS update_template_favorite_count();
 DROP FUNCTION IF EXISTS update_updated_at_column();
 
--- 按依赖顺序删除表（CASCADE 保险起见）
+-- 按依赖顺序删除表
 DROP TABLE IF EXISTS logs CASCADE;
 DROP TABLE IF EXISTS execution_cache CASCADE;
 DROP TABLE IF EXISTS executions CASCADE;
@@ -29,7 +30,8 @@ CREATE TABLE users (
     username VARCHAR(32) UNIQUE NOT NULL,
     password_hash VARCHAR(256) NOT NULL,
     avatar BYTEA,
-    status VARCHAR(16) NOT NULL DEFAULT 'Active',
+    status VARCHAR(16) NOT NULL DEFAULT 'Active'
+        CHECK (status IN ('Active', 'Banned', 'Suspended')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,7 +68,8 @@ CREATE INDEX idx_templates_category ON templates(category);
 CREATE TABLE template_codes (
     id SERIAL PRIMARY KEY,
     template_id INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
-    language VARCHAR(32) NOT NULL,
+    language VARCHAR(32) NOT NULL
+        CHECK (language IN ('python', 'c')),
     code TEXT NOT NULL,
     explanation TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -91,10 +94,12 @@ CREATE TABLE executions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     code_hash VARCHAR(64) NOT NULL,
-    language VARCHAR(32) NOT NULL,
+    language VARCHAR(32) NOT NULL
+        CHECK (language IN ('python', 'c')),
     code TEXT NOT NULL,
     toml_output TEXT,
-    status VARCHAR(16) NOT NULL,
+    status VARCHAR(16) NOT NULL
+        CHECK (status IN ('Success', 'Error', 'Timeout')),
     error_message TEXT,
     execution_time INTEGER,
     ip_address VARCHAR(64) NOT NULL,
@@ -108,7 +113,8 @@ CREATE INDEX idx_executions_created_at ON executions(created_at);
 CREATE TABLE execution_cache (
     id SERIAL PRIMARY KEY,
     code_hash VARCHAR(64) NOT NULL,
-    language VARCHAR(32) NOT NULL,
+    language VARCHAR(32) NOT NULL
+        CHECK (language IN ('python', 'c')),
     toml_output TEXT NOT NULL,
     hit_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -121,7 +127,8 @@ CREATE INDEX idx_execution_cache_lookup ON execution_cache(code_hash, language);
 -- 8. logs
 CREATE TABLE logs (
     id SERIAL PRIMARY KEY,
-    level VARCHAR(16) NOT NULL,
+    level VARCHAR(16) NOT NULL
+        CHECK (level IN ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')),
     module VARCHAR(64) NOT NULL,
     message TEXT NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
