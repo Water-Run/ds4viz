@@ -98,13 +98,13 @@ extern "C"
     typedef struct ds4viz_config_options_s
     {
         /** @brief 输出文件路径, NULL 则默认为 "trace.toml" */
-        const char *p_output_path;
+        const char *output_path;
         /** @brief 可视化标题, NULL 则不输出 */
-        const char *p_title;
+        const char *title;
         /** @brief 作者信息, NULL 则不输出 */
-        const char *p_author;
+        const char *author;
         /** @brief 注释说明, NULL 则不输出 */
-        const char *p_comment;
+        const char *comment;
     } ds4vizConfigOptions;
 
     /**
@@ -1276,18 +1276,18 @@ extern "C"
  */
 static struct
 {
-    const char *p_output_path;
-    const char *p_title;
-    const char *p_author;
-    const char *p_comment;
+    const char *output_path;
+    const char *title;
+    const char *author;
+    const char *comment;
 } ds4viz_p_g_ = {0};
 
 void ds4vizConfig(ds4vizConfigOptions o)
 {
-    ds4viz_p_g_.p_output_path = o.p_output_path;
-    ds4viz_p_g_.p_title = o.p_title;
-    ds4viz_p_g_.p_author = o.p_author;
-    ds4viz_p_g_.p_comment = o.p_comment;
+    ds4viz_p_g_.output_path = o.output_path;
+    ds4viz_p_g_.title = o.title;
+    ds4viz_p_g_.author = o.author;
+    ds4viz_p_g_.comment = o.comment;
 }
 
 /**
@@ -1298,7 +1298,7 @@ void ds4vizConfig(ds4vizConfigOptions o)
 static const char *
 ds4viz_p_outpath_(void)
 {
-    return ds4viz_p_g_.p_output_path ? ds4viz_p_g_.p_output_path : "trace.toml";
+    return ds4viz_p_g_.output_path ? ds4viz_p_g_.output_path : "trace.toml";
 }
 
 /* ----------------------------------------------------------------
@@ -2163,25 +2163,25 @@ ds4viz_p_flush_(const char *p_kind, const char *p_label,
     ds4viz_p_bs_(&out, "\n[package]\nname = \"ds4viz\"\nlang = \"c\"\nversion = \"" DS4VIZ_P_VERSION_ "\"\n");
 
     /* [remarks] */
-    if (ds4viz_p_g_.p_title || ds4viz_p_g_.p_author || ds4viz_p_g_.p_comment)
+    if (ds4viz_p_g_.title || ds4viz_p_g_.author || ds4viz_p_g_.comment)
     {
         ds4viz_p_bs_(&out, "\n[remarks]\n");
-        if (ds4viz_p_g_.p_title)
+        if (ds4viz_p_g_.title)
         {
             ds4viz_p_bs_(&out, "title = ");
-            ds4viz_p_tstr_(&out, ds4viz_p_g_.p_title);
+            ds4viz_p_tstr_(&out, ds4viz_p_g_.title);
             ds4viz_p_bc_(&out, '\n');
         }
-        if (ds4viz_p_g_.p_author)
+        if (ds4viz_p_g_.author)
         {
             ds4viz_p_bs_(&out, "author = ");
-            ds4viz_p_tstr_(&out, ds4viz_p_g_.p_author);
+            ds4viz_p_tstr_(&out, ds4viz_p_g_.author);
             ds4viz_p_bc_(&out, '\n');
         }
-        if (ds4viz_p_g_.p_comment)
+        if (ds4viz_p_g_.comment)
         {
             ds4viz_p_bs_(&out, "comment = ");
-            ds4viz_p_tstr_(&out, ds4viz_p_g_.p_comment);
+            ds4viz_p_tstr_(&out, ds4viz_p_g_.comment);
             ds4viz_p_bc_(&out, '\n');
         }
     }

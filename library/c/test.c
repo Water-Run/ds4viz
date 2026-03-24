@@ -303,7 +303,7 @@ static void
 setup_test(const char *p_name)
 {
     snprintf(g_test_path, sizeof(g_test_path), "test_%s.toml", p_name);
-    ds4vizConfig((ds4vizConfigOptions){.p_output_path = g_test_path});
+    ds4vizConfig((ds4vizConfigOptions){.output_path = g_test_path});
 }
 
 /**
@@ -2634,10 +2634,10 @@ test_config_remarks(void)
 
     snprintf(g_test_path, sizeof(g_test_path), "test_config_remarks.toml");
     ds4vizConfig((ds4vizConfigOptions){
-        .p_output_path = g_test_path,
-        .p_title = "Title",
-        .p_author = "Author",
-        .p_comment = "Comment"});
+        .output_path = g_test_path,
+        .title = "Title",
+        .author = "Author",
+        .comment = "Comment"});
     ds4vizStack(s)
     {
         ds4vizStackPush(s, 1);
@@ -2659,7 +2659,7 @@ test_config_output_path(void)
     char *p_c;
 
     snprintf(g_test_path, sizeof(g_test_path), "test_config_path.toml");
-    ds4vizConfig((ds4vizConfigOptions){.p_output_path = g_test_path});
+    ds4vizConfig((ds4vizConfigOptions){.output_path = g_test_path});
     ds4vizStack(s)
     {
         ds4vizStackPush(s, 1);
@@ -2680,8 +2680,8 @@ test_config_title_only(void)
 
     snprintf(g_test_path, sizeof(g_test_path), "test_config_title.toml");
     ds4vizConfig((ds4vizConfigOptions){
-        .p_output_path = g_test_path,
-        .p_title = "Only Title"});
+        .output_path = g_test_path,
+        .title = "Only Title"});
     ds4vizStack(s)
     {
         ds4vizStackPush(s, 1);
