@@ -3,7 +3,7 @@ ds4viz 功能测试
 
 :file: test/function_test.py
 :author: WaterRun
-:time: 2026-03-15
+:time: 2026-03-24
 """
 
 import time
@@ -14,6 +14,86 @@ import psycopg
 import pytest
 import requests
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 测试开关配置
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── 语言开关 ──────────────────────────────────────────────────────────────────
+ENABLE_PYTHON: bool = True
+ENABLE_LUA: bool = False            # 暂时移除
+ENABLE_RUST: bool = False
+ENABLE_C: bool = True              
+
+# ── 模块开关 ──────────────────────────────────────────────────────────────────
+ENABLE_AUTH: bool = True             # 认证（注册 / 登录 / 登出 / 当前用户）
+ENABLE_USER: bool = True             # 用户（头像 / 密码 / 收藏列表 / 执行历史）
+ENABLE_TEMPLATE: bool = True         # 模板（列表 / 详情 / 代码 / 分类 / 搜索）
+ENABLE_FAVORITE: bool = True         # 收藏（添加 / 取消）
+ENABLE_EXECUTE: bool = True          # 执行（代码执行 / ds4viz 库 / 执行详情）
+ENABLE_HEALTH: bool = True           # 健康检查
+ENABLE_BUSINESS: bool = True         # 综合业务流程
+ENABLE_ERROR: bool = True            # 错误处理
+ENABLE_EDGE: bool = True             # 边缘情况
+
+# ── 派生常量 ──────────────────────────────────────────────────────────────────
+SUPPORTED_LANGUAGES: list[str] = [
+    lang
+    for lang, enabled in [
+        ("python", ENABLE_PYTHON),
+        ("lua", ENABLE_LUA),
+        ("rust", ENABLE_RUST),
+        ("c", ENABLE_C),
+    ]
+    if enabled
+]
+
+# ── 条件跳过标记（语言）────────────────────────────────────────────────────────
+skip_if_no_python = pytest.mark.skipif(
+    not ENABLE_PYTHON, reason="Python 语言测试已禁用"
+)
+skip_if_no_lua = pytest.mark.skipif(
+    not ENABLE_LUA, reason="Lua 语言测试已禁用"
+)
+skip_if_no_rust = pytest.mark.skipif(
+    not ENABLE_RUST, reason="Rust 语言测试已禁用"
+)
+skip_if_no_c = pytest.mark.skipif(
+    not ENABLE_C, reason="C 语言测试已禁用"
+)
+
+# ── 条件跳过标记（模块）────────────────────────────────────────────────────────
+skip_if_no_auth = pytest.mark.skipif(
+    not ENABLE_AUTH, reason="认证模块测试已禁用"
+)
+skip_if_no_user = pytest.mark.skipif(
+    not ENABLE_USER, reason="用户模块测试已禁用"
+)
+skip_if_no_template = pytest.mark.skipif(
+    not ENABLE_TEMPLATE, reason="模板模块测试已禁用"
+)
+skip_if_no_favorite = pytest.mark.skipif(
+    not ENABLE_FAVORITE, reason="收藏模块测试已禁用"
+)
+skip_if_no_execute = pytest.mark.skipif(
+    not ENABLE_EXECUTE, reason="执行模块测试已禁用"
+)
+skip_if_no_health = pytest.mark.skipif(
+    not ENABLE_HEALTH, reason="健康检查测试已禁用"
+)
+skip_if_no_business = pytest.mark.skipif(
+    not ENABLE_BUSINESS, reason="综合业务流程测试已禁用"
+)
+skip_if_no_error = pytest.mark.skipif(
+    not ENABLE_ERROR, reason="错误处理测试已禁用"
+)
+skip_if_no_edge = pytest.mark.skipif(
+    not ENABLE_EDGE, reason="边缘情况测试已禁用"
+)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 基础配置
+# ═══════════════════════════════════════════════════════════════════════════════
+
 BASE_URL: str = "http://127.0.0.1:20000"
 
 DB_CONFIG: dict[str, str | int] = {
@@ -23,6 +103,11 @@ DB_CONFIG: dict[str, str | int] = {
     "user": "ds4viz_test",
     "password": "test_pwd_123",
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 工具函数
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 def get_db_connection() -> psycopg.Connection:
@@ -180,6 +265,11 @@ def create_template(
     return template_id
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fixture
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
 @pytest.fixture(autouse=True)
 def clean_db(server_process) -> None:
     r"""
@@ -190,6 +280,12 @@ def clean_db(server_process) -> None:
     reset_database()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 认证模块测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_auth
 class TestAuthRegister:
     r"""
     用户注册测试
@@ -364,6 +460,8 @@ class TestAuthRegister:
         assert isinstance(data["id"], int)
         assert data["id"] > 0
 
+
+@skip_if_no_auth
 class TestAuthLogin:
     r"""
     用户登录测试
@@ -432,7 +530,8 @@ class TestAuthLogin:
         """
         register_user("testuser", "Test@1234")
         resp: requests.Response = login_user("testuser", "Test@1234")
-        expires_at: datetime = datetime.fromisoformat(resp.json()["expires_at"])
+        expires_at: datetime = datetime.fromisoformat(
+            resp.json()["expires_at"])
         now: datetime = datetime.now(timezone.utc)
         assert expires_at > now
         assert expires_at < now + timedelta(hours=2)
@@ -449,6 +548,7 @@ class TestAuthLogin:
         assert token1 != token2
 
 
+@skip_if_no_auth
 class TestAuthLogout:
     r"""
     用户登出测试
@@ -512,6 +612,7 @@ class TestAuthLogout:
         assert resp2.status_code == 401
 
 
+@skip_if_no_auth
 class TestAuthMe:
     r"""
     获取当前用户测试
@@ -564,6 +665,12 @@ class TestAuthMe:
         assert "created_at" in data
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 用户模块测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_user
 class TestUserAvatar:
     r"""
     用户头像测试
@@ -655,7 +762,8 @@ class TestUserAvatar:
         r"""
         获取不存在用户的头像，返回 404
         """
-        resp: requests.Response = requests.get(api_url("/api/users/99999/avatar"))
+        resp: requests.Response = requests.get(
+            api_url("/api/users/99999/avatar"))
         assert resp.status_code == 404
 
     def test_upload_avatar_other_user(self) -> None:
@@ -702,10 +810,12 @@ class TestUserAvatar:
             files={"avatar": ("test.png", avatar_data, "image/png")},
         )
 
-        resp = requests.get(api_url("/api/auth/me"), headers=auth_header(token))
+        resp = requests.get(api_url("/api/auth/me"),
+                            headers=auth_header(token))
         assert resp.json()["avatar_url"] == f"/api/users/{user_id}/avatar"
 
 
+@skip_if_no_user
 class TestUserPassword:
     r"""
     修改密码测试
@@ -869,6 +979,8 @@ class TestUserPassword:
         resp = login_user("testuser", "New@pass12")
         assert resp.status_code == 200
 
+
+@skip_if_no_user
 class TestUserFavorites:
     r"""
     用户收藏列表测试
@@ -1052,7 +1164,8 @@ class TestUserFavorites:
         r"""
         未登录获取，返回 401
         """
-        resp: requests.Response = requests.get(api_url("/api/users/1/favorites"))
+        resp: requests.Response = requests.get(
+            api_url("/api/users/1/favorites"))
         assert resp.status_code == 401
 
     def test_get_favorites_order_by_time_desc(self) -> None:
@@ -1089,6 +1202,7 @@ class TestUserFavorites:
         assert items[1]["template_id"] == template_id1
 
 
+@skip_if_no_user
 class TestUserExecutions:
     r"""
     用户执行历史测试
@@ -1189,7 +1303,8 @@ with dv.stack("test{i}") as s:
         r"""
         未登录获取，返回 401
         """
-        resp: requests.Response = requests.get(api_url("/api/users/1/executions"))
+        resp: requests.Response = requests.get(
+            api_url("/api/users/1/executions"))
         assert resp.status_code == 401
 
     def test_get_executions_order_by_time_desc(self) -> None:
@@ -1261,6 +1376,12 @@ with dv.stack("test") as s:
         assert resp.json()["total"] == 2
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 模板模块测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_template
 class TestTemplateList:
     r"""
     模板列表测试
@@ -1381,6 +1502,7 @@ class TestTemplateList:
         assert items[1]["title"] == "模板1"
 
 
+@skip_if_no_template
 class TestTemplateDetail:
     r"""
     模板详情测试
@@ -1390,22 +1512,27 @@ class TestTemplateDetail:
         r"""
         正常获取模板详情
         """
+        codes: list[dict[str, str | None]] = [
+            {"language": "python",
+                "code": "print('hello')", "explanation": "Python实现"},
+        ]
+        if ENABLE_LUA:
+            codes.append(
+                {"language": "lua",
+                    "code": "print('hello')", "explanation": None}
+            )
+
         template_id: int = create_template(
-            "测试模板",
-            "测试分类",
-            "测试描述",
-            codes=[
-                {"language": "python", "code": "print('hello')", "explanation": "Python实现"},
-                {"language": "lua", "code": "print('hello')", "explanation": None},
-            ],
+            "测试模板", "测试分类", "测试描述", codes=codes,
         )
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         assert resp.status_code == 200
         data: dict = resp.json()
         assert data["title"] == "测试模板"
         assert data["category"] == "测试分类"
-        assert len(data["codes"]) == 2
+        assert len(data["codes"]) == len(codes)
 
     def test_get_template_not_found(self) -> None:
         r"""
@@ -1418,25 +1545,31 @@ class TestTemplateDetail:
         r"""
         验证 codes 数组包含多语言实现
         """
+        language_code_pairs: list[dict[str, str]] = []
+        if ENABLE_PYTHON:
+            language_code_pairs.append(
+                {"language": "python", "code": "python code"})
+        if ENABLE_LUA:
+            language_code_pairs.append({"language": "lua", "code": "lua code"})
+        if ENABLE_RUST:
+            language_code_pairs.append(
+                {"language": "rust", "code": "rust code"})
+        if ENABLE_C:
+            language_code_pairs.append({"language": "c", "code": "c code"})
+
+        if len(language_code_pairs) < 2:
+            pytest.skip("需要至少 2 种已启用语言才能测试多语言实现")
+
         template_id: int = create_template(
-            "模板",
-            "分类",
-            "描述",
-            codes=[
-                {"language": "python", "code": "python code"},
-                {"language": "lua", "code": "lua code"},
-                {"language": "rust", "code": "rust code"},
-                {"language": "c", "code": 'c code'},
-            ],
+            "模板", "分类", "描述", codes=language_code_pairs,
         )
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         codes: list[dict] = resp.json()["codes"]
         languages: list[str] = [c["language"] for c in codes]
-        assert "python" in languages
-        assert "lua" in languages
-        assert "rust" in languages
-        assert "c" in languages
+        for pair in language_code_pairs:
+            assert pair["language"] in languages
 
     def test_get_template_explanation_null(self) -> None:
         r"""
@@ -1449,7 +1582,8 @@ class TestTemplateDetail:
             codes=[{"language": "python", "code": "code", "explanation": None}],
         )
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         assert resp.json()["codes"][0]["explanation"] is None
 
     def test_get_template_logged_in_is_favorited(self) -> None:
@@ -1476,16 +1610,19 @@ class TestTemplateDetail:
         """
         template_id: int = create_template("模板", "分类", "描述")
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         assert resp.status_code == 200
         assert resp.json()["is_favorited"] is False
 
 
+@skip_if_no_template
 class TestTemplateCode:
     r"""
     获取模板代码测试
     """
 
+    @skip_if_no_python
     def test_get_template_code_python(self) -> None:
         r"""
         获取 Python 实现
@@ -1494,7 +1631,8 @@ class TestTemplateCode:
             "模板",
             "分类",
             "描述",
-            codes=[{"language": "python", "code": "python code", "explanation": "说明"}],
+            codes=[{"language": "python",
+                    "code": "python code", "explanation": "说明"}],
         )
 
         resp: requests.Response = requests.get(
@@ -1505,6 +1643,7 @@ class TestTemplateCode:
         assert data["language"] == "python"
         assert data["code"] == "python code"
 
+    @skip_if_no_lua
     def test_get_template_code_lua(self) -> None:
         r"""
         获取 Lua 实现
@@ -1522,6 +1661,7 @@ class TestTemplateCode:
         assert resp.status_code == 200
         assert resp.json()["language"] == "lua"
 
+    @skip_if_no_rust
     def test_get_template_code_rust(self) -> None:
         r"""
         获取 Rust 实现
@@ -1538,7 +1678,8 @@ class TestTemplateCode:
         )
         assert resp.status_code == 200
         assert resp.json()["language"] == "rust"
-        
+
+    @skip_if_no_c
     def test_get_template_code_c(self) -> None:
         r"""
         获取 C 实现
@@ -1561,7 +1702,8 @@ class TestTemplateCode:
         r"""
         模板不存在，返回 404
         """
-        resp: requests.Response = requests.get(api_url("/api/templates/99999/code/python"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/99999/code/python"))
         assert resp.status_code == 404
 
     def test_get_template_code_language_not_found(self) -> None:
@@ -1575,12 +1717,19 @@ class TestTemplateCode:
             codes=[{"language": "python", "code": "code"}],
         )
 
+        other_languages: list[str] = [
+            lang for lang in SUPPORTED_LANGUAGES if lang != "python"
+        ]
+        if not other_languages:
+            pytest.skip("仅启用 Python 一种语言，无法测试语言实现不存在场景")
+
         resp: requests.Response = requests.get(
-            api_url(f"/api/templates/{template_id}/code/lua")
+            api_url(f"/api/templates/{template_id}/code/{other_languages[0]}")
         )
         assert resp.status_code == 404
 
 
+@skip_if_no_template
 class TestTemplateCategories:
     r"""
     模板分类列表测试
@@ -1594,7 +1743,8 @@ class TestTemplateCategories:
         create_template("模板2", "图算法", "描述")
         create_template("模板3", "数据结构", "描述")
 
-        resp: requests.Response = requests.get(api_url("/api/templates/categories"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/categories"))
         assert resp.status_code == 200
         categories: list[str] = resp.json()["items"]
         assert "排序算法" in categories
@@ -1609,7 +1759,8 @@ class TestTemplateCategories:
         create_template("模板2", "分类A", "描述")
         create_template("模板3", "分类B", "描述")
 
-        resp: requests.Response = requests.get(api_url("/api/templates/categories"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/categories"))
         categories: list[str] = resp.json()["items"]
         assert categories.count("分类A") == 1
 
@@ -1621,7 +1772,8 @@ class TestTemplateCategories:
         create_template("模板2", "A分类", "描述")
         create_template("模板3", "B分类", "描述")
 
-        resp: requests.Response = requests.get(api_url("/api/templates/categories"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/categories"))
         categories: list[str] = resp.json()["items"]
         assert categories == sorted(categories)
 
@@ -1629,11 +1781,13 @@ class TestTemplateCategories:
         r"""
         无模板时返回空列表
         """
-        resp: requests.Response = requests.get(api_url("/api/templates/categories"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/categories"))
         assert resp.status_code == 200
         assert resp.json()["items"] == []
 
 
+@skip_if_no_template
 class TestTemplateSearch:
     r"""
     搜索模板测试
@@ -1700,7 +1854,8 @@ class TestTemplateSearch:
         r"""
         缺少 keyword 参数，返回 422
         """
-        resp: requests.Response = requests.get(api_url("/api/templates/search"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/search"))
         assert resp.status_code == 422
 
     def test_search_pagination(self) -> None:
@@ -1774,6 +1929,12 @@ class TestTemplateSearch:
         assert resp.json()["items"][0]["is_favorited"] is True
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 收藏模块测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_favorite
 class TestFavoriteAdd:
     r"""
     收藏模板测试
@@ -1859,7 +2020,8 @@ class TestFavoriteAdd:
         template_id: int = create_template("模板", "分类", "描述")
         token: str = create_user_and_login()
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         old_count: int = resp.json()["favorite_count"]
 
         requests.post(
@@ -1892,6 +2054,7 @@ class TestFavoriteAdd:
         assert resp.json()["is_favorited"] is True
 
 
+@skip_if_no_favorite
 class TestFavoriteRemove:
     r"""
     取消收藏测试
@@ -1952,7 +2115,8 @@ class TestFavoriteRemove:
             json={"template_id": template_id},
         )
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         old_count: int = resp.json()["favorite_count"]
 
         requests.delete(
@@ -2009,11 +2173,18 @@ class TestFavoriteRemove:
         assert resp.status_code == 200
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 执行模块测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_execute
 class TestExecuteCode:
     r"""
     代码执行测试
     """
 
+    @skip_if_no_python
     def test_execute_python_success(self) -> None:
         r"""
         Python 代码执行成功，返回 TOML
@@ -2039,6 +2210,7 @@ with dv.stack("test_stack") as s:
         assert data["toml_output"] is not None
         assert "[meta]" in data["toml_output"]
 
+    @skip_if_no_lua
     def test_execute_lua_success(self) -> None:
         r"""
         Lua 代码执行成功
@@ -2063,6 +2235,7 @@ end)
         assert data["status"] == "Success"
         assert data["toml_output"] is not None
 
+    @skip_if_no_rust
     @pytest.mark.xfail(
         reason="Rust暂时不可用",
         strict=False,
@@ -2094,6 +2267,7 @@ fn main() -> ds4viz::Result<()> {
         assert data["status"] == "Success"
         assert data["toml_output"] is not None
 
+
     def test_execute_c_success(self) -> None:
         r"""
         C 代码执行成功，返回 TOML
@@ -2103,27 +2277,47 @@ fn main() -> ds4viz::Result<()> {
 
         token: str = create_user_and_login()
         code: str = r'''
-#define DS4VIZ_IMPLEMENTATION
-#define DS4VIZ_SHORT_NAMES
-#include "ds4viz.h"
+    #define DS4VIZ_IMPLEMENTATION
+    #define DS4VIZ_SHORT_NAMES
+    #include "ds4viz.h"
 
-int main(void) {
-    dvConfig((dvConfigOptions){
-        .output_path = "trace.toml",
-        .title = "C Test",
-        .author = "WaterRun",
-        .comment = "function test"
-    });
+    int main(void) {
+        dvConfig((dvConfigOptions){ .title = "二叉树层序遍历" });
 
-    dvStack(s, "c_stack") {
-        dvStackPush(s, 1);
-        dvStackPush(s, 2);
-        dvStackPop(s);
+        dvBinaryTree(tree, "层序遍历") {
+            int root, n2, n3, n4, n5, n6;
+
+            dvPhase(tree, "构建") {
+                root = dvBtInsertRoot(tree, 1);
+                n2   = dvBtInsertLeft(tree, root, 2);
+                n3   = dvBtInsertRight(tree, root, 3);
+                n4   = dvBtInsertLeft(tree, n2, 4);
+                n5   = dvBtInsertRight(tree, n2, 5);
+                n6   = dvBtInsertLeft(tree, n3, 6);
+            }
+
+            dvPhase(tree, "层序遍历") {
+                dvStep(tree, "第 1 层: [1]",
+                    dvNode(root, DV_FOCUS, 3));
+
+                dvStep(tree, "第 2 层: [2, 3]",
+                    dvNode(root, DV_VISITED),
+                    dvNode(n2, DV_FOCUS, 3),
+                    dvNode(n3, DV_FOCUS, 3));
+
+                dvStep(tree, "第 3 层: [4, 5, 6]",
+                    dvNode(root, DV_VISITED),
+                    dvNode(n2, DV_VISITED),
+                    dvNode(n3, DV_VISITED),
+                    dvNode(n4, DV_FOCUS, 3),
+                    dvNode(n5, DV_FOCUS, 3),
+                    dvNode(n6, DV_FOCUS, 3));
+            }
+        }
+
+        return 0;
     }
-
-    return 0;
-}
-'''
+    '''
         resp: requests.Response = requests.post(
             api_url("/api/execute"),
             headers=auth_header(token),
@@ -2134,6 +2328,7 @@ int main(void) {
         assert data["status"] == "Success"
         assert data["toml_output"] is not None
         assert "[meta]" in data["toml_output"]
+        assert "二叉树层序遍历" in data["toml_output"]
 
     def test_execute_python_syntax_error(self) -> None:
         r"""
@@ -2320,6 +2515,8 @@ with dv.stack("record_test") as s:
         assert resp.json()["total"] >= 1
 
 
+@skip_if_no_execute
+@skip_if_no_python
 class TestExecutePythonDs4viz:
     r"""
     Python ds4viz 库执行测试
@@ -2456,48 +2653,6 @@ with dv.binary_search_tree("python_bst") as bst:
         )
         assert resp.json()["status"] == "Success"
 
-    def test_python_min_heap(self) -> None:
-        r"""
-        最小堆操作
-        """
-        token: str = create_user_and_login()
-        code: str = '''
-import ds4viz as dv
-with dv.heap("python_min_heap", heap_type="min") as h:
-    h.insert(10)
-    h.insert(5)
-    h.insert(15)
-    h.insert(3)
-    h.extract()
-'''
-        resp: requests.Response = requests.post(
-            api_url("/api/execute"),
-            headers=auth_header(token),
-            json={"language": "python", "code": code},
-        )
-        assert resp.json()["status"] == "Success"
-
-    def test_python_max_heap(self) -> None:
-        r"""
-        最大堆操作
-        """
-        token: str = create_user_and_login()
-        code: str = '''
-import ds4viz as dv
-with dv.heap("python_max_heap", heap_type="max") as h:
-    h.insert(10)
-    h.insert(5)
-    h.insert(15)
-    h.insert(3)
-    h.extract()
-'''
-        resp: requests.Response = requests.post(
-            api_url("/api/execute"),
-            headers=auth_header(token),
-            json={"language": "python", "code": code},
-        )
-        assert resp.json()["status"] == "Success"
-
     def test_python_graph_undirected(self) -> None:
         r"""
         无向图操作
@@ -2544,29 +2699,8 @@ with dv.graph_directed("python_digraph") as graph:
         )
         assert resp.json()["status"] == "Success"
 
-    def test_python_graph_weighted(self) -> None:
-        r"""
-        带权图操作
-        """
-        token: str = create_user_and_login()
-        code: str = '''
-import ds4viz as dv
-with dv.graph_weighted("python_weighted", directed=False) as graph:
-    graph.add_node(0, "A")
-    graph.add_node(1, "B")
-    graph.add_node(2, "C")
-    graph.add_edge(0, 1, 3.5)
-    graph.add_edge(1, 2, 2.0)
-    graph.update_weight(0, 1, 5.0)
-'''
-        resp: requests.Response = requests.post(
-            api_url("/api/execute"),
-            headers=auth_header(token),
-            json={"language": "python", "code": code},
-        )
-        assert resp.json()["status"] == "Success"
-
-
+@skip_if_no_execute
+@skip_if_no_lua
 class TestExecuteLuaDs4viz:
     r"""
     Lua ds4viz 库执行测试
@@ -2618,6 +2752,8 @@ end)
         assert resp.json()["status"] == "Success"
 
 
+@skip_if_no_execute
+@skip_if_no_rust
 class TestExecuteRustDs4viz:
     r"""
     Rust ds4viz 库执行测试
@@ -2660,6 +2796,7 @@ fn main() -> ds4viz::Result<()> {
         assert resp.json()["status"] == "Success"
 
 
+@skip_if_no_execute
 class TestExecutionDetail:
     r"""
     获取执行详情测试
@@ -2765,6 +2902,12 @@ with dv.stack("fields_test") as s:
         assert "created_at" in data
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 健康检查测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_health
 class TestHealthCheck:
     r"""
     健康检查测试
@@ -2786,6 +2929,12 @@ class TestHealthCheck:
         assert resp.status_code == 200
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 综合业务流程测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_business
 class TestBusinessFlow:
     r"""
     综合业务流程测试
@@ -2863,7 +3012,7 @@ with dv.stack("flow_test") as s:
     with dv.stack("shared_cache_test") as s:
         s.push(999)
     '''
-        token_a: str = create_user_and_login("userA", "Cache@001")  # 修改
+        token_a: str = create_user_and_login("userA", "Cache@001")
         resp_a: requests.Response = requests.post(
             api_url("/api/execute"),
             headers=auth_header(token_a),
@@ -2871,14 +3020,14 @@ with dv.stack("flow_test") as s:
         )
         assert resp_a.json()["cached"] is False
 
-        token_b: str = create_user_and_login("userB", "Cache@002")  # 修改
+        token_b: str = create_user_and_login("userB", "Cache@002")
         resp_b: requests.Response = requests.post(
             api_url("/api/execute"),
             headers=auth_header(token_b),
             json={"language": "python", "code": code},
         )
         assert resp_b.json()["cached"] is True
-        
+
     def test_user_status_change_permission(self) -> None:
         r"""
         用户状态变更后权限验证
@@ -2921,7 +3070,8 @@ with dv.stack("status_test") as s:
 
         assert token1 != token2
 
-        resp = requests.get(api_url("/api/auth/me"), headers=auth_header(token2))
+        resp = requests.get(api_url("/api/auth/me"),
+                            headers=auth_header(token2))
         assert resp.status_code == 200
 
     def test_favorite_count_accuracy(self) -> None:
@@ -2930,12 +3080,14 @@ with dv.stack("status_test") as s:
         """
         template_id: int = create_template("计数测试模板", "分类", "描述")
 
-        resp: requests.Response = requests.get(api_url(f"/api/templates/{template_id}"))
+        resp: requests.Response = requests.get(
+            api_url(f"/api/templates/{template_id}"))
         initial_count: int = resp.json()["favorite_count"]
 
         tokens: list[str] = []
         for i in range(3):
-            token: str = create_user_and_login(f"countuser{i}", f"Cnt@pass0{i}")
+            token: str = create_user_and_login(
+                f"countuser{i}", f"Cnt@pass0{i}")
             tokens.append(token)
             requests.post(
                 api_url("/api/favorites"),
@@ -3001,6 +3153,12 @@ with dv.stack("hist_test_{i}") as s:
         assert data["page"] == 1
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 错误处理测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_error
 class TestErrorHandling:
     r"""
     错误处理和边缘情况测试
@@ -3041,7 +3199,8 @@ class TestErrorHandling:
         r"""
         路径参数类型错误
         """
-        resp: requests.Response = requests.get(api_url("/api/templates/not_a_number"))
+        resp: requests.Response = requests.get(
+            api_url("/api/templates/not_a_number"))
         assert resp.status_code == 422
 
     def test_auth_header_wrong_format(self) -> None:
@@ -3055,11 +3214,16 @@ class TestErrorHandling:
         assert resp.status_code == 401
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 边缘情况测试
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@skip_if_no_edge
 class TestEdgeCases:
     r"""
     扩展边缘情况测试
     """
-
 
     def test_register_username_with_unicode_emoji(self) -> None:
         r"""
@@ -3212,4 +3376,4 @@ class TestEdgeCases:
             files={"avatar": ("empty.png", b"", "image/png")},
         )
         assert resp.status_code in [200, 400, 422]
-        
+

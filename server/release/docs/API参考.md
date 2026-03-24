@@ -68,8 +68,6 @@ Authorization: Bearer <token>
 | 语言标识 | 说明     | 执行方式                |
 |----------|----------|-------------------------|
 | python   | Python 3 | 直接执行                |
-| lua      | Lua      | 直接执行                |
-| rust     | Rust     | 编译后执行（rust-script） |
 | c        | C（C23）   | 编译后执行（gcc）         |
 
 ---
@@ -688,7 +686,7 @@ Authorization: Bearer <token>
 }
 ```
 
-**language 取值：** `python`、`lua`、`rust`、`c`
+**language 取值：** `python`、`c`
 
 **响应（200）示例：**
 
@@ -763,8 +761,6 @@ Authorization: Bearer <token>
 **语言执行说明：**
 
 - `python`：直接运行 Python 脚本
-- `lua`：直接运行 Lua 脚本
-- `rust`：通过 rust-script 编译执行
 - `c`：通过 gcc（C23）编译后执行，运行期会将 `ds4viz.h` 注入工作目录（路径由服务配置提供）
 
 **status 取值：**

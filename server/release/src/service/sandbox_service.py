@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/sandbox_service.py
 :author: WaterRun
-:time: 2026-03-15
+:time: 2026-03-23
 """
 
 import os
@@ -149,116 +149,6 @@ class PythonExecutor(LanguageExecutor):
         return ["python3", "-u", str(workspace / filename)]
 
 
-class LuaExecutor(LanguageExecutor):
-    r"""
-    Lua语言执行器
-    """
-
-    @property
-    def language(self) -> SupportedLanguage:
-        r"""
-        获取支持的语言类型
-
-        :return SupportedLanguage: Lua
-        """
-        return SupportedLanguage.LUA
-
-    @property
-    def file_extension(self) -> str:
-        r"""
-        获取文件扩展名
-
-        :return str: .lua
-        """
-        return ".lua"
-
-    def prepare_files(self, workspace: Path, code: str) -> str:
-        r"""
-        准备Lua执行文件
-
-        :param workspace: 工作目录
-        :param code: Lua源代码
-        :return str: 主文件名
-        """
-        filename: str = f"main{self.file_extension}"
-        filepath: Path = workspace / filename
-        filepath.write_text(code, encoding="utf-8")
-        return filename
-
-    def get_run_command(self, workspace: Path, filename: str) -> list[str]:
-        r"""
-        获取Lua执行命令
-
-        :param workspace: 工作目录
-        :param filename: 主文件名
-        :return list[str]: 命令及参数列表
-        """
-        return ["lua", str(workspace / filename)]
-
-
-class RustExecutor(LanguageExecutor):
-    r"""
-    Rust语言执行器，使用rust-script执行
-    """
-
-    def __init__(self, ds4viz_path: str = "") -> None:
-        r"""
-        初始化Rust执行器
-
-        :param ds4viz_path: ds4viz库路径
-        """
-        self._ds4viz_path: str = ds4viz_path
-
-    @property
-    def language(self) -> SupportedLanguage:
-        r"""
-        获取支持的语言类型
-
-        :return SupportedLanguage: Rust
-        """
-        return SupportedLanguage.RUST
-
-    @property
-    def file_extension(self) -> str:
-        r"""
-        获取文件扩展名
-
-        :return str: .rs
-        """
-        return ".rs"
-
-    def prepare_files(self, workspace: Path, code: str) -> str:
-        r"""
-        准备Rust执行文件，添加cargo依赖声明
-
-        :param workspace: 工作目录
-        :param code: Rust源代码
-        :return str: 主文件名
-        """
-        filename: str = "_prepared.rs"
-        filepath: Path = workspace / filename
-
-        cargo_header: str = f"""//! ```cargo
-//! [dependencies]
-//! ds4viz = {{ path = "{self._ds4viz_path}" }}
-//! ```
-
-"""
-        prepared_code: str = cargo_header + code
-        filepath.write_text(prepared_code, encoding="utf-8")
-        return filename
-
-    def get_run_command(self, workspace: Path, filename: str) -> list[str]:
-        r"""
-        获取Rust执行命令
-
-        :param workspace: 工作目录
-        :param filename: 主文件名
-        :return list[str]: 命令及参数列表
-        """
-        return ["rust-script", str(workspace / filename)]
-
-
 class CExecutor(LanguageExecutor):
     r"""
     C语言执行器，使用gcc编译后执行
@@ -376,14 +266,6 @@ def _get_executor(language: SupportedLanguage) -> LanguageExecutor:
     match language:
         case SupportedLanguage.PYTHON:
             return PythonExecutor()
-        case SupportedLanguage.LUA:
-            return LuaExecutor()
-        case SupportedLanguage.RUST:
-            config = get_config()
-            ds4viz_path: str = getattr(
-                getattr(config, "library", None), "rust_ds4viz_path", ""
-            ) if hasattr(config, "library") else ""
-            return RustExecutor(ds4viz_path=ds4viz_path)
         case SupportedLanguage.C:
             config = get_config()
             c_header_path: str = getattr(
@@ -468,14 +350,6 @@ def _build_execution_env(workspace: Path) -> dict[str, str]:
     pythonpath: str = os.environ.get("PYTHONPATH", "")
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
-
-    lua_path: str = os.environ.get("LUA_PATH", "")
-    if lua_path:
-        env["LUA_PATH"] = lua_path
-
-    lua_cpath: str = os.environ.get("LUA_CPATH", "")
-    if lua_cpath:
-        env["LUA_CPATH"] = lua_cpath
 
     cargo_home: str = os.environ.get("CARGO_HOME", "")
     if cargo_home:

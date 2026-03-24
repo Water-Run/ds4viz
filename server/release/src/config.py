@@ -3,7 +3,7 @@ r"""
 
 :file: src/config.py
 :author: WaterRun
-:time: 2026-03-15
+:time: 2026-03-24
 """
 
 import os
@@ -154,9 +154,6 @@ def _parse_config(raw: dict[str, Any], env: str) -> AppConfig:
         ),
         library=LibraryConfig(
             python_path=library_raw.get("python_path", ""),
-            lua_path=library_raw.get("lua_path", "/usr/share/lua/5.4"),
-            lua_cpath=library_raw.get("lua_cpath", "/usr/lib64/lua/5.4"),
-            rust_ds4viz_path=library_raw.get("rust_ds4viz_path", ""),
             c_ds4viz_header_path=library_raw.get("c_ds4viz_header_path", ""),
         ),
         env=env,
