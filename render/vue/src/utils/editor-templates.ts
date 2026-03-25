@@ -3,8 +3,7 @@
  *
  * @file src/utils/editor-templates.ts
  * @author WaterRun
- * @date 2026-02-12
- * @updated 2026-03-15
+ * @date 2026-03-25
  */
 
 import type { Language } from '@/types/api'
@@ -29,29 +28,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-    `,
-        lua: `local ds4viz = require("ds4viz")
-    
-ds4viz.withContext(ds4viz.stack("demo_stack"), function(s)
-    s:push(10)
-    s:push(20)
-    s:push(30)
-    s:pop()
-    s:push(40)
-end)
-    `,
-        rust: `use ds4viz::prelude::*;
-    
-fn main() -> ds4viz::Result<()> {
-    ds4viz::stack("demo_stack", |s| {
-        s.push(10)?;
-        s.push(20)?;
-        s.push(30)?;
-        s.pop()?;
-        s.push(40)?;
-        Ok(())
-    })
-}
     `,
         c: `#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES

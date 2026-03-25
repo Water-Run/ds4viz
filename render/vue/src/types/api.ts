@@ -3,7 +3,7 @@
  *
  * @file src/types/api.ts
  * @author WaterRun
- * @date 2026-03-15
+ * @date 2026-03-25
  */
 
 /**
@@ -11,18 +11,16 @@
  *
  * @typedef
  */
-export type Language = 'python' | 'lua' | 'rust' | 'c'
+export type Language = 'python' | 'c'
 
 /** 语言显示名称映射 */
 export const LANGUAGE_LABELS: Record<Language, string> = {
   python: 'Python',
-  lua: 'Lua',
-  rust: 'Rust',
   c: 'C',
 }
 
 /** 全部可用语言列表 */
-export const LANGUAGES: Language[] = ['python', 'lua', 'rust', 'c']
+export const LANGUAGES: Language[] = ['python', 'c']
 
 /**
  * 通用分页请求参数
