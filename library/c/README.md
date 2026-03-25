@@ -157,7 +157,7 @@ int main(void) {
 
 ```c
 /**
- * 带标签联合体, 用于 dvStackPop / dvQueueDequeue / dvHeapExtract 的返回值.
+ * 带标签联合体, 用于 dvStackPop / dvQueueDequeue 的返回值.
  * tag 字段标识当前存储的类型, 通过 dvInt / dvFloat / dvStr / dvBool 提取值.
  */
 typedef struct dvValue {
@@ -422,7 +422,7 @@ dvBinarySearchTree(bst) {
 
 #### `dvAlias()` (仅含 `nodes` 的结构)
 
-适用于: `SingleLinkedList`, `DoubleLinkedList`, `BinaryTree`, `BinarySearchTree`, `Heap`, `GraphUndirected`, `GraphDirected`, `GraphWeighted`.
+适用于: `SingleLinkedList`, `DoubleLinkedList`, `BinaryTree`, `BinarySearchTree`, `GraphUndirected`, `GraphDirected`, `GraphWeighted`.
 
 ```c
 /**
@@ -942,81 +942,6 @@ dvBinarySearchTree(bst, "demo_bst") {
 }
 ```
 
-#### `heap`
-
-```c
-typedef enum {
-    dvHeapOrderMin = 0,  // 最小堆
-    dvHeapOrderMax = 1   // 最大堆
-} dvHeapOrder;
-
-/**
- * 创建堆实例
- *
- * @param h 堆对象的变量名
- * @param label 堆的标签, 默认为 "heap"
- * @param order 堆类型, 默认为 dvHeapOrderMin
- */
-dvHeap(h) { ... }                                 // label = "heap", min heap
-dvHeap(h, "my_heap") { ... }                      // min heap
-dvHeap(h, "my_min_heap", dvHeapOrderMin) { ... }  // 显式最小堆
-dvHeap(h, "my_max_heap", dvHeapOrderMax) { ... }  // 最大堆
-```
-
-**堆操作:**
-
-```c
-/**
- * 插入元素, 自动维护堆性质
- *
- * @param h 堆对象
- * @param value 要插入的值 (仅数值: int | double)
- */
-void dvHeapInsert(h, value);
-
-/**
- * 提取堆顶元素, 自动维护堆性质
- *
- * @param h 堆对象
- * @return dvValue 提取的堆顶元素值
- * @error 当堆为空时记录错误
- */
-dvValue dvHeapExtract(h);
-
-/**
- * 清空堆
- *
- * @param h 堆对象
- */
-void dvHeapClear(h);
-```
-
-**示例:**
-
-```c
-// 最小堆
-dvHeap(min_heap, "demo_min_heap", dvHeapOrderMin) {
-    dvHeapInsert(min_heap, 10);
-    dvHeapInsert(min_heap, 5);
-    dvHeapInsert(min_heap, 15);
-    dvHeapInsert(min_heap, 3);
-
-    dvValue val = dvHeapExtract(min_heap);  // dvInt(val) == 3
-    dvAmend(min_heap, "提取最小值 3");
-}
-
-// 最大堆
-dvHeap(max_heap, "demo_max_heap", dvHeapOrderMax) {
-    dvHeapInsert(max_heap, 10);
-    dvHeapInsert(max_heap, 5);
-    dvHeapInsert(max_heap, 15);
-    dvHeapInsert(max_heap, 3);
-
-    dvValue val = dvHeapExtract(max_heap);  // dvInt(val) == 15
-    dvAmend(max_heap, "提取最大值 15");
-}
-```
-
 ---
 
 ### 图结构
@@ -1340,7 +1265,7 @@ last_state = 1
 
 值类型通过 `_Generic` 自动推断, 无需手动指定.
 
-> **约束:** `binary_search_tree` 和 `heap` 的 `value` 仅接受数值类型 (`int` / `double`), 不接受字符串和布尔值.
+> **约束:** `binary_search_tree` 的 `value` 仅接受数值类型 (`int` / `double`), 不接受字符串和布尔值.
 
 ---
 
@@ -1358,9 +1283,6 @@ last_state = 1
 | `DS4VIZ_FLOAT`        | `DV_FLOAT`        |
 | `DS4VIZ_STR`          | `DV_STR`          |
 | `DS4VIZ_BOOL`         | `DV_BOOL`         |
-| `ds4vizHeapOrder`     | `dvHeapOrder`     |
-| `ds4vizHeapOrderMin`  | `dvHeapOrderMin`  |
-| `ds4vizHeapOrderMax`  | `dvHeapOrderMax`  |
 
 **值提取:**
 
@@ -1469,15 +1391,6 @@ last_state = 1
 | `ds4vizBinarySearchTree` | `dvBinarySearchTree` |
 | `ds4vizBstInsert`        | `dvBstInsert`        |
 | `ds4vizBstDelete`        | `dvBstDelete`        |
-
-**堆:**
-
-| 长名                | 短名            |
-|---------------------|-----------------|
-| `ds4vizHeap`        | `dvHeap`        |
-| `ds4vizHeapInsert`  | `dvHeapInsert`  |
-| `ds4vizHeapExtract` | `dvHeapExtract` |
-| `ds4vizHeapClear`   | `dvHeapClear`   |
 
 **无向图:**
 

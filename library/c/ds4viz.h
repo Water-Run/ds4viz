@@ -13,8 +13,7 @@
  *     #define DS4VIZ_SHORT_NAMES
  *
  * @author WaterRun
- * @date 2026-03-23
- * @version 0.1.0
+ * @date 2026-03-25
  * @see https://github.com/Water-Run/ds4viz
  */
 
@@ -108,20 +107,7 @@ extern "C"
     } ds4vizConfigOptions;
 
     /**
-     * @brief 堆序类型枚举
-     *
-     * @enum ds4viz_heap_order_e
-     */
-    typedef enum ds4viz_heap_order_e
-    {
-        /** @brief 最小堆 */
-        ds4vizHeapOrderMin = 0,
-        /** @brief 最大堆 */
-        ds4vizHeapOrderMax = 1
-    } ds4vizHeapOrder;
-
-    /**
-     * @brief 公开值类型 (Pop/Dequeue/Extract 返回值)
+     * @brief 公开值类型 (Pop/Dequeue 返回值)
      *
      * 带标签联合体, 通过 ds4vizInt / ds4vizFloat / ds4vizStr / ds4vizBool 提取值.
      *
@@ -581,29 +567,6 @@ extern "C"
     void ds4viz_p_bt_update_value_(ds4viz_p_bt_t *p_t, int nid, ds4viz_p_val_t v, int line);
     int ds4viz_p_bst_insert_(ds4viz_p_bt_t *p_t, ds4viz_p_val_t v, int line);
     void ds4viz_p_bst_delete_(ds4viz_p_bt_t *p_t, ds4viz_p_val_t v, int line);
-
-    /* ---- 堆 ---- */
-
-    /**
-     * @brief 堆内部结构
-     *
-     * @struct ds4viz_p_heap_s
-     * @typedef ds4viz_p_heap_t
-     */
-    typedef struct ds4viz_p_heap_s
-    {
-        DS4VIZ_P_COMMON_FIELDS_;
-        ds4viz_p_val_t *p_items;
-        int count;
-        int cap;
-        int order;
-    } ds4viz_p_heap_t;
-
-    ds4viz_p_heap_t ds4viz_p_heap_open_(const char *p_label, int order, int line);
-    void ds4viz_p_heap_close_(ds4viz_p_heap_t *p_h);
-    void ds4viz_p_heap_insert_(ds4viz_p_heap_t *p_h, ds4viz_p_val_t v, int line);
-    ds4vizValue ds4viz_p_heap_extract_(ds4viz_p_heap_t *p_h, int line);
-    void ds4viz_p_heap_clear_(ds4viz_p_heap_t *p_h, int line);
 
     /* ---- 图 ---- */
 
@@ -1086,22 +1049,6 @@ extern "C"
 #define ds4vizBstDelete(b, v) ds4viz_p_bst_delete_(&(b), DS4VIZ_P_NUMVAL_(v), __LINE__)
 
 /**
- * @brief 创建堆实例
- *
- * @param h 堆对象的变量名
- * @param ... 可选 label (默认 "heap") 和 order (默认 ds4vizHeapOrderMin)
- */
-#define ds4vizHeap(h, ...)                                                 \
-    for (ds4viz_p_heap_t h = ds4viz_p_heap_open_(                          \
-             DS4VIZ_P_OPT1_("heap" __VA_OPT__(, ) __VA_ARGS__),            \
-             (int)DS4VIZ_P_OPT2_(0 __VA_OPT__(, ) __VA_ARGS__), __LINE__); \
-         !h.done; ds4viz_p_heap_close_(&h))
-
-#define ds4vizHeapInsert(h, v) ds4viz_p_heap_insert_(&(h), DS4VIZ_P_NUMVAL_(v), __LINE__)
-#define ds4vizHeapExtract(h) ds4viz_p_heap_extract_(&(h), __LINE__)
-#define ds4vizHeapClear(h) ds4viz_p_heap_clear_(&(h), __LINE__)
-
-/**
  * @brief 创建无向图实例
  *
  * @param g 无向图对象的变量名
@@ -1172,9 +1119,6 @@ extern "C"
 #define dvFloat ds4vizFloat
 #define dvStr ds4vizStr
 #define dvBool ds4vizBool
-#define dvHeapOrder ds4vizHeapOrder
-#define dvHeapOrderMin ds4vizHeapOrderMin
-#define dvHeapOrderMax ds4vizHeapOrderMax
 #define DV_FOCUS DS4VIZ_FOCUS
 #define DV_VISITED DS4VIZ_VISITED
 #define DV_ACTIVE DS4VIZ_ACTIVE
@@ -1224,10 +1168,6 @@ extern "C"
 #define dvBinarySearchTree ds4vizBinarySearchTree
 #define dvBstInsert ds4vizBstInsert
 #define dvBstDelete ds4vizBstDelete
-#define dvHeap ds4vizHeap
-#define dvHeapInsert ds4vizHeapInsert
-#define dvHeapExtract ds4vizHeapExtract
-#define dvHeapClear ds4vizHeapClear
 #define dvGraphUndirected ds4vizGraphUndirected
 #define dvGuAddNode ds4vizGuAddNode
 #define dvGuAddEdge ds4vizGuAddEdge
@@ -3799,221 +3739,6 @@ void ds4viz_p_bst_delete_(ds4viz_p_bt_t *p_t, ds4viz_p_val_t v, int line)
     ds4viz_p_av_(&a, "value", v);
     ds4viz_p_rec_step_(p_t, "delete", bf, af, a.p_data, NULL, line);
     ds4viz_p_bfree_(&a);
-}
-
-/* ================================================================
- * 堆
- * ================================================================ */
-
-static void
-ds4viz_p_heap_ws_(void *p_self)
-{
-    ds4viz_p_heap_t *p_h = (ds4viz_p_heap_t *)p_self;
-    ds4viz_p_buf_t *p_b = &p_h->states_buf;
-    int i, left, right;
-    const char *p_al;
-
-    ds4viz_p_bstate_(p_b, p_h->state_id);
-    if (p_h->count == 0)
-    {
-        ds4viz_p_bs_(p_b, "root = -1\nnodes = []\n");
-        return;
-    }
-    ds4viz_p_bs_(p_b, "root = 0\nnodes = [\n");
-    for (i = 0; i < p_h->count; i++)
-    {
-        if (i)
-        {
-            ds4viz_p_bs_(p_b, ",\n");
-        }
-        left = (2 * i + 1 < p_h->count) ? 2 * i + 1 : -1;
-        right = (2 * i + 2 < p_h->count) ? 2 * i + 2 : -1;
-        ds4viz_p_bf_(p_b, "  { id = %d", i);
-        p_al = ds4viz_p_alias_get_(p_h, i);
-        if (p_al)
-        {
-            ds4viz_p_bs_(p_b, ", alias = ");
-            ds4viz_p_tstr_(p_b, p_al);
-        }
-        ds4viz_p_bs_(p_b, ", value = ");
-        ds4viz_p_tval_(p_b, p_h->p_items[i]);
-        ds4viz_p_bf_(p_b, ", left = %d, right = %d }", left, right);
-    }
-    ds4viz_p_bs_(p_b, "\n]\n");
-}
-
-static bool
-ds4viz_p_hcmp_(ds4viz_p_heap_t *p_h, int a, int b)
-{
-    double va = ds4viz_p_vnum_(p_h->p_items[a]);
-    double vb = ds4viz_p_vnum_(p_h->p_items[b]);
-    return p_h->order == 0 ? (va < vb) : (va > vb);
-}
-
-static void
-ds4viz_p_hswp_(ds4viz_p_heap_t *p_h, int a, int b)
-{
-    ds4viz_p_val_t tmp = p_h->p_items[a];
-    p_h->p_items[a] = p_h->p_items[b];
-    p_h->p_items[b] = tmp;
-}
-
-static void
-ds4viz_p_hup_(ds4viz_p_heap_t *p_h, int i)
-{
-    int p;
-    while (i > 0)
-    {
-        p = (i - 1) / 2;
-        if (ds4viz_p_hcmp_(p_h, i, p))
-        {
-            ds4viz_p_hswp_(p_h, i, p);
-            i = p;
-        }
-        else
-        {
-            break;
-        }
-    }
-}
-
-static void
-ds4viz_p_hdn_(ds4viz_p_heap_t *p_h, int i)
-{
-    int best, l, r;
-    for (;;)
-    {
-        best = i;
-        l = 2 * i + 1;
-        r = 2 * i + 2;
-        if (l < p_h->count && ds4viz_p_hcmp_(p_h, l, best))
-        {
-            best = l;
-        }
-        if (r < p_h->count && ds4viz_p_hcmp_(p_h, r, best))
-        {
-            best = r;
-        }
-        if (best != i)
-        {
-            ds4viz_p_hswp_(p_h, i, best);
-            i = best;
-        }
-        else
-        {
-            break;
-        }
-    }
-}
-
-ds4viz_p_heap_t
-ds4viz_p_heap_open_(const char *p_label, int order, int line)
-{
-    ds4viz_p_heap_t h = {0};
-
-    h.p_label = p_label;
-    h.p_kind = "binary_tree";
-    h.scope_line = line;
-    h.order = order;
-    h.ws_fn = ds4viz_p_heap_ws_;
-    h.err_step = -1;
-    ds4viz_p_heap_ws_(&h);
-    h.state_id++;
-    return h;
-}
-
-void ds4viz_p_heap_close_(ds4viz_p_heap_t *p_h)
-{
-    int i;
-    DS4VIZ_P_CLOSE_(p_h);
-    for (i = 0; i < p_h->count; i++)
-    {
-        ds4viz_p_vfree_(&p_h->p_items[i]);
-    }
-    free(p_h->p_items);
-}
-
-void ds4viz_p_heap_insert_(ds4viz_p_heap_t *p_h, ds4viz_p_val_t v, int line)
-{
-    int bf, af;
-    ds4viz_p_buf_t a = {0};
-
-    if (p_h->err)
-    {
-        return;
-    }
-    v = ds4viz_p_vdup_(v);
-    DS4VIZ_P_GROW_(p_h->p_items, p_h->count, p_h->cap, ds4viz_p_val_t);
-    p_h->p_items[p_h->count++] = v;
-    ds4viz_p_hup_(p_h, p_h->count - 1);
-
-    bf = p_h->state_id - 1;
-    ds4viz_p_heap_ws_(p_h);
-    af = p_h->state_id++;
-
-    ds4viz_p_av_(&a, "value", v);
-    ds4viz_p_rec_step_(p_h, "insert", bf, af, a.p_data, NULL, line);
-    ds4viz_p_bfree_(&a);
-}
-
-ds4vizValue
-ds4viz_p_heap_extract_(ds4viz_p_heap_t *p_h, int line)
-{
-    ds4vizValue rv = {0};
-    ds4viz_p_val_t ext;
-    int bf, af;
-    char rs[256];
-
-    if (p_h->err)
-    {
-        return rv;
-    }
-    if (p_h->count == 0)
-    {
-        ds4viz_p_rec_step_(p_h, "extract", p_h->state_id - 1, -1, NULL, NULL, line);
-        DS4VIZ_P_ERR_(p_h, line, "Cannot extract from empty heap");
-        return rv;
-    }
-    ext = p_h->p_items[0];
-    rv = ds4viz_p_to_pub_(ext);
-    if (p_h->count == 1)
-    {
-        p_h->count = 0;
-    }
-    else
-    {
-        p_h->p_items[0] = p_h->p_items[--p_h->count];
-        ds4viz_p_hdn_(p_h, 0);
-    }
-
-    bf = p_h->state_id - 1;
-    ds4viz_p_heap_ws_(p_h);
-    af = p_h->state_id++;
-
-    ds4viz_p_vstr_(rs, sizeof rs, ext);
-    ds4viz_p_rec_step_(p_h, "extract", bf, af, NULL, rs, line);
-    ds4viz_p_vfree_(&ext);
-    return rv;
-}
-
-void ds4viz_p_heap_clear_(ds4viz_p_heap_t *p_h, int line)
-{
-    int i, bf, af;
-
-    if (p_h->err)
-    {
-        return;
-    }
-    for (i = 0; i < p_h->count; i++)
-    {
-        ds4viz_p_vfree_(&p_h->p_items[i]);
-    }
-    p_h->count = 0;
-
-    bf = p_h->state_id - 1;
-    ds4viz_p_heap_ws_(p_h);
-    af = p_h->state_id++;
-    ds4viz_p_rec_step_(p_h, "clear", bf, af, NULL, NULL, line);
 }
 
 /* ================================================================
