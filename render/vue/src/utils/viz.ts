@@ -6,7 +6,7 @@
  *
  * @file src/utils/viz.ts
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-25
  */
 
 import type { IrDocument, IrState, IrStep } from '@/types/ir'
@@ -64,5 +64,7 @@ export function getStepSummaryForState(doc: IrDocument, stateIndex: number): Ste
     note: step.note,
     args: step.args as Record<string, unknown>,
     ret: step.ret,
+    phase: step.phase,
+    highlights: step.highlights,
   }
 }

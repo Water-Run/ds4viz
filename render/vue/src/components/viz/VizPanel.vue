@@ -3,21 +3,20 @@
 /**
  * 可视化面板
  *
- * 修复动画时序：
+ * 动画时序：
  * 1) 先渐出（红虚线 ghost）
  * 2) ghost 完全消失后 commit 新状态
  * 3) 仅新增元素渐入
  * 4) 视图缩放在 commit 后触发，避免与渐出重叠
  *
- * 同时完善元数据显示：
- * - Object.label 独立稳定显示（不依赖 remarks）
+ * 元数据显示：
+ * - Object.label 独立稳定显示
  * - remarks 与 label 并列展示
- * - 展示 IR/Object/Step 可得信息
- * - 对可解析未知字段做兜底展示
+ * - 展示 IR / Object / Step 可得信息
  *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-03
+ * @date 2026-03-25
  * @component VizPanel
  */
 
@@ -233,17 +232,7 @@ const isEmpty = computed<boolean>(() => committedData.value === undefined)
 
 const kindStr = computed<string>(() => (props.kind ?? '') as string)
 
-const isHeap = computed<boolean>(() => {
-  const kind = kindStr.value
-  if (kind === 'heap') return true
-  if ((kind === 'binary_tree' || kind === 'bst') && (props.label?.toLowerCase().includes('heap') ?? false)) {
-    return true
-  }
-  return false
-})
-
 const kindLabel = computed<string>(() => {
-  if (isHeap.value) return 'Heap'
   const mapping: Record<string, string> = {
     stack: 'Stack',
     queue: 'Queue',
@@ -251,7 +240,6 @@ const kindLabel = computed<string>(() => {
     dlist: 'DList',
     binary_tree: 'BinaryTree',
     bst: 'BST',
-    heap: 'Heap',
     graph_undirected: 'Graph',
     graph_directed: 'Digraph',
     graph_weighted: 'WeightedGraph',
@@ -278,26 +266,6 @@ function formatUnknownValue(value: unknown): string {
   }
 }
 
-const objectExtraEntries = computed<Array<{ key: string; value: string }>>(() => {
-  const extra = props.label ? undefined : undefined
-  const object = (props as unknown as { object?: { extra?: Record<string, unknown> } }).object
-  const source = object?.extra ?? extra
-  if (!source) return []
-  return Object.entries(source).map(([key, value]) => ({
-    key,
-    value: formatUnknownValue(value),
-  }))
-})
-
-const remarksExtraEntries = computed<Array<{ key: string; value: string }>>(() => {
-  const extra = (props.remarks as IrRemarks | undefined)?.extra
-  if (!extra) return []
-  return Object.entries(extra).map(([key, value]) => ({
-    key,
-    value: formatUnknownValue(value),
-  }))
-})
-
 const stepArgEntries = computed<Array<{ key: string; value: string }>>(() => {
   if (!props.step?.args) return []
   return Object.entries(props.step.args).map(([key, value]) => ({
@@ -314,8 +282,6 @@ const hasMetadata = computed<boolean>(() => {
   if (props.remarks?.comment) return true
   if (props.meta?.createdAt) return true
   if (props.step) return true
-  if (objectExtraEntries.value.length > 0) return true
-  if (remarksExtraEntries.value.length > 0) return true
   if (stepArgEntries.value.length > 0) return true
   return false
 })
@@ -342,7 +308,7 @@ const dlistData = computed<DListStateData | null>(() => {
 
 const treeData = computed<BinaryTreeStateData | null>(() => {
   const kind = kindStr.value
-  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+  if (kind === 'binary_tree' || kind === 'bst') {
     return committedData.value as BinaryTreeStateData
   }
   return null
@@ -368,7 +334,7 @@ const isStructureEmpty = computed<boolean>(() => {
   if (kind === 'slist') return (data as SListStateData).nodes.length === 0
   if (kind === 'dlist') return (data as DListStateData).nodes.length === 0
 
-  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+  if (kind === 'binary_tree' || kind === 'bst') {
     const tree = data as BinaryTreeStateData
     return tree.root === -1 || tree.nodes.length === 0
   }
@@ -388,7 +354,6 @@ const emptyLabel = computed<string>(() => {
     dlist: '空链表',
     binary_tree: '空树',
     bst: '空树',
-    heap: '空堆',
     graph_undirected: '空图',
     graph_directed: '空图',
     graph_weighted: '空图',
@@ -401,7 +366,7 @@ const emptyType = computed<string>(() => {
   if (kind === 'stack') return 'stack'
   if (kind === 'queue') return 'queue'
   if (kind === 'slist' || kind === 'dlist') return 'list'
-  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') return 'tree'
+  if (kind === 'binary_tree' || kind === 'bst') return 'tree'
   return 'graph'
 })
 
@@ -661,7 +626,7 @@ function getDataKeys(data: IrStateData | undefined, kind: string): Set<string> {
     return keys
   }
 
-  if (kind === 'binary_tree' || kind === 'bst' || kind === 'heap') {
+  if (kind === 'binary_tree' || kind === 'bst') {
     const d = data as BinaryTreeStateData
     d.nodes.forEach((node) => keys.add(`t-${node.id}`))
     return keys
@@ -680,7 +645,6 @@ function applyTransition(newData: IrStateData | undefined): void {
   const kind = kindStr.value
   const current = committedData.value
 
-  // 空 -> 首帧：直接 commit，禁平滑，禁止新增渐入（修复左上角飞入）
   if (!current && newData) {
     clearCommitTimer()
     clearAddedKeysTimer()
@@ -697,7 +661,6 @@ function applyTransition(newData: IrStateData | undefined): void {
     return
   }
 
-  // 清空或无旧状态：直接提交
   if (!newData || !current || !vizFlags.enableDiffHighlight) {
     clearCommitTimer()
     clearAddedKeysTimer()
@@ -728,7 +691,6 @@ function applyTransition(newData: IrStateData | undefined): void {
     if (!oldKeys.has(key)) addedSet.add(key)
   }
 
-  // 无移除：直接 commit，仅新增渐入
   if (removedSet.size === 0) {
     clearCommitTimer()
     clearAddedKeysTimer()
@@ -739,7 +701,6 @@ function applyTransition(newData: IrStateData | undefined): void {
     return
   }
 
-  // 先展示移除 ghost
   const ghosts: GhostItem[] = []
   for (const key of removedSet) {
     const cached = prevPositionCache.get(key)
@@ -895,14 +856,7 @@ watch(
       }
     })
 
-    stackLayout.value = {
-      svgW,
-      svgH,
-      cx,
-      cylRx,
-      cylItemH,
-      items,
-    }
+    stackLayout.value = { svgW, svgH, cx, cylRx, cylItemH, items }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -995,13 +949,7 @@ watch(
       }
     })
 
-    queueLayout.value = {
-      svgW,
-      svgH,
-      boxW,
-      boxH,
-      items,
-    }
+    queueLayout.value = { svgW, svgH, boxW, boxH, items }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -1094,13 +1042,7 @@ watch(
       }
     })
 
-    slistLayout.value = {
-      svgW,
-      svgH,
-      nodeW,
-      nodeH,
-      nodes,
-    }
+    slistLayout.value = { svgW, svgH, nodeW, nodeH, nodes }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -1167,13 +1109,7 @@ watch(
       }
     })
 
-    dlistLayout.value = {
-      svgW,
-      svgH,
-      nodeW,
-      nodeH,
-      nodes,
-    }
+    dlistLayout.value = { svgW, svgH, nodeW, nodeH, nodes }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -1187,7 +1123,7 @@ watch(
 )
 
 /* ================================================================
- *  布局：Tree / BST / Heap
+ *  布局：Tree / BST
  * ================================================================ */
 
 interface TreeLayoutNode {
@@ -1209,22 +1145,12 @@ interface TreeLayoutEdge {
   y2: number
 }
 
-interface HeapArrayItem {
-  id: number
-  value: IrValue
-  index: number
-  x: number
-  displayLines: string[]
-}
-
 interface TreeLayout {
   svgW: number
   svgH: number
   treeR: number
   nodes: TreeLayoutNode[]
   edges: TreeLayoutEdge[]
-  heapArray: HeapArrayItem[]
-  heapArrayY: number
 }
 
 const treeLayout = shallowRef<TreeLayout | null>(null)
@@ -1297,22 +1223,12 @@ watch(
         const point = posMap.get(node.id)!
         const key = `t-${node.id}`
 
-        if (isHeap.value) {
-          positions.set(key, {
-            shape: 'rect',
-            x: point.x - treeR,
-            y: point.y - treeR,
-            w: treeR * 2,
-            h: treeR * 2,
-          })
-        } else {
-          positions.set(key, {
-            shape: 'circle',
-            x: point.x,
-            y: point.y,
-            r: treeR,
-          })
-        }
+        positions.set(key, {
+          shape: 'circle',
+          x: point.x,
+          y: point.y,
+          r: treeR,
+        })
 
         return {
           id: node.id,
@@ -1346,60 +1262,10 @@ watch(
       }
     })
 
-    const heapArray: HeapArrayItem[] = []
-    let heapArrayY = 0
-
-    if (isHeap.value) {
-      heapArrayY = maxY + treeR + 40
-
-      const bfsOrder: Array<{ id: number; value: IrValue }> = []
-      const queue = [data.root]
-      const visitedInArray = new Set<number>()
-
-      while (queue.length > 0) {
-        const id = queue.shift()!
-        if (visitedInArray.has(id)) continue
-        visitedInArray.add(id)
-
-        const node = nodeMap.get(id)
-        if (!node) continue
-
-        bfsOrder.push({ id: node.id, value: node.value })
-        if (node.left !== -1) queue.push(node.left)
-        if (node.right !== -1) queue.push(node.right)
-      }
-
-      const arrayWidth = 36
-      const totalArrayWidth = bfsOrder.length * arrayWidth
-      const arrayStartX = Math.max(PAD, (baseW - totalArrayWidth) / 2)
-
-      bfsOrder.forEach((item, index) => {
-        heapArray.push({
-          id: item.id,
-          value: item.value,
-          index,
-          x: arrayStartX + index * arrayWidth,
-          displayLines: splitDisplayLines(item.value, 3, 1),
-        })
-      })
-
-      if (heapArrayY + 40 > maxY + treeR + PAD) {
-        maxY = heapArrayY + 40 - treeR
-      }
-    }
-
     const svgW = maxX + PAD
-    const svgH = maxY + PAD + treeR + (isHeap.value ? 60 : 0)
+    const svgH = maxY + PAD + treeR
 
-    treeLayout.value = {
-      svgW,
-      svgH,
-      treeR,
-      nodes,
-      edges,
-      heapArray,
-      heapArrayY,
-    }
+    treeLayout.value = { svgW, svgH, treeR, nodes, edges }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -1527,13 +1393,7 @@ watch(
       })
     })
 
-    graphLayout.value = {
-      svgW,
-      svgH,
-      graphR,
-      nodes,
-      edges,
-    }
+    graphLayout.value = { svgW, svgH, graphR, nodes, edges }
 
     prevIds.value = new Set(positions.keys())
     prevPositionCache.clear()
@@ -1677,21 +1537,14 @@ onBeforeUnmount(() => {
         <span class="viz-panel__meta-tag">Object</span>
         <span v-if="label" class="viz-panel__meta-item viz-panel__meta-label">label={{ label }}</span>
         <span class="viz-panel__meta-item">kind={{ kindStr }}</span>
-        <span v-for="entry in objectExtraEntries" :key="`obj-extra-${entry.key}`" class="viz-panel__meta-item">
-          {{ entry.key }}={{ entry.value }}
-        </span>
       </div>
 
-      <div v-if="remarks?.title || remarks?.author || remarks?.comment || remarksExtraEntries.length > 0"
-        class="viz-panel__meta-row">
+      <div v-if="remarks?.title || remarks?.author || remarks?.comment" class="viz-panel__meta-row">
         <span class="viz-panel__meta-tag">Remarks</span>
         <span v-if="remarks?.title" class="viz-panel__meta-item">title={{ remarks.title }}</span>
         <span v-if="remarks?.author" class="viz-panel__meta-item">author={{ remarks.author }}</span>
         <span v-if="remarks?.comment" class="viz-panel__meta-item viz-panel__meta-comment">
           comment={{ remarks.comment }}
-        </span>
-        <span v-for="entry in remarksExtraEntries" :key="`remarks-extra-${entry.key}`" class="viz-panel__meta-item">
-          {{ entry.key }}={{ entry.value }}
         </span>
       </div>
 
@@ -1805,10 +1658,10 @@ onBeforeUnmount(() => {
               <rect :x="item.x" :y="PAD + 20" :width="queueLayout.boxW" :height="queueLayout.boxH" rx="6"
                 class="viz-box"
                 :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }" />
-              <text :x="item.x + queueLayout.boxW / 2"
-                :y="item.displayLines.length === 1 ? PAD + 20 + queueLayout.boxH / 2 + 4 : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4"
-                class="viz-val" @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)"
-                @pointerleave="hideTip">
+              <text :x="item.x + queueLayout.boxW / 2" :y="item.displayLines.length === 1
+                ? PAD + 20 + queueLayout.boxH / 2 + 4
+                : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4" class="viz-val"
+                @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)" @pointerleave="hideTip">
                 <template v-if="item.displayLines.length === 1">
                   {{ item.displayLines[0] }}
                 </template>
@@ -1842,11 +1695,13 @@ onBeforeUnmount(() => {
           <g v-if="slistLayout && slistLayout.nodes.length > 0">
             <template v-for="(node, index) in slistLayout.nodes" :key="`sn-${node.id}`">
               <rect :x="node.x" :y="PAD + 20" :width="slistLayout.nodeW" :height="slistLayout.nodeH" rx="8"
-                class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }" />
-              <text :x="node.x + slistLayout.nodeW / 2"
-                :y="node.displayLines.length === 1 ? PAD + 20 + slistLayout.nodeH / 2 - 4 : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2"
-                class="viz-val"
+                class="viz-node-rect" :class="{
+                  'viz-node-rect--accent': node.labels.length > 0,
+                  'viz-node--added': node.diff === 'added',
+                }" />
+              <text :x="node.x + slistLayout.nodeW / 2" :y="node.displayLines.length === 1
+                ? PAD + 20 + slistLayout.nodeH / 2 - 4
+                : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
                 @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, slistOrdered[index]?.next), $event)"
                 @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
@@ -1892,11 +1747,13 @@ onBeforeUnmount(() => {
           <g v-if="dlistLayout && dlistLayout.nodes.length > 0">
             <template v-for="(node, index) in dlistLayout.nodes" :key="`dn-${node.id}`">
               <rect :x="node.x" :y="PAD + 20" :width="dlistLayout.nodeW" :height="dlistLayout.nodeH" rx="8"
-                class="viz-node-rect"
-                :class="{ 'viz-node-rect--accent': node.labels.length > 0, 'viz-node--added': node.diff === 'added' }" />
-              <text :x="node.x + dlistLayout.nodeW / 2"
-                :y="node.displayLines.length === 1 ? PAD + 20 + dlistLayout.nodeH / 2 - 4 : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2"
-                class="viz-val"
+                class="viz-node-rect" :class="{
+                  'viz-node-rect--accent': node.labels.length > 0,
+                  'viz-node--added': node.diff === 'added',
+                }" />
+              <text :x="node.x + dlistLayout.nodeW / 2" :y="node.displayLines.length === 1
+                ? PAD + 20 + dlistLayout.nodeH / 2 - 4
+                : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
                 @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, dlistOrdered[index]?.next, dlistOrdered[index]?.prev), $event)"
                 @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
@@ -1936,34 +1793,19 @@ onBeforeUnmount(() => {
             </template>
           </g>
 
-          <!-- Tree / BST / Heap -->
+          <!-- Tree / BST -->
           <g v-if="treeLayout">
             <line v-for="(edge, index) in treeLayout.edges" :key="`te-${index}`" :x1="edge.x1" :y1="edge.y1"
-              :x2="edge.x2" :y2="edge.y2" :class="isHeap ? 'viz-edge--dashed' : 'viz-edge'" />
+              :x2="edge.x2" :y2="edge.y2" class="viz-edge" />
             <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
-              <circle v-if="!isHeap" :cx="node.x" :cy="node.y" :r="treeLayout.treeR" class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }" />
-              <rect v-else :x="node.x - treeLayout.treeR" :y="node.y - treeLayout.treeR" :width="treeLayout.treeR * 2"
-                :height="treeLayout.treeR * 2" rx="6" class="viz-tree-node"
-                :class="{ 'viz-tree-node--root': node.isRoot, 'viz-node--added': node.diff === 'added' }" />
+              <circle :cx="node.x" :cy="node.y" :r="treeLayout.treeR" class="viz-tree-node" :class="{
+                'viz-tree-node--root': node.isRoot,
+                'viz-node--added': node.diff === 'added',
+              }" />
               <text :x="node.x" :y="node.y + 5" class="viz-val" @pointerenter="showTip(treeTipLines(node), $event)"
                 @pointerleave="hideTip">
                 {{ node.displayLines[0] }}
               </text>
-            </g>
-            <g v-if="isHeap && treeLayout.heapArray.length > 0">
-              <line :x1="treeLayout.heapArray[0].x - 4" :y1="treeLayout.heapArrayY - 4"
-                :x2="treeLayout.heapArray[treeLayout.heapArray.length - 1].x + 36 + 4" :y2="treeLayout.heapArrayY - 4"
-                class="viz-edge" />
-              <g v-for="item in treeLayout.heapArray" :key="`ha-${item.index}`">
-                <rect :x="item.x" :y="treeLayout.heapArrayY" :width="34" :height="28" rx="4" class="viz-box" />
-                <text :x="item.x + 17" :y="treeLayout.heapArrayY + 18" class="viz-val viz-val--sm">
-                  {{ item.displayLines[0] }}
-                </text>
-                <text :x="item.x + 17" :y="treeLayout.heapArrayY + 42" class="viz-ptr">
-                  {{ item.index }}
-                </text>
-              </g>
             </g>
           </g>
 
@@ -2093,6 +1935,8 @@ onBeforeUnmount(() => {
   background-color: var(--color-bg-surface-alt);
   font-size: 11px;
   color: var(--color-text-tertiary);
+  position: relative;
+  z-index: 1;
 }
 
 .viz-panel__meta-row {
@@ -2125,29 +1969,12 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 
-.viz-panel__meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-bg-surface-alt);
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-
-  position: relative;
-  z-index: 1;
-  /* 低层 */
-}
-
 .viz-panel__body {
   flex: 1;
   min-height: 0;
   position: relative;
   overflow: visible;
-  /* 关键：让设置面板可“压”到 meta 区域 */
   z-index: 2;
-  /* 高于 meta */
 }
 
 .viz-panel__svg {
@@ -2272,12 +2099,6 @@ onBeforeUnmount(() => {
 .viz-edge {
   stroke: rgba(0, 0, 0, 0.12);
   stroke-width: 1.2;
-}
-
-.viz-edge--dashed {
-  stroke: rgba(0, 0, 0, 0.12);
-  stroke-width: 1.2;
-  stroke-dasharray: 5 3;
 }
 
 .viz-weight {
@@ -2406,7 +2227,7 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 平滑位移：仅在 smooth 模式开启 */
+/* 平滑位移 */
 .viz-panel--smooth .viz-tree-node,
 .viz-panel--smooth .viz-graph-node {
   transition:
@@ -2420,7 +2241,6 @@ onBeforeUnmount(() => {
 }
 
 .viz-panel--smooth .viz-edge,
-.viz-panel--smooth .viz-edge--dashed,
 .viz-panel--smooth .viz-arrow {
   transition:
     x1 var(--duration-viz) var(--ease),

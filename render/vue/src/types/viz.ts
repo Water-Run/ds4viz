@@ -3,8 +3,10 @@
  *
  * @file src/types/viz.ts
  * @author WaterRun
- * @date 2026-02-27
+ * @date 2026-03-25
  */
+
+import type { IrHighlight } from './ir'
 
 /**
  * 步骤摘要信息（传递给 VizPanel 显示）
@@ -22,4 +24,8 @@ export interface StepSummary {
   args?: Record<string, unknown>
   /** 返回值 */
   ret?: unknown
+  /** 阶段标记 */
+  phase?: string
+  /** 高亮标记列表 */
+  highlights?: IrHighlight[]
 }
