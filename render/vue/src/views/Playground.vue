@@ -524,28 +524,40 @@ watch(currentStateIndex, (next, prev) => {
             </div>
           </div>
 
-          <Transition name="fade" mode="out-in">
-            <div v-if="showVizReady" key="ready" class="viz-ready">
-              <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
-              <p class="viz-ready__title">可视化结果已生成</p>
-              <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
-              <div class="viz-ready__actions">
-                <button class="viz-ready__btn" @click="handleStartNext">
-                  <MaterialIcon name="chevron_right" :size="18" />
-                  <span>下一步</span>
-                </button>
-                <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
-                  <MaterialIcon name="play_arrow" :size="18" />
-                  <span>自动播放</span>
-                </button>
+          <div class="playground__panel-content">
+            <Transition name="fade" mode="out-in">
+              <div v-if="showVizReady" key="ready" class="viz-ready">
+                <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
+                <p class="viz-ready__title">可视化结果已生成</p>
+                <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
+                <div class="viz-ready__actions">
+                  <button class="viz-ready__btn" @click="handleStartNext">
+                    <MaterialIcon name="chevron_right" :size="18" />
+                    <span>下一步</span>
+                  </button>
+                  <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
+                    <MaterialIcon name="play_arrow" :size="18" />
+                    <span>自动播放</span>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
-              :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
-              :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
-              @jump-to-state="handleJumpToState" />
-          </Transition>
+              <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
+                :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
+                :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
+                @jump-to-state="handleJumpToState" />
+            </Transition>
+
+            <button class="playground__edge-trigger playground__edge-trigger--right"
+              :title="panelMode === 'viz-full' ? '恢复分屏' : '展开可视化'"
+              @click="panelMode === 'viz-full' ? restoreSplit() : expandViz()">
+              <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline v-if="panelMode === 'split'" points="2,1 6,7 2,13" />
+                <polyline v-else points="6,1 2,7 6,13" />
+              </svg>
+            </button>
+          </div>
 
           <div v-if="tomlContent" class="toml-section">
             <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
@@ -560,16 +572,6 @@ watch(currentStateIndex, (next, prev) => {
               </div>
             </Transition>
           </div>
-          <!-- 边缘触发条 -->
-          <button class="playground__edge-trigger playground__edge-trigger--right"
-            :title="panelMode === 'viz-full' ? '恢复分屏' : '展开可视化'"
-            @click="panelMode === 'viz-full' ? restoreSplit() : expandViz()">
-            <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline v-if="panelMode === 'split'" points="2,1 6,7 2,13" />
-              <polyline v-else points="6,1 2,7 6,13" />
-            </svg>
-          </button>
         </section>
         <button class="playground__collapsed-strip"
           :class="{ 'playground__collapsed-strip--active': panelMode === 'editor-full' }" aria-label="点击展开可视化"
@@ -596,21 +598,25 @@ watch(currentStateIndex, (next, prev) => {
               </button>
             </div>
           </div>
-          <CodeEditor v-model="code" :language="language" :highlight-line="highlightLine" />
+
+          <div class="playground__panel-content">
+            <CodeEditor v-model="code" :language="language" :highlight-line="highlightLine" />
+
+            <button class="playground__edge-trigger playground__edge-trigger--left"
+              :title="panelMode === 'editor-full' ? '恢复分屏' : '展开编辑器'"
+              @click="panelMode === 'editor-full' ? restoreSplit() : expandEditor()">
+              <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline v-if="panelMode === 'split'" points="6,1 2,7 6,13" />
+                <polyline v-else points="2,1 6,7 2,13" />
+              </svg>
+            </button>
+          </div>
+
           <div v-if="executionInfo" class="execution-info">
             <MaterialIcon name="bolt" :size="16" />
             <span>{{ executionInfo }}</span>
           </div>
-          <!-- 边缘触发条 -->
-          <button class="playground__edge-trigger playground__edge-trigger--left"
-            :title="panelMode === 'editor-full' ? '恢复分屏' : '展开编辑器'"
-            @click="panelMode === 'editor-full' ? restoreSplit() : expandEditor()">
-            <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polyline v-if="panelMode === 'split'" points="6,1 2,7 6,13" />
-              <polyline v-else points="2,1 6,7 2,13" />
-            </svg>
-          </button>
         </section>
         <button class="playground__collapsed-strip"
           :class="{ 'playground__collapsed-strip--active': panelMode === 'viz-full' }" aria-label="点击展开编辑器"
@@ -722,6 +728,16 @@ watch(currentStateIndex, (next, prev) => {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.playground__panel-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
 }
 
 .panel-toolbar {
@@ -1051,7 +1067,7 @@ watch(currentStateIndex, (next, prev) => {
     background-color var(--duration-fast) var(--ease);
 }
 
-.playground__panel:hover .playground__edge-trigger {
+.playground__panel-content:hover>.playground__edge-trigger {
   opacity: 0.6;
 }
 

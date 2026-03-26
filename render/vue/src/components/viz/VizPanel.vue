@@ -16,7 +16,7 @@
  *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-25
+ * @date 2026-03-26
  * @component VizPanel
  */
 
@@ -288,6 +288,7 @@ const stepArgEntries = computed<Array<{ key: string; value: string }>>(() => {
 
 const hasMetadata = computed<boolean>(() => {
   if (!vizFlags.showMetadata) return false
+  if (isStructureEmpty.value) return false
   if (props.label && props.label.length > 0) return true
   if (props.remarks?.title) return true
   if (props.remarks?.author) return true
@@ -1639,6 +1640,7 @@ const effectivePhases = computed<PhaseSegment[]>(() => props.phases ?? [])
  */
 const showPhaseIndicator = computed<boolean>(() => {
   if (effectivePhases.value.length === 0) return false
+  if (isStructureEmpty.value) return false
   return activePhaseIndex.value !== null
 })
 
@@ -1753,7 +1755,7 @@ onBeforeUnmount(() => {
         <span>{{ kindLabel || '可视化' }}</span>
       </div>
       <div class="viz-panel__header-right">
-        <div v-if="step" class="viz-panel__step">
+        <div v-if="step && !isStructureEmpty" class="viz-panel__step">
           <span class="viz-panel__step-op">{{ step.op }}</span>
           <span v-if="step.line" class="viz-panel__step-line">L{{ step.line }}</span>
         </div>
@@ -1810,10 +1812,12 @@ onBeforeUnmount(() => {
           </defs>
 
           <!-- 标签 / 标题 / 副标题 -->
-          <text v-if="labelDisplayText.length > 0" :x="effectiveTitleX" :y="effectiveLabelY" class="viz-label">
+          <text v-if="labelDisplayText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveLabelY"
+            class="viz-label">
             {{ labelDisplayText }}
           </text>
-          <text v-if="titleText.length > 0" :x="effectiveTitleX" :y="effectiveTitleY" class="viz-title">
+          <text v-if="titleText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveTitleY"
+            class="viz-title">
             {{ titleText }}
           </text>
           <text v-if="commentText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveCommentY"

@@ -4,8 +4,7 @@
  *
  * @file src/views/Docs.vue
  * @author WaterRun
- * @date 2026-03-25
- * @updated 2026-03-25
+ * @date 2026-03-26
  * @component Docs
  */
 
@@ -1999,7 +1998,7 @@ onMounted(() => {
   <div class="docs-page">
     <header class="docs-page__header">
       <div class="docs-page__title">
-        <MaterialIcon name="menu_book" :size="20" />
+        <MaterialIcon name="menu_book" :size="18" />
         <span>文档</span>
       </div>
 
@@ -2120,7 +2119,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
 }

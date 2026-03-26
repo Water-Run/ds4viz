@@ -9,7 +9,7 @@
  *
  * @file src/views/Profile.vue
  * @author WaterRun
- * @date 2026-03-15
+ * @date 2026-03-26
  * @component Profile
  */
 
@@ -1123,7 +1123,8 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
-  min-height: 0;
+  flex: 1;
+  min-height: 360px;
 }
 
 .profile-section {
