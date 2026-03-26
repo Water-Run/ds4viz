@@ -9,7 +9,7 @@
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-03-03
+ * @date 2026-03-26
  * @component Playground
  */
 
@@ -48,6 +48,44 @@ const executeError = ref<string>('')
 const executionInfo = ref<string>('')
 const tomlContent = ref<string>('')
 const tomlExpanded = ref<boolean>(false)
+/**
+* 面板模式
+*
+* split: 默认左右等分
+* viz-full: 可视化占全宽，编辑器折叠为窄条
+* editor-full: 编辑器占全宽，可视化折叠为窄条
+*/
+const panelMode = ref<'split' | 'viz-full' | 'editor-full'>('split')
+
+/**
+ * 面板模式对应的 body CSS 类
+ */
+const bodyModeClass = computed<string>(() => {
+  if (panelMode.value === 'viz-full') return 'playground__body--viz-full'
+  if (panelMode.value === 'editor-full') return 'playground__body--editor-full'
+  return ''
+})
+
+/**
+ * 展开可视化面板
+ */
+const expandViz = (): void => {
+  panelMode.value = 'viz-full'
+}
+
+/**
+ * 展开编辑器面板
+ */
+const expandEditor = (): void => {
+  panelMode.value = 'editor-full'
+}
+
+/**
+ * 恢复分屏模式
+ */
+const restoreSplit = (): void => {
+  panelMode.value = 'split'
+}
 
 /* ---- 可视化状态 ---- */
 
@@ -407,11 +445,11 @@ watch(currentStateIndex, (next, prev) => {
         <span>编辑器</span>
       </div>
       <div class="playground__actions">
-        <label class="action-btn">
+        <label class="action-btn" title="上传 IR TOML">
           <MaterialIcon name="upload" :size="18" />
           <input class="sr-only" type="file" accept=".toml" @change="handleUploadToml" />
         </label>
-        <button class="action-btn" :disabled="!tomlContent" @click="handleDownloadToml">
+        <button class="action-btn" title="下载 IR TOML" :disabled="!tomlContent" @click="handleDownloadToml">
           <MaterialIcon name="download" :size="18" />
         </button>
       </div>
@@ -420,91 +458,131 @@ watch(currentStateIndex, (next, prev) => {
     <ErrorBanner :message="executeError" @dismiss="executeError = ''" />
     <ErrorBanner :message="templateError" @dismiss="templateError = ''" />
 
-    <div class="playground__body">
-      <section class="playground__panel playground__panel--viz">
-        <div class="panel-toolbar">
-          <div class="panel-toolbar__left">
-            <span class="panel-toolbar__label">可视化</span>
-          </div>
-          <div class="panel-toolbar__controls">
-            <button class="icon-btn" :disabled="!canStepBackward" @click="goFirst">
-              <MaterialIcon name="first_page" :size="18" />
-            </button>
-            <button class="icon-btn" :disabled="!canStepBackward" @click="goPrev">
-              <MaterialIcon name="chevron_left" :size="18" />
-            </button>
-            <span class="step-indicator">
-              {{ totalStates > 0 ? currentStateIndex + 1 : 0 }} / {{ totalStates }}
-            </span>
-            <button class="icon-btn" :disabled="!canStepForward" @click="goNext">
-              <MaterialIcon name="chevron_right" :size="18" />
-            </button>
-            <button class="icon-btn" :disabled="!canStepForward" @click="goLast">
-              <MaterialIcon name="last_page" :size="18" />
-            </button>
-            <button class="icon-btn" :disabled="totalStates <= 1" @click="togglePlay">
-              <MaterialIcon :name="isPlaying ? 'pause' : 'play_arrow'" :size="18" />
-            </button>
-          </div>
-        </div>
-
-        <Transition name="fade" mode="out-in">
-          <div v-if="showVizReady" key="ready" class="viz-ready">
-            <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
-            <p class="viz-ready__title">可视化结果已生成</p>
-            <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
-            <div class="viz-ready__actions">
-              <button class="viz-ready__btn" @click="handleStartNext">
+    <div class="playground__body" :class="bodyModeClass">
+      <!-- 左列：可视化 -->
+      <div class="playground__col">
+        <section class="playground__panel playground__panel--viz"
+          :class="{ 'playground__panel--collapsed': panelMode === 'editor-full' }">
+          <div class="panel-toolbar">
+            <div class="panel-toolbar__left">
+              <span class="panel-toolbar__label">可视化</span>
+            </div>
+            <div class="panel-toolbar__controls">
+              <button class="icon-btn" :disabled="!canStepBackward" @click="goFirst">
+                <MaterialIcon name="first_page" :size="18" />
+              </button>
+              <button class="icon-btn" :disabled="!canStepBackward" @click="goPrev">
+                <MaterialIcon name="chevron_left" :size="18" />
+              </button>
+              <span class="step-indicator">
+                {{ totalStates > 0 ? currentStateIndex + 1 : 0 }} / {{ totalStates }}
+              </span>
+              <button class="icon-btn" :disabled="!canStepForward" @click="goNext">
                 <MaterialIcon name="chevron_right" :size="18" />
-                <span>下一步</span>
               </button>
-              <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
-                <MaterialIcon name="play_arrow" :size="18" />
-                <span>自动播放</span>
+              <button class="icon-btn" :disabled="!canStepForward" @click="goLast">
+                <MaterialIcon name="last_page" :size="18" />
+              </button>
+              <button class="icon-btn" :disabled="totalStates <= 1" @click="togglePlay">
+                <MaterialIcon :name="isPlaying ? 'pause' : 'play_arrow'" :size="18" />
               </button>
             </div>
           </div>
 
-          <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
-            :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
-            :auto-playing="isPlaying" />
-        </Transition>
-
-        <div v-if="tomlContent" class="toml-section">
-          <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
-            <MaterialIcon name="expand_more" :size="16" class="toml-section__chevron"
-              :class="{ 'toml-section__chevron--open': tomlExpanded }" />
-            <MaterialIcon name="data_object" :size="16" />
-            <span>TOML IR</span>
-          </button>
-          <Transition name="slide-fade">
-            <div v-if="tomlExpanded" class="toml-section__content">
-              <TomlViewer :content="tomlContent" />
+          <Transition name="fade" mode="out-in">
+            <div v-if="showVizReady" key="ready" class="viz-ready">
+              <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
+              <p class="viz-ready__title">可视化结果已生成</p>
+              <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
+              <div class="viz-ready__actions">
+                <button class="viz-ready__btn" @click="handleStartNext">
+                  <MaterialIcon name="chevron_right" :size="18" />
+                  <span>下一步</span>
+                </button>
+                <button class="viz-ready__btn viz-ready__btn--primary" @click="handleStartPlay">
+                  <MaterialIcon name="play_arrow" :size="18" />
+                  <span>自动播放</span>
+                </button>
+              </div>
             </div>
+
+            <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
+              :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
+              :auto-playing="isPlaying" />
           </Transition>
-        </div>
-      </section>
 
-      <section class="playground__panel playground__panel--editor">
-        <div class="panel-toolbar">
-          <div class="panel-toolbar__left">
-            <span class="panel-toolbar__label">代码</span>
-          </div>
-          <div class="panel-toolbar__controls">
-            <LanguageSelect :key="languageSelectKey" :model-value="language"
-              @update:model-value="handleLanguageChange" />
-            <button class="run-btn" :disabled="running || templateLoading" @click="handleRun">
-              <MaterialIcon name="play_arrow" :size="18" />
-              <span>{{ running ? '运行中' : '运行' }}</span>
+          <div v-if="tomlContent" class="toml-section">
+            <button class="toml-section__toggle" @click="tomlExpanded = !tomlExpanded">
+              <MaterialIcon name="expand_more" :size="16" class="toml-section__chevron"
+                :class="{ 'toml-section__chevron--open': tomlExpanded }" />
+              <MaterialIcon name="data_object" :size="16" />
+              <span>TOML IR</span>
             </button>
+            <Transition name="slide-fade">
+              <div v-if="tomlExpanded" class="toml-section__content">
+                <TomlViewer :content="tomlContent" />
+              </div>
+            </Transition>
           </div>
-        </div>
-        <CodeEditor v-model="code" :language="language" :highlight-line="highlightLine" />
-        <div v-if="executionInfo" class="execution-info">
-          <MaterialIcon name="bolt" :size="16" />
-          <span>{{ executionInfo }}</span>
-        </div>
-      </section>
+          <!-- 边缘触发条 -->
+          <button class="playground__edge-trigger playground__edge-trigger--right"
+            :title="panelMode === 'viz-full' ? '恢复分屏' : '展开可视化'"
+            @click="panelMode === 'viz-full' ? restoreSplit() : expandViz()">
+            <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline v-if="panelMode === 'split'" points="2,1 6,7 2,13" />
+              <polyline v-else points="6,1 2,7 6,13" />
+            </svg>
+          </button>
+        </section>
+        <button class="playground__collapsed-strip"
+          :class="{ 'playground__collapsed-strip--active': panelMode === 'editor-full' }" aria-label="点击展开可视化"
+          @click="restoreSplit">
+          <MaterialIcon name="graph_3" :size="18" />
+          <span class="playground__collapsed-text">点击展开可视化</span>
+        </button>
+      </div>
+
+      <!-- 右列：编辑器 -->
+      <div class="playground__col">
+        <section class="playground__panel playground__panel--editor"
+          :class="{ 'playground__panel--collapsed': panelMode === 'viz-full' }">
+          <div class="panel-toolbar">
+            <div class="panel-toolbar__left">
+              <span class="panel-toolbar__label">代码</span>
+            </div>
+            <div class="panel-toolbar__controls">
+              <LanguageSelect :key="languageSelectKey" :model-value="language"
+                @update:model-value="handleLanguageChange" />
+              <button class="run-btn" :disabled="running || templateLoading" @click="handleRun">
+                <MaterialIcon name="play_arrow" :size="18" />
+                <span>{{ running ? '运行中' : '运行' }}</span>
+              </button>
+            </div>
+          </div>
+          <CodeEditor v-model="code" :language="language" :highlight-line="highlightLine" />
+          <div v-if="executionInfo" class="execution-info">
+            <MaterialIcon name="bolt" :size="16" />
+            <span>{{ executionInfo }}</span>
+          </div>
+          <!-- 边缘触发条 -->
+          <button class="playground__edge-trigger playground__edge-trigger--left"
+            :title="panelMode === 'editor-full' ? '恢复分屏' : '展开编辑器'"
+            @click="panelMode === 'editor-full' ? restoreSplit() : expandEditor()">
+            <svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline v-if="panelMode === 'split'" points="6,1 2,7 6,13" />
+              <polyline v-else points="2,1 6,7 2,13" />
+            </svg>
+          </button>
+        </section>
+        <button class="playground__collapsed-strip"
+          :class="{ 'playground__collapsed-strip--active': panelMode === 'viz-full' }" aria-label="点击展开编辑器"
+          @click="restoreSplit">
+          <MaterialIcon name="code" :size="18" />
+          <span class="playground__collapsed-text">点击展开编辑器</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -573,20 +651,41 @@ watch(currentStateIndex, (next, prev) => {
 }
 
 .playground__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
   gap: var(--space-3);
   flex: 1;
   min-height: 0;
 }
 
-.playground__panel {
+.playground__col {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  flex: 1 1 0%;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  border-radius: var(--radius-lg);
+  transition: flex 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.playground__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s;
+}
+
+.playground__panel--collapsed {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 1, 1);
 }
 
 .panel-toolbar {
@@ -824,9 +923,135 @@ watch(currentStateIndex, (next, prev) => {
   border: 0;
 }
 
+/* ---- 面板展开/折叠 ---- */
+
+.playground__body--viz-full>.playground__col:last-child {
+  flex: 0 0 48px;
+}
+
+.playground__body--editor-full>.playground__col:first-child {
+  flex: 0 0 48px;
+}
+
+.playground__collapsed-strip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transition:
+    opacity 0.15s cubic-bezier(0.4, 0, 1, 1),
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.playground__collapsed-strip--active {
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    opacity 0.25s cubic-bezier(0.22, 0.61, 0.36, 1) 0.15s,
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.playground__collapsed-strip:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.playground__collapsed-strip:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+.playground__collapsed-strip :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
+.playground__collapsed-text {
+  writing-mode: vertical-rl;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ---- 边缘触发条 ---- */
+
+.playground__edge-trigger {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  opacity: 0.15;
+  padding: 0;
+  z-index: 5;
+  transition:
+    opacity var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease);
+}
+
+.playground__panel:hover .playground__edge-trigger {
+  opacity: 0.6;
+}
+
+.playground__edge-trigger:hover {
+  opacity: 1 !important;
+  background-color: var(--color-bg-hover);
+}
+
+.playground__edge-trigger:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: -2px;
+}
+
+.playground__edge-trigger--right {
+  right: 0;
+  border-left: 1px solid var(--color-border);
+}
+
+.playground__edge-trigger--left {
+  left: 0;
+  border-right: 1px solid var(--color-border);
+}
+
 @media (max-width: 1100px) {
   .playground__body {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+  }
+
+  .playground__col {
+    transition: none;
+  }
+
+  .playground__edge-trigger,
+  .playground__collapsed-strip {
+    display: none;
   }
 }
 </style>

@@ -86,6 +86,7 @@ const TREE_LEVEL_H = 72
 const BASE_GRAPH_R = 22
 
 const PAD = 40
+const TITLE_H = 28
 const LINE_H = 14
 
 const BASE_CHARS_CYL = 12
@@ -396,6 +397,101 @@ const showZoomHint = computed<boolean>(() => {
   return userManualZoom.value && !isEmpty.value && !isStructureEmpty.value
 })
 
+/* ---- 标题渲染 ---- */
+
+/**
+ * 内容区域原始边界（fitViewBox 传入的值）
+ */
+const contentBounds = ref<{ minX: number; minY: number; maxX: number; maxY: number }>({
+  minX: 0,
+  minY: 0,
+  maxX: 500,
+  maxY: 400,
+})
+
+/**
+* 标题文本
+*/
+const titleText = computed<string>(() => props.remarks?.title ?? '')
+
+/**
+* 副标题：comment
+*/
+const commentText = computed<string>(() => props.remarks?.comment ?? '')
+
+/**
+* 副标题：author
+*/
+const authorText = computed<string>(() => props.remarks?.author ?? '')
+
+/**
+* 标签文本（与 title 不同时才显示）
+*/
+const labelDisplayText = computed<string>(() => {
+  const l = props.label ?? ''
+  if (l === titleText.value) return ''
+  return l
+})
+
+/**
+* 标题区块总高度（标题 + comment + author + 间距）
+*/
+const headerTotalH = computed<number>(() => {
+  let h = 0
+  if (labelDisplayText.value.length > 0) h += 14
+  if (titleText.value.length > 0) h += 18
+  if (commentText.value.length > 0) h += 8
+  if (authorText.value.length > 0) h += 8
+  if (h > 0) h += 6
+  return h
+})
+
+/**
+* 标题 SVG x 坐标
+*/
+const effectiveTitleX = computed<number>(() => {
+  if (isStructureEmpty.value) return 150
+  return (contentBounds.value.minX + contentBounds.value.maxX) / 2
+})
+
+/**
+* label SVG y 坐标
+*/
+const effectiveLabelY = computed<number>(() => {
+  if (isStructureEmpty.value) return 12
+  return contentBounds.value.minY - headerTotalH.value + 12
+})
+
+/**
+* 标题 SVG y 坐标
+*/
+const effectiveTitleY = computed<number>(() => {
+  let base: number
+  if (isStructureEmpty.value) {
+    base = labelDisplayText.value.length > 0 ? 26 : 14
+  } else {
+    base = contentBounds.value.minY - headerTotalH.value
+    if (labelDisplayText.value.length > 0) base += 14
+    base += 14
+  }
+  return base
+})
+
+/**
+* comment SVG y 坐标
+*/
+const effectiveCommentY = computed<number>(() => {
+  return effectiveTitleY.value + 12
+})
+
+/**
+* author SVG y 坐标（跟在 comment 后，或跟在 title 后）
+*/
+const effectiveAuthorY = computed<number>(() => {
+  if (commentText.value.length > 0) return effectiveCommentY.value + 7
+  return effectiveTitleY.value + 12
+})
+
 const isPanning = ref<boolean>(false)
 const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({
   cx: 0,
@@ -488,11 +584,15 @@ const onPanEnd = (): void => {
 }
 
 const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): void => {
+  contentBounds.value = { minX, minY, maxX, maxY }
+
+  const effectiveMinY = minY - headerTotalH.value
+
   const width = Math.max(200, maxX - minX + PAD * 2)
-  const height = Math.max(150, maxY - minY + PAD * 2)
+  const height = Math.max(150, maxY - effectiveMinY + PAD * 2)
   const target: ViewBoxState = {
     x: minX - PAD,
-    y: minY - PAD,
+    y: effectiveMinY - PAD,
     w: width,
     h: height,
   }
@@ -1580,6 +1680,22 @@ onBeforeUnmount(() => {
             </marker>
           </defs>
 
+          <!-- 标签 / 标题 / 副标题 -->
+          <text v-if="labelDisplayText.length > 0" :x="effectiveTitleX" :y="effectiveLabelY" class="viz-label">
+            {{ labelDisplayText }}
+          </text>
+          <text v-if="titleText.length > 0" :x="effectiveTitleX" :y="effectiveTitleY" class="viz-title">
+            {{ titleText }}
+          </text>
+          <text v-if="commentText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveCommentY"
+            class="viz-comment">
+            {{ commentText }}
+          </text>
+          <text v-if="authorText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveAuthorY"
+            class="viz-author">
+            {{ authorText }}
+          </text>
+
           <!-- 空结构图形 -->
           <g v-if="isStructureEmpty">
             <g v-if="emptyType === 'stack'" transform="translate(90,20)">
@@ -2054,6 +2170,44 @@ onBeforeUnmount(() => {
   fill: var(--color-text-tertiary);
   text-anchor: middle;
   opacity: 0.6;
+}
+
+.viz-title {
+  font-size: 12.6px;
+  font-weight: 600;
+  fill: var(--color-text-primary);
+  text-anchor: middle;
+  user-select: none;
+  pointer-events: none;
+}
+
+.viz-label {
+  font-size: 10px;
+  fill: var(--color-accent);
+  text-anchor: middle;
+  font-weight: 500;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.viz-comment {
+  font-size: 5.5px;
+  fill: var(--color-text-tertiary);
+  text-anchor: middle;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.72;
+}
+
+.viz-author {
+  font-size: 5.5px;
+  font-style: italic;
+  fill: var(--color-text-tertiary);
+  text-anchor: middle;
+  user-select: none;
+  pointer-events: none;
+  opacity: 0.72;
 }
 
 /* svg common */
