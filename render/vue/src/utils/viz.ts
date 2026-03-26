@@ -6,11 +6,11 @@
  *
  * @file src/utils/viz.ts
  * @author WaterRun
- * @date 2026-03-25
+ * @date 2026-03-26
  */
 
 import type { IrDocument, IrState, IrStep } from '@/types/ir'
-import type { StepSummary } from '@/types/viz'
+import type { StepSummary, PhaseSegment } from '@/types/viz'
 
 /**
  * 根据状态索引获取状态快照
@@ -67,4 +67,54 @@ export function getStepSummaryForState(doc: IrDocument, stateIndex: number): Ste
     phase: step.phase,
     highlights: step.highlights,
   }
+}
+
+/**
+ * 从 IR 文档中提取阶段段落列表
+ *
+ * 同一 phase 值的连续 steps 合并为一个段落，
+ * 无 phase 的步骤跳过。
+ *
+ * @param doc - IR 文档
+ * @returns 阶段段落数组（按步骤顺序）
+ */
+export function computePhaseSegments(doc: IrDocument): PhaseSegment[] {
+  const steps = doc.steps ?? []
+  const segments: PhaseSegment[] = []
+
+  let i = 0
+  while (i < steps.length) {
+    const step = steps[i]
+    if (step.phase === undefined) {
+      i += 1
+      continue
+    }
+
+    const phaseName = step.phase
+    let lastStep = step
+    let count = 1
+    let j = i + 1
+
+    while (j < steps.length && steps[j].phase === phaseName) {
+      lastStep = steps[j]
+      count += 1
+      j += 1
+    }
+
+    const targetState = step.after ?? step.before
+    const endState = lastStep.after ?? lastStep.before
+
+    segments.push({
+      name: phaseName,
+      targetStateIndex: targetState,
+      endStateIndex: endState,
+      stepCount: count,
+      firstStepId: step.id,
+      lastStepId: lastStep.id,
+    })
+
+    i = j
+  }
+
+  return segments
 }

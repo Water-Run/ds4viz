@@ -21,13 +21,13 @@ import { fetchTemplateCodeApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
 import { formatDuration } from '@/utils/time'
 import { parseIrToml } from '@/utils/ir'
-import { getStateByIndex } from '@/utils/viz'
+import { getStateByIndex, computePhaseSegments } from '@/utils/viz'
 import { getDefaultTemplate } from '@/utils/editor-templates'
 import { vizFlags, logDebug } from '@/utils/viz-flags'
 import { LANGUAGES } from '@/types/api'
 import type { Language } from '@/types/api'
 import type { IrDocument, IrStep } from '@/types/ir'
-import type { StepSummary } from '@/types/viz'
+import type { StepSummary, PhaseSegment } from '@/types/viz'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import LanguageSelect from '@/components/editor/LanguageSelect.vue'
@@ -118,6 +118,29 @@ const currentStepInfo = computed<StepSummary | null>(() => {
 const highlightLine = computed<number | null>(() => {
   if (!vizFlags.enableCodeLineHighlight) return null
   return currentStepInfo.value?.line ?? null
+})
+
+/**
+ * 阶段段落列表
+ */
+const phaseSegments = computed<PhaseSegment[]>(() => {
+  if (!irDoc.value) return []
+  return computePhaseSegments(irDoc.value)
+})
+
+/**
+ * 当前所处阶段索引
+ */
+const currentPhaseIndex = computed<number | null>(() => {
+  if (phaseSegments.value.length === 0) return null
+  const stateIdx = currentStateIndex.value
+  for (let i = 0; i < phaseSegments.value.length; i += 1) {
+    const seg = phaseSegments.value[i]
+    if (stateIdx >= seg.targetStateIndex && stateIdx <= seg.endStateIndex) {
+      return i
+    }
+  }
+  return null
 })
 
 const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
@@ -320,6 +343,18 @@ const goLast = (): void => {
   }
 }
 
+/**
+ * 跳转至指定状态（由 VizPanel 阶段导航触发）
+ *
+ * @param stateIndex - 目标状态索引
+ */
+const handleJumpToState = (stateIndex: number): void => {
+  stopPlay()
+  if (stateIndex >= 0 && stateIndex < totalStates.value) {
+    currentStateIndex.value = stateIndex
+  }
+}
+
 /* ---- 自动播放 ---- */
 
 const stopPlay = (): void => {
@@ -508,7 +543,8 @@ watch(currentStateIndex, (next, prev) => {
 
             <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
               :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
-              :auto-playing="isPlaying" />
+              :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
+              @jump-to-state="handleJumpToState" />
           </Transition>
 
           <div v-if="tomlContent" class="toml-section">

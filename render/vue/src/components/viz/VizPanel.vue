@@ -42,14 +42,12 @@ import type {
   GraphEdge,
   IrObjectKind,
 } from '@/types/ir'
-import type { StepSummary } from '@/types/viz'
+import type { StepSummary, PhaseSegment } from '@/types/viz'
 import { vizFlags, logDebug } from '@/utils/viz-flags'
 
 import VizPlaceholder from './VizPlaceholder.vue'
 import VizSettings from './VizSettings.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
-
-/* ---- Props ---- */
 
 interface Props {
   kind?: IrObjectKind
@@ -60,9 +58,22 @@ interface Props {
   meta?: IrMeta
   irPackage?: IrPackage
   autoPlaying?: boolean
+  /** 阶段段落列表 */
+  phases?: PhaseSegment[]
+  /** 当前所处阶段索引，null 表示不在任何阶段内 */
+  currentPhaseIndex?: number | null
+}
+
+/**
+ * 组件事件定义
+ */
+interface Emits {
+  /** 跳转至指定状态 */
+  (event: 'jump-to-state', stateIndex: number): void
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
 
 /* ================================================================
  *  常量
@@ -1604,6 +1615,124 @@ watch(
 )
 
 /* ================================================================
+ *  阶段导航
+ * ================================================================ */
+
+/**
+ * 阶段列表浮层开关
+ */
+const phasePopoverOpen = ref<boolean>(false)
+
+/**
+ * 内部维护的当前阶段索引
+ * 乐观更新 + watch 同步 props.currentPhaseIndex
+ */
+const activePhaseIndex = ref<number | null>(props.currentPhaseIndex ?? null)
+
+/**
+ * 有效阶段列表（兜底空数组）
+ */
+const effectivePhases = computed<PhaseSegment[]>(() => props.phases ?? [])
+
+/**
+ * 是否展示阶段指示条
+ */
+const showPhaseIndicator = computed<boolean>(() => {
+  if (effectivePhases.value.length === 0) return false
+  return activePhaseIndex.value !== null
+})
+
+/**
+ * 当前阶段名称
+ */
+const currentPhaseName = computed<string>(() => {
+  if (activePhaseIndex.value === null) return ''
+  return effectivePhases.value[activePhaseIndex.value]?.name ?? ''
+})
+
+/**
+ * 是否可跳转上一阶段
+ */
+const canPrevPhase = computed<boolean>(() => {
+  if (props.autoPlaying) return false
+  if (activePhaseIndex.value === null) return false
+  return activePhaseIndex.value > 0
+})
+
+/**
+ * 是否可跳转下一阶段
+ */
+const canNextPhase = computed<boolean>(() => {
+  if (props.autoPlaying) return false
+  if (activePhaseIndex.value === null) return false
+  return activePhaseIndex.value < effectivePhases.value.length - 1
+})
+
+/**
+ * 跳转上一阶段
+ */
+const handlePrevPhase = (): void => {
+  if (!canPrevPhase.value || activePhaseIndex.value === null) return
+  const prevIndex = activePhaseIndex.value - 1
+  const target = effectivePhases.value[prevIndex]
+  if (target) {
+    activePhaseIndex.value = prevIndex
+    emit('jump-to-state', target.targetStateIndex)
+  }
+}
+
+/**
+ * 跳转下一阶段
+ */
+const handleNextPhase = (): void => {
+  if (!canNextPhase.value || activePhaseIndex.value === null) return
+  const nextIndex = activePhaseIndex.value + 1
+  const target = effectivePhases.value[nextIndex]
+  if (target) {
+    activePhaseIndex.value = nextIndex
+    emit('jump-to-state', target.targetStateIndex)
+  }
+}
+
+/**
+ * 跳转至指定阶段开头
+ *
+ * @param index - 阶段索引
+ */
+const handleJumpToPhase = (index: number): void => {
+  if (props.autoPlaying) return
+  const target = effectivePhases.value[index]
+  if (target) {
+    activePhaseIndex.value = index
+    emit('jump-to-state', target.targetStateIndex)
+    phasePopoverOpen.value = false
+  }
+}
+
+/**
+ * 切换阶段列表浮层（自动播放时禁止打开）
+ */
+const togglePhasePopover = (): void => {
+  if (props.autoPlaying) return
+  phasePopoverOpen.value = !phasePopoverOpen.value
+}
+
+watch(
+  () => props.currentPhaseIndex,
+  (newVal) => {
+    activePhaseIndex.value = newVal ?? null
+    phasePopoverOpen.value = false
+  },
+)
+
+watch(
+  () => props.autoPlaying,
+  (playing) => {
+    if (playing) phasePopoverOpen.value = false
+  },
+)
+
+/* ================================================================
  *  生命周期
  * ================================================================ */
 
@@ -1973,6 +2102,37 @@ onBeforeUnmount(() => {
       </Transition>
 
       <VizSettings />
+
+      <!-- Phase indicator -->
+      <Transition name="fade">
+        <div v-if="showPhaseIndicator" class="viz-phase-bar">
+          <button class="viz-phase-bar__nav" :disabled="!canPrevPhase" aria-label="上一阶段" @click="handlePrevPhase">
+            <MaterialIcon name="chevron_left" :size="16" />
+          </button>
+          <div class="viz-phase-bar__center">
+            <button class="viz-phase-bar__badge" :class="{ 'viz-phase-bar__badge--readonly': autoPlaying }"
+              @click="togglePhasePopover">
+              <span class="viz-phase-bar__name" :title="currentPhaseName">{{ currentPhaseName }}</span>
+              <MaterialIcon v-if="!autoPlaying" name="expand_more" :size="14" class="viz-phase-bar__chevron"
+                :class="{ 'viz-phase-bar__chevron--open': phasePopoverOpen }" />
+              <MaterialIcon v-else name="play_arrow" :size="14" class="viz-phase-bar__playing-icon" />
+            </button>
+            <Transition name="fade">
+              <div v-if="phasePopoverOpen" class="viz-phase-popover">
+                <div v-for="(phase, idx) in effectivePhases" :key="idx" class="viz-phase-popover__item"
+                  :class="{ 'viz-phase-popover__item--active': idx === activePhaseIndex }"
+                  @click="handleJumpToPhase(idx)">
+                  <span class="viz-phase-popover__name" :title="phase.name">{{ phase.name }}</span>
+                  <span class="viz-phase-popover__range">步骤 {{ phase.firstStepId }}–{{ phase.lastStepId }}</span>
+                </div>
+              </div>
+            </Transition>
+          </div>
+          <button class="viz-phase-bar__nav" :disabled="!canNextPhase" aria-label="下一阶段" @click="handleNextPhase">
+            <MaterialIcon name="chevron_right" :size="16" />
+          </button>
+        </div>
+      </Transition>
     </div>
   </section>
 </template>
@@ -2424,11 +2584,179 @@ onBeforeUnmount(() => {
   transition: none;
 }
 
+/* ---- Phase indicator ---- */
+
+.viz-phase-bar {
+  position: absolute;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 6;
+  user-select: none;
+}
+
+.viz-phase-bar__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-body);
+  cursor: pointer;
+  box-shadow: var(--shadow-static);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.viz-phase-bar__nav:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.viz-phase-bar__nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.viz-phase-bar__nav :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
+}
+
+.viz-phase-bar__center {
+  position: relative;
+}
+
+.viz-phase-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-static);
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
+}
+
+.viz-phase-bar__badge:hover {
+  background-color: var(--color-bg-hover);
+  box-shadow: var(--shadow-hover);
+}
+
+.viz-phase-bar__badge--readonly {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.viz-phase-bar__badge--readonly:hover {
+  background-color: var(--color-bg-surface);
+  box-shadow: var(--shadow-static);
+}
+
+.viz-phase-bar__name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viz-phase-bar__chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.viz-phase-bar__chevron--open {
+  transform: rotate(180deg);
+}
+
+.viz-phase-bar__playing-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+}
+
+.viz-phase-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hover);
+  padding: 4px 0;
+  z-index: 7;
+}
+
+.viz-phase-popover__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.viz-phase-popover__item:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.viz-phase-popover__item--active {
+  background-color: var(--color-accent-wash);
+}
+
+.viz-phase-popover__name {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.viz-phase-popover__item--active .viz-phase-popover__name {
+  color: var(--color-accent);
+}
+
+.viz-phase-popover__range {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 @media (max-width: 1100px) {
   .viz-panel__svg {
     min-height: 240px;
   }
 }
+
+
 
 @media (prefers-reduced-motion: reduce) {
   .viz-node--added {
