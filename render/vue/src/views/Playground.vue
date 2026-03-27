@@ -9,7 +9,7 @@
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-03-26
+ * @date 2026-03-27
  * @component Playground
  */
 
@@ -31,6 +31,7 @@ import type { StepSummary, PhaseSegment } from '@/types/viz'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import LanguageSelect from '@/components/editor/LanguageSelect.vue'
+import LlmPanel from '@/components/editor/LlmPanel.vue'
 import VizPanel from '@/components/viz/VizPanel.vue'
 import TomlViewer from '@/components/viz/TomlViewer.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
@@ -314,6 +315,17 @@ const handleDownloadToml = (): void => {
   document.body.removeChild(link)
 
   URL.revokeObjectURL(url)
+}
+
+/* ---- LLM 代码生成 ---- */
+
+/**
+ * 接收 LLM 生成的代码并替换编辑器内容
+ *
+ * @param generatedCode - LLM 生成的代码
+ */
+const handleLlmGenerated = (generatedCode: string): void => {
+  code.value = generatedCode
 }
 
 /* ---- 步骤导航 ---- */
@@ -611,6 +623,8 @@ watch(currentStateIndex, (next, prev) => {
                 <polyline v-else points="2,1 6,7 2,13" />
               </svg>
             </button>
+
+            <LlmPanel :language="language" :is-default-code="isDefaultCode" @generated="handleLlmGenerated" />
           </div>
 
           <div v-if="executionInfo" class="execution-info">

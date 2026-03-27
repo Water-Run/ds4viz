@@ -1,14 +1,22 @@
-import { fileURLToPath } from 'node:url'
-import { mergeConfig, defineConfig, configDefaults } from 'vitest/config'
-import viteConfig from './vite.config'
+// vite.config.ts
+import { fileURLToPath, URL } from 'node:url'
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
 
-export default mergeConfig(
-  viteConfig,
-  defineConfig({
-    test: {
-      environment: 'jsdom',
-      exclude: [...configDefaults.exclude, 'e2e/**'],
-      root: fileURLToPath(new URL('./', import.meta.url)),
+export default defineConfig({
+  plugins: [vue()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
-  }),
-)
+  },
+  server: {
+    fs: {
+      // 允许访问到 ds4viz 项目根目录
+      allow: [
+        fileURLToPath(new URL('.', import.meta.url)),        // render/vue/
+        fileURLToPath(new URL('../../library', import.meta.url)), // library/
+      ],
+    },
+  },
+})
