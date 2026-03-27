@@ -4,14 +4,16 @@
  *
  * 卡片列表 + 分类筛选 + 实时搜索 + 收藏切换 + 无限滚动。
  * 点击卡片展开详情面板查看代码与信息。
+ * 支持通过路由查询参数 templateId 自动展开指定模板。
  *
  * @file src/views/Templates.vue
  * @author WaterRun
- * @date 2026-02-28
+ * @date 2026-03-27
  * @component Templates
  */
 
-import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
 import { extractErrorMessage } from '@/utils/error'
@@ -23,6 +25,9 @@ import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import TemplateDetailPanel from '@/components/common/TemplateDetailPanel.vue'
+
+const route = useRoute()
+const router = useRouter()
 
 const store = useTemplatesStore()
 const {
@@ -173,6 +178,24 @@ const handleSelectCategory = async (category: string): Promise<void> => {
   scrollToTop()
 }
 
+/**
+ * 消费路由查询参数 templateId，自动展开对应模板详情
+ *
+ * @param value - 查询参数值
+ */
+const consumeTemplateIdQuery = (value: unknown): void => {
+  if (typeof value !== 'string') return
+  const id = Number(value)
+  if (Number.isNaN(id) || id <= 0) return
+
+  selectedTemplateId.value = id
+  scrollToTop()
+
+  const query = { ...route.query }
+  delete query.templateId
+  router.replace({ query })
+}
+
 onMounted(async () => {
   /* 重置 store 状态以确保导航切换后数据一致 */
   store.page = 1
@@ -190,7 +213,19 @@ onMounted(async () => {
     { rootMargin: '200px' },
   )
   await Promise.all([store.loadCategories(), store.loadTemplates()])
+
+  consumeTemplateIdQuery(route.query.templateId)
 })
+
+/**
+ * 监听路由查询参数变化，处理从其他页面跳转并携带 templateId 的场景
+ */
+watch(
+  () => route.query.templateId,
+  (value) => {
+    consumeTemplateIdQuery(value)
+  },
+)
 
 watchEffect(() => {
   const el = sentinel.value
@@ -214,21 +249,10 @@ onBeforeUnmount(() => {
       </div>
       <div class="templates-page__search">
         <MaterialIcon name="search" class="templates-page__search-icon" :size="18" />
-        <input
-          v-model="searchInput"
-          type="text"
-          class="templates-page__search-input"
-          placeholder="搜索模板…"
-          @input="handleInput"
-          @compositionstart="handleCompositionStart"
-          @compositionend="handleCompositionEnd"
-        />
-        <button
-          v-if="searchInput.length > 0"
-          class="templates-page__search-clear"
-          aria-label="清除搜索"
-          @click="handleClearSearch"
-        >
+        <input v-model="searchInput" type="text" class="templates-page__search-input" placeholder="搜索模板…"
+          @input="handleInput" @compositionstart="handleCompositionStart" @compositionend="handleCompositionEnd" />
+        <button v-if="searchInput.length > 0" class="templates-page__search-clear" aria-label="清除搜索"
+          @click="handleClearSearch">
           <MaterialIcon name="close" :size="16" />
         </button>
       </div>
@@ -242,18 +266,14 @@ onBeforeUnmount(() => {
         <h2 class="templates-page__sidebar-title">分类</h2>
         <ul class="category-list">
           <li>
-            <button
-              class="category-list__item"
+            <button class="category-list__item"
               :class="{ 'category-list__item--active': selectedCategory.length === 0 && !isSearchMode }"
-              @click="handleSelectCategory('')"
-            >全部</button>
+              @click="handleSelectCategory('')">全部</button>
           </li>
           <li v-for="cat in categories" :key="cat">
-            <button
-              class="category-list__item"
+            <button class="category-list__item"
               :class="{ 'category-list__item--active': selectedCategory === cat && !isSearchMode }"
-              @click="handleSelectCategory(cat)"
-            >{{ cat }}</button>
+              @click="handleSelectCategory(cat)">{{ cat }}</button>
           </li>
         </ul>
       </aside>
@@ -262,12 +282,8 @@ onBeforeUnmount(() => {
         <!-- 详情面板 -->
         <Transition name="slide-fade">
           <div v-if="selectedTemplateId !== null" class="templates-page__detail">
-            <TemplateDetailPanel
-              :template-id="selectedTemplateId"
-              :default-language="currentPlaygroundLanguage"
-              @close="handleClosePanel"
-              @toggle-favorite="handlePanelToggleFavorite"
-            />
+            <TemplateDetailPanel :template-id="selectedTemplateId" :default-language="currentPlaygroundLanguage"
+              @close="handleClosePanel" @toggle-favorite="handlePanelToggleFavorite" />
           </div>
         </Transition>
 
@@ -277,7 +293,9 @@ onBeforeUnmount(() => {
           <button class="templates-page__search-reset" @click="handleClearSearch">清除搜索</button>
         </div>
 
-        <div v-if="loading && items.length === 0" class="templates-page__loading"><Loading /></div>
+        <div v-if="loading && items.length === 0" class="templates-page__loading">
+          <Loading />
+        </div>
 
         <div v-else-if="!loading && items.length === 0" class="templates-page__empty">
           <MaterialIcon name="folder_open" class="templates-page__empty-icon" :size="48" />
@@ -290,13 +308,9 @@ onBeforeUnmount(() => {
               <div v-if="hasFavorited" class="template-section">
                 <h3 class="template-section__title">我收藏的</h3>
                 <div class="template-grid">
-                  <article
-                    v-for="item in favoritedItems"
-                    :key="item.id"
-                    class="template-card"
+                  <article v-for="item in favoritedItems" :key="item.id" class="template-card"
                     :class="{ 'template-card--selected': selectedTemplateId === item.id }"
-                    @click="handleSelectTemplate(item.id)"
-                  >
+                    @click="handleSelectTemplate(item.id)">
                     <div class="template-card__header">
                       <h3 class="template-card__title">{{ item.title }}</h3>
                       <span class="template-card__category">{{ item.category }}</span>
@@ -304,12 +318,8 @@ onBeforeUnmount(() => {
                     <p class="template-card__desc">{{ item.description }}</p>
                     <div class="template-card__footer">
                       <span class="template-card__time">{{ formatRelativeTime(item.createdAt) }}</span>
-                      <button
-                        class="template-card__fav template-card__fav--active"
-                        :disabled="togglingIds.has(item.id)"
-                        aria-label="取消收藏"
-                        @click.stop="handleToggleFavorite(item.id)"
-                      >
+                      <button class="template-card__fav template-card__fav--active" :disabled="togglingIds.has(item.id)"
+                        aria-label="取消收藏" @click.stop="handleToggleFavorite(item.id)">
                         <MaterialIcon name="favorite" :size="18" />
                         <span class="template-card__fav-count">{{ item.favoriteCount }}</span>
                       </button>
@@ -320,13 +330,9 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="template-grid">
-                <article
-                  v-for="item in otherItems"
-                  :key="item.id"
-                  class="template-card"
+                <article v-for="item in otherItems" :key="item.id" class="template-card"
                   :class="{ 'template-card--selected': selectedTemplateId === item.id }"
-                  @click="handleSelectTemplate(item.id)"
-                >
+                  @click="handleSelectTemplate(item.id)">
                   <div class="template-card__header">
                     <h3 class="template-card__title">{{ item.title }}</h3>
                     <span class="template-card__category">{{ item.category }}</span>
@@ -334,13 +340,9 @@ onBeforeUnmount(() => {
                   <p class="template-card__desc">{{ item.description }}</p>
                   <div class="template-card__footer">
                     <span class="template-card__time">{{ formatRelativeTime(item.createdAt) }}</span>
-                    <button
-                      class="template-card__fav"
-                      :class="{ 'template-card__fav--active': item.isFavorited }"
-                      :disabled="togglingIds.has(item.id)"
-                      :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
-                      @click.stop="handleToggleFavorite(item.id)"
-                    >
+                    <button class="template-card__fav" :class="{ 'template-card__fav--active': item.isFavorited }"
+                      :disabled="togglingIds.has(item.id)" :aria-label="item.isFavorited ? '取消收藏' : '收藏'"
+                      @click.stop="handleToggleFavorite(item.id)">
                       <MaterialIcon :name="item.isFavorited ? 'favorite' : 'favorite_border'" :size="18" />
                       <span class="template-card__fav-count">{{ item.favoriteCount }}</span>
                     </button>
@@ -351,7 +353,9 @@ onBeforeUnmount(() => {
           </Transition>
 
           <div v-if="hasMore && !loading" ref="sentinel" class="sentinel" />
-          <div v-if="loading" class="templates-page__loading-more"><Loading /></div>
+          <div v-if="loading" class="templates-page__loading-more">
+            <Loading />
+          </div>
         </template>
       </section>
     </div>
@@ -359,72 +363,412 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.templates-page { display: flex; flex-direction: column; height: 100%; padding: var(--space-3); gap: var(--space-2); overflow: hidden; }
+.templates-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--space-3);
+  gap: var(--space-2);
+  overflow: hidden;
+}
 
-.templates-page__header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: var(--space-2); }
-.templates-page__title { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); margin: 0; white-space: nowrap; }
-.templates-page__title :deep(.material-icon) { width: 18px; height: 18px; }
+.templates-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
 
-.templates-page__search { position: relative; display: flex; align-items: center; width: 280px; max-width: 100%; flex-shrink: 0; }
-.templates-page__search-icon { position: absolute; left: 10px; width: 18px; height: 18px; color: var(--color-text-tertiary); pointer-events: none; }
-.templates-page__search-input { width: 100%; height: var(--control-height-md); padding: 0 var(--space-4) 0 36px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background-color: var(--color-bg-surface); font-size: var(--text-sm); color: var(--color-text-primary); transition: border-color var(--duration-fast) var(--ease); }
-.templates-page__search-input:focus { border-color: var(--color-accent); }
-.templates-page__search-input::placeholder { color: var(--color-text-tertiary); }
-.templates-page__search-clear { position: absolute; right: 6px; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: none; color: var(--color-text-tertiary); border-radius: var(--radius-sm); cursor: pointer; transition: color var(--duration-fast) var(--ease); }
-.templates-page__search-clear:hover { color: var(--color-text-primary); }
-.templates-page__search-clear :deep(.material-icon) { width: 16px; height: 16px; }
+.templates-page__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  white-space: nowrap;
+}
 
-.templates-page__body { display: flex; flex: 1; min-height: 0; gap: var(--space-3); }
+.templates-page__title :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
 
-.templates-page__sidebar { width: 160px; flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-y: auto; }
-.templates-page__sidebar-title { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-panel-head); margin: 0; padding: 0 var(--space-1); }
-.category-list { display: flex; flex-direction: column; gap: 2px; }
-.category-list__item { display: block; width: 100%; padding: 6px var(--space-1); border: none; background: none; border-radius: var(--radius-control); text-align: left; font-size: var(--text-sm); font-family: inherit; color: var(--color-text-body); cursor: pointer; transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease); }
-.category-list__item:hover { background-color: var(--color-bg-hover); color: var(--color-text-primary); }
-.category-list__item--active { background-color: var(--color-accent-wash); color: var(--color-accent); }
-.category-list__item--active:hover { background-color: var(--color-accent-wash); }
+.templates-page__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 280px;
+  max-width: 100%;
+  flex-shrink: 0;
+}
 
-.templates-page__content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; position: relative; isolation: isolate; }
-.templates-page__detail { position: sticky; top: 0; z-index: var(--z-sticky); background-color: var(--color-bg-base); padding-bottom: var(--space-2); }
-.templates-page__grids { display: flex; flex-direction: column; gap: var(--space-2); }
-.templates-page__search-status { display: flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
-.templates-page__search-hint { font-size: var(--text-sm); color: var(--color-text-body); }
-.templates-page__search-reset { border: none; background: none; color: var(--color-accent); font-size: var(--text-sm); font-family: inherit; font-weight: var(--weight-medium); cursor: pointer; transition: color var(--duration-fast) var(--ease); }
-.templates-page__search-reset:hover { color: var(--color-accent-hover); }
-.templates-page__loading { flex: 1; display: flex; align-items: center; justify-content: center; }
-.templates-page__loading-more { display: flex; align-items: center; justify-content: center; padding: var(--space-2) 0; flex-shrink: 0; }
-.templates-page__empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); }
-.templates-page__empty-icon { width: 48px; height: 48px; color: var(--color-text-tertiary); }
-.templates-page__empty-text { margin: 0; font-size: var(--text-sm); color: var(--color-text-tertiary); }
+.templates-page__search-icon {
+  position: absolute;
+  left: 10px;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
 
-.template-section { display: flex; flex-direction: column; gap: var(--space-2); }
-.template-section__title { margin: 0; font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-panel-head); }
-.template-section__divider { height: 1px; background-color: var(--color-border); }
+.templates-page__search-input {
+  width: 100%;
+  height: var(--control-height-md);
+  padding: 0 var(--space-4) 0 36px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-surface);
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  transition: border-color var(--duration-fast) var(--ease);
+}
 
-.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-2); }
+.templates-page__search-input:focus {
+  border-color: var(--color-accent);
+}
 
-.template-card { display: flex; flex-direction: column; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background-color: var(--color-bg-surface); box-shadow: var(--shadow-static); cursor: pointer; transition: box-shadow var(--duration-normal) var(--ease), border-color var(--duration-normal) var(--ease), transform var(--duration-fast) var(--ease); }
-.template-card:hover { box-shadow: var(--shadow-hover); border-color: var(--color-border-strong); transform: translateY(-1px); }
-.template-card--selected { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-wash); }
+.templates-page__search-input::placeholder {
+  color: var(--color-text-tertiary);
+}
 
-.template-card__header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-1); margin-bottom: var(--space-1); }
-.template-card__title { margin: 0; font-size: var(--text-base); font-weight: var(--weight-semibold); color: var(--color-text-primary); line-height: var(--leading-tight); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.template-card__category { flex-shrink: 0; padding: 2px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-full); font-size: var(--text-xs); color: var(--color-text-tertiary); white-space: nowrap; }
+.templates-page__search-clear {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--color-text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
 
-.template-card__desc { margin: 0; font-size: var(--text-sm); color: var(--color-text-body); line-height: var(--leading-normal); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: 1; }
+.templates-page__search-clear:hover {
+  color: var(--color-text-primary);
+}
 
-.template-card__footer { display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid var(--color-border); }
-.template-card__time { font-size: var(--text-xs); color: var(--color-text-tertiary); }
-.template-card__fav { display: flex; align-items: center; gap: 4px; border: 1px solid transparent; background: none; color: var(--color-text-tertiary); font-size: var(--text-xs); font-family: inherit; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); transition: color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease); }
-.template-card__fav:hover:not(:disabled) { background-color: var(--color-bg-hover); color: var(--color-text-primary); border-color: var(--color-border-strong); }
-.template-card__fav--active { color: var(--color-error); }
-.template-card__fav--active:hover:not(:disabled) { color: var(--color-error); }
-.template-card__fav :deep(.material-icon) { width: 18px; height: 18px; }
-.template-card__fav-count { font-variant-numeric: tabular-nums; }
+.templates-page__search-clear :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
+}
 
-.tpl-fade-enter-active, .tpl-fade-leave-active { transition: opacity var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease); }
-.tpl-fade-enter-from { opacity: 0; transform: translateY(6px); }
-.tpl-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+.templates-page__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-3);
+}
 
-.sentinel { height: 1px; width: 100%; flex-shrink: 0; }
+.templates-page__sidebar {
+  width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.templates-page__sidebar-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-panel-head);
+  margin: 0;
+  padding: 0 var(--space-1);
+}
+
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.category-list__item {
+  display: block;
+  width: 100%;
+  padding: 6px var(--space-1);
+  border: none;
+  background: none;
+  border-radius: var(--radius-control);
+  text-align: left;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  color: var(--color-text-body);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.category-list__item:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.category-list__item--active {
+  background-color: var(--color-accent-wash);
+  color: var(--color-accent);
+}
+
+.category-list__item--active:hover {
+  background-color: var(--color-accent-wash);
+}
+
+.templates-page__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  position: relative;
+  isolation: isolate;
+}
+
+.templates-page__detail {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background-color: var(--color-bg-base);
+  padding-bottom: var(--space-2);
+}
+
+.templates-page__grids {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.templates-page__search-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.templates-page__search-hint {
+  font-size: var(--text-sm);
+  color: var(--color-text-body);
+}
+
+.templates-page__search-reset {
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.templates-page__search-reset:hover {
+  color: var(--color-accent-hover);
+}
+
+.templates-page__loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.templates-page__loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) 0;
+  flex-shrink: 0;
+}
+
+.templates-page__empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.templates-page__empty-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--color-text-tertiary);
+}
+
+.templates-page__empty-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.template-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.template-section__title {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-panel-head);
+}
+
+.template-section__divider {
+  height: 1px;
+  background-color: var(--color-border);
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2);
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-bg-surface);
+  box-shadow: var(--shadow-static);
+  cursor: pointer;
+  transition: box-shadow var(--duration-normal) var(--ease), border-color var(--duration-normal) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.template-card:hover {
+  box-shadow: var(--shadow-hover);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.template-card--selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-wash);
+}
+
+.template-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.template-card__title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  line-height: var(--leading-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.template-card__category {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.template-card__desc {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-body);
+  line-height: var(--leading-normal);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.template-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border);
+}
+
+.template-card__time {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.template-card__fav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.template-card__fav:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+
+.template-card__fav--active {
+  color: var(--color-error);
+}
+
+.template-card__fav--active:hover:not(:disabled) {
+  color: var(--color-error);
+}
+
+.template-card__fav :deep(.material-icon) {
+  width: 18px;
+  height: 18px;
+}
+
+.template-card__fav-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.tpl-fade-enter-active,
+.tpl-fade-leave-active {
+  transition: opacity var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease);
+}
+
+.tpl-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.tpl-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.sentinel {
+  height: 1px;
+  width: 100%;
+  flex-shrink: 0;
+}
 </style>

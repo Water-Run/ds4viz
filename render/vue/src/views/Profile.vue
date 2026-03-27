@@ -4,12 +4,12 @@
  * 用户页面
  *
  * 顶部用户信息 + 对称信息区（收藏模板 / 执行记录）；
- * 执行记录区右上角提供“统计数据”入口，点击后弹出统计浮层。
- * 统计仅在首次访问时懒加载，并支持“统计中”占位状态。
+ * 执行记录区右上角提供"统计数据"入口，点击后弹出统计浮层。
+ * 统计仅在首次访问时懒加载，并支持"统计中"占位状态。
  *
  * @file src/views/Profile.vue
  * @author WaterRun
- * @date 2026-03-26
+ * @date 2026-03-27
  * @component Profile
  */
 
@@ -39,7 +39,6 @@ import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import CodeEditor from '@/components/editor/CodeEditor.vue'
-import TemplateDetailPanel from '@/components/common/TemplateDetailPanel.vue'
 
 import type { FavoriteItem, ExecutionHistoryItem } from '@/api/users'
 
@@ -242,7 +241,6 @@ const executionsError = ref<string>('')
 
 const expandedExecId = ref<number | null>(null)
 const copiedExecId = ref<number | null>(null)
-const selectedFavoriteId = ref<number | null>(null)
 
 /* ---- 统计相关状态（懒加载） ---- */
 
@@ -279,12 +277,6 @@ const userAvatarColor = computed<string>(() => getAvatarColor(currentUser.value?
 const statusStyle = computed<StatusStyle>(() => {
   const status = (currentUser.value?.status ?? '').toLowerCase()
   return STATUS_STYLES[status] ?? DEFAULT_STATUS_STYLE
-})
-
-const currentPlaygroundLanguage = computed<Language>(() => {
-  const stored = localStorage.getItem('ds4viz_language') as Language | null
-  if (stored && LANGUAGES.includes(stored)) return stored
-  return 'python'
 })
 
 const favoritesTotalPages = computed<number>(() => {
@@ -475,7 +467,6 @@ const handlePasswordChange = async (): Promise<void> => {
 
 const handleFavoritesPage = async (targetPage: number): Promise<void> => {
   favoritesPage.value = targetPage
-  selectedFavoriteId.value = null
   await loadFavorites()
 }
 
@@ -513,25 +504,21 @@ const handleEditInPlayground = (item: ExecutionHistoryItem): void => {
   router.push({ name: 'playground' })
 }
 
-const handleSelectFavorite = (templateId: number): void => {
-  selectedFavoriteId.value = selectedFavoriteId.value === templateId ? null : templateId
+/**
+ * 点击收藏模板卡片，跳转到模板库页面并展开对应模板详情
+ *
+ * @param templateId - 模板 ID
+ */
+const handleNavigateToTemplate = (templateId: number): void => {
+  router.push({ name: 'templates', query: { templateId: String(templateId) } })
 }
 
-const handleCloseFavoritePanel = (): void => {
-  selectedFavoriteId.value = null
-}
-
-const handleFavoritePanelToggle = async (templateId: number): Promise<void> => {
-  try {
-    await unfavoriteTemplateApi(templateId)
-    favorites.value = favorites.value.filter((item) => item.templateId !== templateId)
-    favoritesTotal.value = Math.max(0, favoritesTotal.value - 1)
-    selectedFavoriteId.value = null
-  } catch (error: unknown) {
-    favoritesError.value = extractErrorMessage(error)
-  }
-}
-
+/**
+ * 从卡片上取消收藏
+ *
+ * @param templateId - 模板 ID
+ * @param event - 原始事件（阻止冒泡）
+ */
 const handleUnfavoriteFromCard = async (
   templateId: number,
   event: Event,
@@ -541,9 +528,6 @@ const handleUnfavoriteFromCard = async (
     await unfavoriteTemplateApi(templateId)
     favorites.value = favorites.value.filter((item) => item.templateId !== templateId)
     favoritesTotal.value = Math.max(0, favoritesTotal.value - 1)
-    if (selectedFavoriteId.value === templateId) {
-      selectedFavoriteId.value = null
-    }
   } catch (error: unknown) {
     favoritesError.value = extractErrorMessage(error)
   }
@@ -653,13 +637,6 @@ onBeforeUnmount(() => {
       </Transition>
     </section>
 
-    <!-- 收藏展开详情 -->
-    <Transition name="slide-fade">
-      <TemplateDetailPanel v-if="selectedFavoriteId !== null" :template-id="selectedFavoriteId"
-        :default-language="currentPlaygroundLanguage" @close="handleCloseFavoritePanel"
-        @toggle-favorite="handleFavoritePanelToggle" />
-    </Transition>
-
     <!-- 对称信息区 -->
     <section class="profile-sections">
       <!-- 收藏模板 -->
@@ -684,8 +661,7 @@ onBeforeUnmount(() => {
 
         <div v-else class="profile-section__list">
           <div v-for="item in favorites" :key="item.templateId" class="fav-card"
-            :class="{ 'fav-card--selected': selectedFavoriteId === item.templateId }"
-            @click="handleSelectFavorite(item.templateId)">
+            @click="handleNavigateToTemplate(item.templateId)">
             <div class="fav-card__header">
               <span class="fav-card__title">{{ item.title }}</span>
               <span class="fav-card__category">{{ item.category }}</span>
@@ -1389,11 +1365,6 @@ onBeforeUnmount(() => {
   border-color: var(--color-border-strong);
   box-shadow: var(--shadow-static);
   transform: translateY(-1px);
-}
-
-.fav-card--selected {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-wash);
 }
 
 .fav-card__header {

@@ -5,7 +5,7 @@
  *
  * @file src/utils/viz-flags.ts
  * @author WaterRun
- * @date 2026-03-02
+ * @date 2026-03-27
  */
 
 import { reactive, readonly, watch } from 'vue'
@@ -32,6 +32,12 @@ export interface VizFlagsState {
     skipReadyPage: boolean
     /** 生成后自动播放 */
     autoPlayOnGenerate: boolean
+    /** 显示阶段导航条 */
+    showPhases: boolean
+    /** 高亮聚焦：切换步骤时自动移动画布到高亮元素 */
+    highlightAutoFocus: boolean
+    /** 显示可视化标题/标签/备注信息 */
+    showVizTitle: boolean
     /** 自动播放间隔（毫秒，0–10000，步进 100） */
     playbackInterval: number
 }
@@ -54,7 +60,10 @@ const DEFAULT_FLAGS: VizFlagsState = {
     enableConsoleDebug: false,
     skipReadyPage: false,
     autoPlayOnGenerate: false,
-    playbackInterval: 500,
+    showPhases: true,
+    highlightAutoFocus: false,
+    showVizTitle: true,
+    playbackInterval: 768,
 }
 
 /**

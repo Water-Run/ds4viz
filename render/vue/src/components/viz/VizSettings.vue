@@ -6,7 +6,7 @@
  *
  * @file src/components/viz/VizSettings.vue
  * @author WaterRun
- * @date 2026-03-03
+ * @date 2026-03-27
  * @component VizSettings
  */
 
@@ -18,6 +18,16 @@ import type { VizFlagsState } from '@/utils/viz-flags'
  * 面板开关状态
  */
 const isOpen = ref<boolean>(false)
+
+const debugOpen = ref<boolean>(false)
+
+const closeDebug = (): void => {
+    debugOpen.value = false
+}
+
+const toggleDebug = (): void => {
+    debugOpen.value = !debugOpen.value
+}
 
 /**
  * 延迟关闭定时器
@@ -41,13 +51,19 @@ interface BoolItem {
  */
 const booleanItems: BoolItem[] = [
     { key: 'showMetadata', label: '显示元数据' },
+    { key: 'enableAutoFit', label: '自适应画布' },
+    { key: 'autoPlayOnGenerate', label: '生成后自动播放' },
+    { key: 'showPhases', label: '显示阶段导航' },
+    { key: 'highlightAutoFocus', label: '高亮聚焦' },
+    { key: 'showVizTitle', label: '可视化方案名' },
+]
+
+const debugItems: BoolItem[] = [
     { key: 'enableSmoothTransitions', label: '平滑动画衔接' },
     { key: 'enableCodeLineHighlight', label: '联动代码高亮' },
-    { key: 'enableAutoFit', label: '自适应画布' },
     { key: 'enableDiffHighlight', label: '变更强化' },
-    { key: 'enableConsoleDebug', label: '控制台调试' },
     { key: 'skipReadyPage', label: '跳过初始页' },
-    { key: 'autoPlayOnGenerate', label: '生成后自动播放' },
+    { key: 'enableConsoleDebug', label: '控制台调试' },
 ]
 
 /**
@@ -75,6 +91,7 @@ const handlePointerLeave = (): void => {
     cancelClose()
     closeTimer.value = window.setTimeout(() => {
         isOpen.value = false
+        closeDebug()
         closeTimer.value = null
     }, 300)
 }
@@ -109,7 +126,7 @@ onUnmounted(() => cancelClose())
 <template>
     <div class="viz-settings" @pointerenter="handlePointerEnter" @pointerleave="handlePointerLeave">
         <button class="viz-settings__toggle" :class="{ 'viz-settings__toggle--open': isOpen }"
-            :title="isOpen ? '关闭设置' : '可视化设置'" @click="handleToggleClick">
+            :title="isOpen ? '关闭设置' : '渲染器策略'" @click="handleToggleClick">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                 stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3" />
@@ -121,7 +138,7 @@ onUnmounted(() => cancelClose())
         <Transition name="settings-slide">
             <div v-if="isOpen" class="viz-settings__panel">
                 <div class="viz-settings__header">
-                    <span class="viz-settings__title">可视化设置</span>
+                    <span class="viz-settings__title">渲染器策略</span>
                 </div>
 
                 <div class="viz-settings__body">
@@ -131,6 +148,38 @@ onUnmounted(() => cancelClose())
                         <span class="viz-settings__switch" :class="{ 'viz-settings__switch--on': vizFlags[item.key] }">
                             <span class="viz-settings__thumb" />
                         </span>
+                    </div>
+
+                    <div class="viz-settings__row viz-settings__row--debug" @pointerenter="debugOpen = true"
+                        @pointerleave="debugOpen = false">
+                        <button class="viz-settings__debug-trigger" @click.stop="toggleDebug">
+                            <span class="viz-settings__debug-left">
+                                <svg viewBox="0 0 24 24" fill="currentColor" class="viz-settings__bug-icon"
+                                    aria-hidden="true">
+                                    <path
+                                        d="M20 8h-2.81a5.985 5.985 0 0 0-1.82-2.19L17 4.19 15.59 2.78l-2.01 2.01A5.94 5.94 0 0 0 12 4c-.55 0-1.08.07-1.58.2L8.41 2.19 7 3.6l1.63 1.62A5.985 5.985 0 0 0 6.81 8H4v2h2v2H4v2h2v2H4v2h2.81A6.001 6.001 0 0 0 18 18h2v-2h-2v-2h2v-2h-2v-2h2V8zm-8 10a4 4 0 0 1-4-4v-4a4 4 0 0 1 8 0v4a4 4 0 0 1-4 4z" />
+                                </svg>
+                                <span>调试</span>
+                            </span>
+                            <span class="viz-settings__debug-right">
+                                <svg viewBox="0 0 24 24" fill="currentColor" class="viz-settings__chevron-icon">
+                                    <path d="M10 6l6 6-6 6z" />
+                                </svg>
+                            </span>
+                        </button>
+
+                        <Transition name="settings-slide">
+                            <div v-if="debugOpen" class="viz-settings__sub-panel">
+                                <div v-for="item in debugItems" :key="item.key" class="viz-settings__row"
+                                    @click="handleToggle(item.key)">
+                                    <span class="viz-settings__label">{{ item.label }}</span>
+                                    <span class="viz-settings__switch"
+                                        :class="{ 'viz-settings__switch--on': vizFlags[item.key] }">
+                                        <span class="viz-settings__thumb" />
+                                    </span>
+                                </div>
+                            </div>
+                        </Transition>
                     </div>
 
                     <div class="viz-settings__row viz-settings__row--interval">
@@ -203,7 +252,7 @@ onUnmounted(() => cancelClose())
     left: 0;
     width: 260px;
     max-height: 420px;
-    overflow-y: auto;
+    overflow: visible;
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
@@ -347,5 +396,60 @@ onUnmounted(() => cancelClose())
 .settings-slide-leave-to {
     opacity: 0;
     transform: translateY(6px) scale(0.96);
+}
+
+.viz-settings__row--debug {
+    position: relative;
+    padding: 0;
+}
+
+.viz-settings__debug-trigger {
+    width: 100%;
+    height: 34px;
+    border: none;
+    background: none;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    color: var(--color-text-body);
+    font-family: inherit;
+    transition: background-color var(--duration-fast) var(--ease);
+}
+
+.viz-settings__debug-trigger:hover {
+    background: var(--color-bg-hover);
+}
+
+.viz-settings__debug-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-xs);
+}
+
+.viz-settings__bug-icon {
+    width: 14px;
+    height: 14px;
+}
+
+.viz-settings__chevron-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--color-text-tertiary);
+}
+
+.viz-settings__sub-panel {
+    position: absolute;
+    left: calc(100% + 6px);
+    top: 0;
+    width: 220px;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-hover);
+    padding: 4px 0;
+    z-index: 1002;
 }
 </style>

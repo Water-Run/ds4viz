@@ -16,7 +16,7 @@
  *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-26
+ * @date 2026-03-27
  * @component VizPanel
  */
 
@@ -104,6 +104,15 @@ const BASE_CHARS_CYL = 12
 const BASE_CHARS_BOX = 7
 const BASE_CHARS_NODE = 9
 const BASE_CHARS_CIRCLE = 4
+
+const HL_COLORS: Record<string, { fill: string; stroke: string }> = {
+  focus: { fill: 'rgba(0,120,212,0.12)', stroke: '#0078d4' },
+  visited: { fill: 'rgba(0,0,0,0.04)', stroke: '#a0a0a0' },
+  active: { fill: 'rgba(8,145,178,0.10)', stroke: '#0891b2' },
+  comparing: { fill: 'rgba(245,158,11,0.10)', stroke: '#d97706' },
+  found: { fill: 'rgba(34,197,94,0.10)', stroke: '#16a34a' },
+  error: { fill: 'rgba(239,68,68,0.10)', stroke: '#dc2626' },
+}
 
 const NODE_PALETTE = [
   '#0078d4',
@@ -258,6 +267,76 @@ const kindLabel = computed<string>(() => {
   }
   return mapping[kindStr.value] ?? kindStr.value
 })
+
+/* ---- 高亮映射 ---- */
+
+const highlightMap = computed<Map<string, { style: string; level: number }>>(() => {
+  const map = new Map<string, { style: string; level: number }>()
+  const highlights = props.step?.highlights
+  if (!highlights || highlights.length === 0) return map
+
+  const kind = kindStr.value
+  for (const h of highlights) {
+    const level = h.level ?? 1
+    if (h.kind === 'item') {
+      const prefix = kind === 'stack' ? 's' : 'q'
+      map.set(`${prefix}-${h.target}`, { style: h.style, level })
+    } else if (h.kind === 'node') {
+      let prefix = 'n'
+      if (kind === 'binary_tree' || kind === 'bst') prefix = 't'
+      else if (kind.startsWith('graph')) prefix = 'g'
+      map.set(`${prefix}-${h.target}`, { style: h.style, level })
+    } else if (h.kind === 'edge') {
+      map.set(`e-${h.from}-${h.to}`, { style: h.style, level })
+    }
+  }
+  return map
+})
+
+/**
+ * 获取元素高亮内联样式（fill/stroke/strokeWidth）
+ *
+ * @param key - 元素标识键
+ * @returns 内联样式对象，无高亮时返回空对象
+ */
+function getHlStyle(key: string): Record<string, string> {
+  const hl = highlightMap.value.get(key)
+  if (!hl) return {}
+  const c = HL_COLORS[hl.style] ?? HL_COLORS.focus
+  const sw = 1 + hl.level * 0.22
+  return { fill: c.fill, stroke: c.stroke, strokeWidth: String(sw) }
+}
+
+/**
+ * 获取边高亮内联样式
+ *
+ * @param from - 起始节点 ID
+ * @param to - 目标节点 ID
+ * @returns 内联样式对象
+ */
+function getEdgeHlStyle(from: number, to: number): Record<string, string> {
+  const hl = highlightMap.value.get(`e-${from}-${to}`)
+  if (!hl) return {}
+  const c = HL_COLORS[hl.style] ?? HL_COLORS.focus
+  const sw = 1.2 + hl.level * 0.2
+  return { stroke: c.stroke, strokeWidth: String(sw) }
+}
+
+/**
+ * 获取图节点内联样式（含高亮覆盖）
+ *
+ * @param nodeId - 节点 ID
+ * @param defaultColor - 默认颜色
+ * @returns 内联样式对象
+ */
+function getGraphNodeHlStyle(nodeId: number, defaultColor: string): Record<string, string> {
+  const hl = highlightMap.value.get(`g-${nodeId}`)
+  if (hl) {
+    const c = HL_COLORS[hl.style] ?? HL_COLORS.focus
+    return { fill: c.fill, stroke: c.stroke, strokeWidth: String(1.5 + hl.level * 0.2) }
+  }
+  return { fill: defaultColor + '18', stroke: defaultColor }
+}
 
 const isDirected = computed<boolean>(() => kindStr.value === 'graph_directed')
 const isWeighted = computed<boolean>(() => kindStr.value === 'graph_weighted')
@@ -449,6 +528,7 @@ const labelDisplayText = computed<string>(() => {
 * 标题区块总高度（标题 + comment + author + 间距）
 */
 const headerTotalH = computed<number>(() => {
+  if (!vizFlags.showVizTitle) return 0
   let h = 0
   if (labelDisplayText.value.length > 0) h += 14
   if (titleText.value.length > 0) h += 18
@@ -1287,45 +1367,41 @@ watch(
     const nodeMap = new Map<number, BinaryTreeNode>()
     data.nodes.forEach((node) => nodeMap.set(node.id, node))
 
-    const levels: number[][] = []
-    const bfsQueue: Array<{ id: number; lvl: number }> = [{ id: data.root, lvl: 0 }]
-    const visited = new Set<number>()
+    const spacing = treeR * 2.5 + 12
+    let nextPos = 0
+    const posMap = new Map<number, { x: number; y: number }>()
+    const visitedSet = new Set<number>()
 
-    while (bfsQueue.length > 0) {
-      const current = bfsQueue.shift()!
-      if (visited.has(current.id)) continue
-      visited.add(current.id)
-
-      if (!levels[current.lvl]) levels[current.lvl] = []
-      levels[current.lvl].push(current.id)
-
-      const node = nodeMap.get(current.id)
-      if (!node) continue
-
-      if (node.left !== -1) bfsQueue.push({ id: node.left, lvl: current.lvl + 1 })
-      if (node.right !== -1) bfsQueue.push({ id: node.right, lvl: current.lvl + 1 })
+    const inOrder = (nodeId: number, depth: number): void => {
+      if (nodeId === -1 || visitedSet.has(nodeId)) return
+      const node = nodeMap.get(nodeId)
+      if (!node) return
+      visitedSet.add(nodeId)
+      inOrder(node.left, depth + 1)
+      posMap.set(nodeId, { x: nextPos * spacing, y: PAD + depth * TREE_LEVEL_H })
+      nextPos += 1
+      inOrder(node.right, depth + 1)
     }
 
-    const maxInLevel = Math.max(...levels.map((level) => level.length))
-    const baseW = Math.max(300, maxInLevel * treeR * 5 + PAD * 2)
+    inOrder(data.root, 0)
 
-    const posMap = new Map<number, { x: number; y: number }>()
-    levels.forEach((ids, levelIndex) => {
-      const gap = baseW / (ids.length + 1)
-      ids.forEach((id, index) => {
-        posMap.set(id, {
-          x: gap * (index + 1),
-          y: PAD + levelIndex * TREE_LEVEL_H,
-        })
-      })
-    })
-
-    let maxX = 0
+    let minX = Infinity
+    let maxX = -Infinity
     let maxY = 0
-    posMap.forEach((point) => {
-      if (point.x > maxX) maxX = point.x
-      if (point.y > maxY) maxY = point.y
+    posMap.forEach((p) => {
+      if (p.x < minX) minX = p.x
+      if (p.x > maxX) maxX = p.x
+      if (p.y > maxY) maxY = p.y
     })
+
+    const offsetX = PAD + treeR - minX
+    posMap.forEach((p) => {
+      p.x += offsetX
+    })
+
+    const finalMaxX = maxX + offsetX
+    const svgW = finalMaxX + PAD + treeR
+    const svgH = maxY + PAD + treeR
 
     const positions = new Map<string, CachedPosition>()
 
@@ -1359,23 +1435,14 @@ watch(
     data.nodes.forEach((node) => {
       const from = posMap.get(node.id)
       if (!from) return
-
       for (const childId of [node.left, node.right]) {
         if (childId === -1) continue
         const to = posMap.get(childId)
         if (to) {
-          edges.push({
-            x1: from.x,
-            y1: from.y,
-            x2: to.x,
-            y2: to.y,
-          })
+          edges.push({ x1: from.x, y1: from.y, x2: to.x, y2: to.y })
         }
       }
     })
-
-    const svgW = maxX + PAD
-    const svgH = maxY + PAD + treeR
 
     treeLayout.value = { svgW, svgH, treeR, nodes, edges }
 
@@ -1615,6 +1682,46 @@ watch(
   },
 )
 
+/* ---- 高亮聚焦 ---- */
+
+watch(
+  highlightMap,
+  (map) => {
+    if (!vizFlags.highlightAutoFocus || map.size === 0) return
+
+    let maxLevel = 0
+    let targetKey = ''
+    for (const [key, hl] of map) {
+      if (hl.level > maxLevel) {
+        maxLevel = hl.level
+        targetKey = key
+      }
+    }
+
+    if (!targetKey) return
+    const pos = prevPositionCache.get(targetKey)
+    if (!pos) return
+
+    const inView =
+      pos.x >= vb.value.x &&
+      pos.x <= vb.value.x + vb.value.w &&
+      pos.y >= vb.value.y &&
+      pos.y <= vb.value.y + vb.value.h
+
+    if (!inView) {
+      animateToVb(
+        {
+          x: pos.x - vb.value.w / 2,
+          y: pos.y - vb.value.h / 2,
+          w: vb.value.w,
+          h: vb.value.h,
+        },
+        200,
+      )
+    }
+  },
+)
+
 /* ================================================================
  *  阶段导航
  * ================================================================ */
@@ -1639,6 +1746,7 @@ const effectivePhases = computed<PhaseSegment[]>(() => props.phases ?? [])
  * 是否展示阶段指示条
  */
 const showPhaseIndicator = computed<boolean>(() => {
+  if (!vizFlags.showPhases) return false
   if (effectivePhases.value.length === 0) return false
   if (isStructureEmpty.value) return false
   return activePhaseIndex.value !== null
@@ -1812,22 +1920,24 @@ onBeforeUnmount(() => {
           </defs>
 
           <!-- 标签 / 标题 / 副标题 -->
-          <text v-if="labelDisplayText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveLabelY"
-            class="viz-label">
-            {{ labelDisplayText }}
-          </text>
-          <text v-if="titleText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveTitleY"
-            class="viz-title">
-            {{ titleText }}
-          </text>
-          <text v-if="commentText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveCommentY"
-            class="viz-comment">
-            {{ commentText }}
-          </text>
-          <text v-if="authorText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveAuthorY"
-            class="viz-author">
-            {{ authorText }}
-          </text>
+          <template v-if="vizFlags.showVizTitle">
+            <text v-if="labelDisplayText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveLabelY"
+              class="viz-label">
+              {{ labelDisplayText }}
+            </text>
+            <text v-if="titleText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveTitleY"
+              class="viz-title">
+              {{ titleText }}
+            </text>
+            <text v-if="commentText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveCommentY"
+              class="viz-comment">
+              {{ commentText }}
+            </text>
+            <text v-if="authorText.length > 0 && !isStructureEmpty" :x="effectiveTitleX" :y="effectiveAuthorY"
+              class="viz-author">
+              {{ authorText }}
+            </text>
+          </template>
 
           <!-- 空结构图形 -->
           <g v-if="isStructureEmpty">
@@ -1880,7 +1990,7 @@ onBeforeUnmount(() => {
               <line :x1="stackLayout.cx + stackLayout.cylRx" :y1="item.y - stackLayout.cylItemH / 2"
                 :x2="stackLayout.cx + stackLayout.cylRx" :y2="item.y + stackLayout.cylItemH / 2" class="viz-cyl-side" />
               <ellipse :cx="stackLayout.cx" :cy="item.y - stackLayout.cylItemH / 2" :rx="stackLayout.cylRx" :ry="CYL_RY"
-                class="viz-cyl-top" :class="{ 'viz-cyl-top--accent': item.isTop }" />
+                class="viz-cyl-top" :class="{ 'viz-cyl-top--accent': item.isTop }" :style="getHlStyle(`s-${index}`)" />
               <text :x="stackLayout.cx" :y="item.displayLines.length === 1 ? item.y + 4 : item.y - LINE_H / 2 + 4"
                 class="viz-val" @pointerenter="showTip(stackTipLines(index, item.value, item.isTop), $event)"
                 @pointerleave="hideTip">
@@ -1906,7 +2016,8 @@ onBeforeUnmount(() => {
             <template v-for="(item, index) in queueLayout.items" :key="`qi-${index}`">
               <rect :x="item.x" :y="PAD + 20" :width="queueLayout.boxW" :height="queueLayout.boxH" rx="6"
                 class="viz-box"
-                :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }" />
+                :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }"
+                :style="getHlStyle(`q-${index}`)" />
               <text :x="item.x + queueLayout.boxW / 2" :y="item.displayLines.length === 1
                 ? PAD + 20 + queueLayout.boxH / 2 + 4
                 : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4" class="viz-val"
@@ -1947,7 +2058,7 @@ onBeforeUnmount(() => {
                 class="viz-node-rect" :class="{
                   'viz-node-rect--accent': node.labels.length > 0,
                   'viz-node--added': node.diff === 'added',
-                }" />
+                }" :style="getHlStyle(`n-${node.id}`)" />
               <text :x="node.x + slistLayout.nodeW / 2" :y="node.displayLines.length === 1
                 ? PAD + 20 + slistLayout.nodeH / 2 - 4
                 : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
@@ -1999,7 +2110,7 @@ onBeforeUnmount(() => {
                 class="viz-node-rect" :class="{
                   'viz-node-rect--accent': node.labels.length > 0,
                   'viz-node--added': node.diff === 'added',
-                }" />
+                }" :style="getHlStyle(`n-${node.id}`)" />
               <text :x="node.x + dlistLayout.nodeW / 2" :y="node.displayLines.length === 1
                 ? PAD + 20 + dlistLayout.nodeH / 2 - 4
                 : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
@@ -2050,7 +2161,7 @@ onBeforeUnmount(() => {
               <circle :cx="node.x" :cy="node.y" :r="treeLayout.treeR" class="viz-tree-node" :class="{
                 'viz-tree-node--root': node.isRoot,
                 'viz-node--added': node.diff === 'added',
-              }" />
+              }" :style="getHlStyle(`t-${node.id}`)" />
               <text :x="node.x" :y="node.y + 5" class="viz-val" @pointerenter="showTip(treeTipLines(node), $event)"
                 @pointerleave="hideTip">
                 {{ node.displayLines[0] }}
@@ -2062,7 +2173,8 @@ onBeforeUnmount(() => {
           <g v-if="graphLayout">
             <line v-for="(edge, index) in graphLayout.edges" :key="`ge-${index}`" :x1="edge.x1" :y1="edge.y1"
               :x2="edge.x2" :y2="edge.y2" class="viz-edge"
-              :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined" />
+              :marker-end="isDirected ? 'url(#viz-arrow-accent)' : undefined"
+              :style="getEdgeHlStyle(edge.from, edge.to)" />
             <text v-for="(edge, index) in graphLayout.edges" :key="`gw-${index}`"
               v-show="isWeighted && edge.weight !== undefined" :x="edge.mx" :y="edge.my - 6" class="viz-weight">
               {{ edge.weight }}
@@ -2070,7 +2182,7 @@ onBeforeUnmount(() => {
             <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`">
               <circle :cx="node.x" :cy="node.y" :r="graphLayout.graphR" class="viz-graph-node"
                 :class="{ 'viz-node--added': node.diff === 'added' }"
-                :style="{ fill: node.color + '18', stroke: node.color }" />
+                :style="getGraphNodeHlStyle(node.id, node.color)" />
               <text :x="node.x" :y="node.y + 5" class="viz-val" @pointerenter="showTip(graphTipLines(node), $event)"
                 @pointerleave="hideTip">
                 {{ node.displayLines[0] }}
@@ -2554,8 +2666,9 @@ onBeforeUnmount(() => {
     x var(--duration-viz) var(--ease),
     y var(--duration-viz) var(--ease),
     r var(--duration-viz) var(--ease),
-    fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
+    fill var(--duration-fast) var(--ease),
+    stroke var(--duration-fast) var(--ease),
+    stroke-width var(--duration-fast) var(--ease);
 }
 
 .viz-panel--smooth .viz-edge,
@@ -2564,7 +2677,9 @@ onBeforeUnmount(() => {
     x1 var(--duration-viz) var(--ease),
     y1 var(--duration-viz) var(--ease),
     x2 var(--duration-viz) var(--ease),
-    y2 var(--duration-viz) var(--ease);
+    y2 var(--duration-viz) var(--ease),
+    stroke var(--duration-fast) var(--ease),
+    stroke-width var(--duration-fast) var(--ease);
 }
 
 .viz-panel--smooth .viz-val,
@@ -2575,13 +2690,28 @@ onBeforeUnmount(() => {
     y var(--duration-viz) var(--ease);
 }
 
+/* 高亮过渡（始终生效） */
+.viz-cyl-top,
+.viz-cyl-body,
+.viz-box,
+.viz-node-rect,
+.viz-tree-node,
+.viz-graph-node,
+.viz-edge {
+  transition:
+    fill var(--duration-fast) var(--ease),
+    stroke var(--duration-fast) var(--ease),
+    stroke-width var(--duration-fast) var(--ease);
+}
+
 .viz-panel--smooth .viz-cyl-body,
 .viz-panel--smooth .viz-cyl-top,
 .viz-panel--smooth .viz-box,
 .viz-panel--smooth .viz-node-rect {
   transition:
-    fill var(--duration-viz) var(--ease),
-    stroke var(--duration-viz) var(--ease);
+    fill var(--duration-fast) var(--ease),
+    stroke var(--duration-fast) var(--ease),
+    stroke-width var(--duration-fast) var(--ease);
 }
 
 .viz-panel--smooth .viz-node--added {

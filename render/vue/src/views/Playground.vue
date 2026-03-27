@@ -574,10 +574,10 @@ watch(currentStateIndex, (next, prev) => {
           </div>
         </section>
         <button class="playground__collapsed-strip"
-          :class="{ 'playground__collapsed-strip--active': panelMode === 'editor-full' }" aria-label="点击展开可视化"
-          @click="restoreSplit">
+          :class="{ 'playground__collapsed-strip--active': panelMode === 'editor-full' }" aria-label="切换渲染器"
+          @click="expandViz">
           <MaterialIcon name="graph_3" :size="18" />
-          <span class="playground__collapsed-text">点击展开可视化</span>
+          <span class="playground__collapsed-text">切换渲染器</span>
         </button>
       </div>
 
@@ -619,10 +619,10 @@ watch(currentStateIndex, (next, prev) => {
           </div>
         </section>
         <button class="playground__collapsed-strip"
-          :class="{ 'playground__collapsed-strip--active': panelMode === 'viz-full' }" aria-label="点击展开编辑器"
-          @click="restoreSplit">
+          :class="{ 'playground__collapsed-strip--active': panelMode === 'viz-full' }" aria-label="切换编辑器"
+          @click="expandEditor">
           <MaterialIcon name="code" :size="18" />
-          <span class="playground__collapsed-text">点击展开编辑器</span>
+          <span class="playground__collapsed-text">切换编辑器</span>
         </button>
       </div>
     </div>
