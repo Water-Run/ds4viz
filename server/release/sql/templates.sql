@@ -866,26 +866,29 @@ $D$构建有序链表后执行 reverse，使用阶段和高亮展示反转前后
 INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'python', $C$import ds4viz as dv
 
-dv.config(title="单链表反转")
+dv.config(title="单链表遍历")
 
-with dv.single_linked_list(label="reverse_slist") as l:
-    nodes = []
+with dv.single_linked_list(label="traverse_slist") as l:
     with l.phase("构建"):
-        for v in [1, 2, 3, 4]:
-            nid = l.insert_tail(v)
-            nodes.append(nid)
+        a = l.insert_head("甲")
+        b = l.insert_tail("乙")
+        c = l.insert_tail("丙")
+        d = l.insert_tail("丁")
 
-    l.step(note="反转前: 1→2→3→4", highlights=[
-        dv.node(nodes[0], "focus", level=2),
-        dv.node(nodes[-1], "active")
-    ])
+    visited = []
 
-    with l.phase("反转"):
-        l.reverse()
-        l.amend(note="反转完成: 4→3→2→1", highlights=[
-            dv.node(nodes[-1], "focus", level=2),
-            dv.node(nodes[0], "active")
+    def visit(nid, label):
+        l.step(note=f"访问 {label}", highlights=[
+            *[dv.node(v, "visited") for v in visited],
+            dv.node(nid, "focus", level=3)
         ])
+        visited.append(nid)
+
+    with l.phase("遍历"):
+        visit(a, "甲")
+        visit(b, "乙")
+        visit(c, "丙")
+        visit(d, "丁")
 $C$, $E$### Python 实现
 
 阶段划分"构建"与"反转"，高亮标识头尾节点位置的互换。$E$);
@@ -894,28 +897,41 @@ INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'c', $C$#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
+#include <stdio.h>
+
+#define SLIST_VISIT_LINE 8
+
+#define VISIT(obj, label, ...)                                           \
+    do {                                                                 \
+        char _dv_note[64];                                               \
+        snprintf(_dv_note, sizeof _dv_note, "访问 %s", (label));         \
+        dvStepAt((obj), SLIST_VISIT_LINE, _dv_note, __VA_ARGS__);       \
+    } while (0)
 
 int main(void) {
-    dvConfig((dvConfigOptions){ .title = "单链表反转" });
+    dvConfig((dvConfigOptions){ .title = "单链表遍历" });
 
-    dvSingleLinkedList(l, "reverse_slist") {
-        int n1, n2, n3, n4;
+    dvSingleLinkedList(l, "traverse_slist") {
+        int a, b, c, d;
         dvPhase(l, "构建") {
-            n1 = dvSlInsertTail(l, 1);
-            n2 = dvSlInsertTail(l, 2);
-            n3 = dvSlInsertTail(l, 3);
-            n4 = dvSlInsertTail(l, 4);
+            a = dvSlInsertHead(l, "甲");
+            b = dvSlInsertTail(l, "乙");
+            c = dvSlInsertTail(l, "丙");
+            d = dvSlInsertTail(l, "丁");
         }
 
-        dvStep(l, "反转前: 1->2->3->4",
-            dvNode(n1, DV_FOCUS, 2),
-            dvNode(n4, DV_ACTIVE));
-
-        dvPhase(l, "反转") {
-            dvSlReverse(l);
-            dvAmend(l, "反转完成: 4->3->2->1",
-                dvNode(n4, DV_FOCUS, 2),
-                dvNode(n1, DV_ACTIVE));
+        dvPhase(l, "遍历") {
+            VISIT(l, "甲",
+                dvNode(a, DV_FOCUS, 3));
+            VISIT(l, "乙",
+                dvNode(a, DV_VISITED),
+                dvNode(b, DV_FOCUS, 3));
+            VISIT(l, "丙",
+                dvNode(a, DV_VISITED), dvNode(b, DV_VISITED),
+                dvNode(c, DV_FOCUS, 3));
+            VISIT(l, "丁",
+                dvNode(a, DV_VISITED), dvNode(b, DV_VISITED), dvNode(c, DV_VISITED),
+                dvNode(d, DV_FOCUS, 3));
         }
     }
     return 0;
@@ -1516,6 +1532,17 @@ INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'c', $C$#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
+#include <stdio.h>
+
+/* 固定逻辑行号，便于与封装调用场景对齐 */
+#define PREORDER_VISIT_LINE 17
+
+#define VISIT(obj, nid, val, ...)                                  \
+    do {                                                           \
+        char _dv_note[64];                                         \
+        snprintf(_dv_note, sizeof _dv_note, "访问节点 %d", (val)); \
+        dvStepAt((obj), PREORDER_VISIT_LINE, _dv_note, __VA_ARGS__); \
+    } while (0)
 
 int main(void) {
     dvConfig((dvConfigOptions){ .title = "二叉树前序遍历", .author = "ds4viz" });
@@ -1534,24 +1561,37 @@ int main(void) {
         }
 
         dvPhase(tree, "前序遍历") {
-            dvStep(tree, "访问 10",
+            VISIT(tree, root, 10,
                 dvNode(root, DV_FOCUS, 3));
-            dvStep(tree, "访问 5",
+
+            VISIT(tree, n5, 5,
                 dvNode(root, DV_VISITED),
                 dvNode(n5, DV_FOCUS, 3));
-            dvStep(tree, "访问 3",
-                dvNode(root, DV_VISITED), dvNode(n5, DV_VISITED),
+
+            VISIT(tree, n3, 3,
+                dvNode(root, DV_VISITED),
+                dvNode(n5, DV_VISITED),
                 dvNode(n3, DV_FOCUS, 3));
-            dvStep(tree, "访问 7",
-                dvNode(root, DV_VISITED), dvNode(n5, DV_VISITED), dvNode(n3, DV_VISITED),
+
+            VISIT(tree, n7, 7,
+                dvNode(root, DV_VISITED),
+                dvNode(n5, DV_VISITED),
+                dvNode(n3, DV_VISITED),
                 dvNode(n7, DV_FOCUS, 3));
-            dvStep(tree, "访问 15",
-                dvNode(root, DV_VISITED), dvNode(n5, DV_VISITED), dvNode(n3, DV_VISITED),
+
+            VISIT(tree, n15, 15,
+                dvNode(root, DV_VISITED),
+                dvNode(n5, DV_VISITED),
+                dvNode(n3, DV_VISITED),
                 dvNode(n7, DV_VISITED),
                 dvNode(n15, DV_FOCUS, 3));
-            dvStep(tree, "访问 12",
-                dvNode(root, DV_VISITED), dvNode(n5, DV_VISITED), dvNode(n3, DV_VISITED),
-                dvNode(n7, DV_VISITED), dvNode(n15, DV_VISITED),
+
+            VISIT(tree, n12, 12,
+                dvNode(root, DV_VISITED),
+                dvNode(n5, DV_VISITED),
+                dvNode(n3, DV_VISITED),
+                dvNode(n7, DV_VISITED),
+                dvNode(n15, DV_VISITED),
                 dvNode(n12, DV_FOCUS, 3));
         }
     }
@@ -1559,7 +1599,8 @@ int main(void) {
 }
 $C$, $E$### C 实现
 
-每步 `dvStep` 累积所有已访问节点的 `DV_VISITED` 高亮，当前节点标记 `DV_FOCUS`。$E$);
+使用封装宏 `VISIT` + `dvStepAt` 固定 `steps.code.line`，便于在封装调用场景下保持行号语义稳定；
+同时每步仍累积 `DV_VISITED`，当前节点标记 `DV_FOCUS`。$E$);
 
 -- [25] 二叉树中序遍历
 INSERT INTO templates (title, category, description) VALUES (
@@ -1569,6 +1610,7 @@ $D$中序遍历（左→根→右），对 BST 可得到有序序列。$D$
 
 INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'python', $C$import ds4viz as dv
+
 
 dv.config(title="二叉树中序遍历")
 
@@ -1582,16 +1624,21 @@ with dv.binary_tree(label="inorder") as tree:
         e = tree.insert_right(b, "E")
 
     # 中序: D, B, E, A, C
-    order = [(d,"D"), (b,"B"), (e,"E"), (root,"A"), (c,"C")]
     visited = []
 
+    def visit(nid, val):
+        tree.step(note=f"访问 {val}", highlights=[
+            *[dv.node(v, "visited") for v in visited],
+            dv.node(nid, "focus", level=3)
+        ])
+        visited.append(nid)
+
     with tree.phase("中序遍历"):
-        for nid, val in order:
-            tree.step(note=f"访问 {val}", highlights=[
-                *[dv.node(v, "visited") for v in visited],
-                dv.node(nid, "focus", level=3)
-            ])
-            visited.append(nid)
+        visit(d, "D")
+        visit(b, "B")
+        visit(e, "E")
+        visit(root, "A")
+        visit(c, "C")
 $C$, $E$### Python 实现
 
 中序遍历：左→根→右。遍历顺序 D→B→E→A→C。$E$);
@@ -1600,6 +1647,16 @@ INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'c', $C$#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
+#include <stdio.h>
+
+#define INORDER_VISIT_LINE 8
+
+#define VISIT(obj, val, ...)                                             \
+    do {                                                                 \
+        char _dv_note[64];                                               \
+        snprintf(_dv_note, sizeof _dv_note, "访问 %s", (val));           \
+        dvStepAt((obj), INORDER_VISIT_LINE, _dv_note, __VA_ARGS__);     \
+    } while (0)
 
 int main(void) {
     dvConfig((dvConfigOptions){ .title = "二叉树中序遍历" });
@@ -1616,18 +1673,18 @@ int main(void) {
         }
 
         dvPhase(tree, "中序遍历") {
-            dvStep(tree, "访问 D",
+            VISIT(tree, "D",
                 dvNode(d, DV_FOCUS, 3));
-            dvStep(tree, "访问 B",
+            VISIT(tree, "B",
                 dvNode(d, DV_VISITED),
                 dvNode(b, DV_FOCUS, 3));
-            dvStep(tree, "访问 E",
+            VISIT(tree, "E",
                 dvNode(d, DV_VISITED), dvNode(b, DV_VISITED),
                 dvNode(e, DV_FOCUS, 3));
-            dvStep(tree, "访问 A",
+            VISIT(tree, "A",
                 dvNode(d, DV_VISITED), dvNode(b, DV_VISITED), dvNode(e, DV_VISITED),
                 dvNode(root, DV_FOCUS, 3));
-            dvStep(tree, "访问 C",
+            VISIT(tree, "C",
                 dvNode(d, DV_VISITED), dvNode(b, DV_VISITED), dvNode(e, DV_VISITED),
                 dvNode(root, DV_VISITED),
                 dvNode(c, DV_FOCUS, 3));
@@ -1635,6 +1692,7 @@ int main(void) {
     }
     return 0;
 }
+
 $C$, $E$### C 实现
 
 中序遍历逐步展示，最终所有节点标记为 `DV_VISITED`。$E$);
@@ -1660,16 +1718,22 @@ with dv.binary_tree(label="postorder") as tree:
         e = tree.insert_right(b, "E")
 
     # 后序: D, E, B, C, A
-    order = [(d,"D"), (e,"E"), (b,"B"), (c,"C"), (root,"A")]
     visited = []
 
+    def visit(nid, val):
+        tree.step(note=f"访问 {val}", highlights=[
+            *[dv.node(v, "visited") for v in visited],
+            dv.node(nid, "focus", level=3)
+        ])
+        visited.append(nid)
+
     with tree.phase("后序遍历"):
-        for nid, val in order:
-            tree.step(note=f"访问 {val}", highlights=[
-                *[dv.node(v, "visited") for v in visited],
-                dv.node(nid, "focus", level=3)
-            ])
-            visited.append(nid)
+        visit(d, "D")
+        visit(e, "E")
+        visit(b, "B")
+        visit(c, "C")
+        visit(root, "A")
+
 $C$, $E$### Python 实现
 
 后序遍历：左→右→根。根节点最后被访问。$E$);
@@ -1678,6 +1742,16 @@ INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'c', $C$#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
+#include <stdio.h>
+
+#define POSTORDER_VISIT_LINE 8
+
+#define VISIT(obj, val, ...)                                               \
+    do {                                                                   \
+        char _dv_note[64];                                                 \
+        snprintf(_dv_note, sizeof _dv_note, "访问 %s", (val));             \
+        dvStepAt((obj), POSTORDER_VISIT_LINE, _dv_note, __VA_ARGS__);     \
+    } while (0)
 
 int main(void) {
     dvConfig((dvConfigOptions){ .title = "二叉树后序遍历" });
@@ -1694,18 +1768,18 @@ int main(void) {
         }
 
         dvPhase(tree, "后序遍历") {
-            dvStep(tree, "访问 D",
+            VISIT(tree, "D",
                 dvNode(d, DV_FOCUS, 3));
-            dvStep(tree, "访问 E",
+            VISIT(tree, "E",
                 dvNode(d, DV_VISITED),
                 dvNode(e, DV_FOCUS, 3));
-            dvStep(tree, "访问 B",
+            VISIT(tree, "B",
                 dvNode(d, DV_VISITED), dvNode(e, DV_VISITED),
                 dvNode(b, DV_FOCUS, 3));
-            dvStep(tree, "访问 C",
+            VISIT(tree, "C",
                 dvNode(d, DV_VISITED), dvNode(e, DV_VISITED), dvNode(b, DV_VISITED),
                 dvNode(c, DV_FOCUS, 3));
-            dvStep(tree, "访问 A",
+            VISIT(tree, "A",
                 dvNode(d, DV_VISITED), dvNode(e, DV_VISITED), dvNode(b, DV_VISITED),
                 dvNode(c, DV_VISITED),
                 dvNode(root, DV_FOCUS, 3));
@@ -1726,6 +1800,7 @@ $D$逐层从左到右访问所有节点（广度优先遍历）。$D$
 INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'python', $C$import ds4viz as dv
 
+
 dv.config(title="二叉树层序遍历")
 
 with dv.binary_tree(label="levelorder") as tree:
@@ -1738,19 +1813,18 @@ with dv.binary_tree(label="levelorder") as tree:
         n6 = tree.insert_left(n3, 6)
 
     visited = []
-    levels = [
-        ([root], "第 1 层: [1]"),
-        ([n2, n3], "第 2 层: [2, 3]"),
-        ([n4, n5, n6], "第 3 层: [4, 5, 6]"),
-    ]
+
+    def visit_level(nodes, desc):
+        tree.step(note=desc, highlights=[
+            *[dv.node(v, "visited") for v in visited],
+            *[dv.node(n, "focus", level=3) for n in nodes]
+        ])
+        visited.extend(nodes)
 
     with tree.phase("层序遍历"):
-        for level_nodes, desc in levels:
-            tree.step(note=desc, highlights=[
-                *[dv.node(v, "visited") for v in visited],
-                *[dv.node(n, "focus", level=3) for n in level_nodes]
-            ])
-            visited.extend(level_nodes)
+        visit_level([root], "第 1 层: [1]")
+        visit_level([n2, n3], "第 2 层: [2, 3]")
+        visit_level([n4, n5, n6], "第 3 层: [4, 5, 6]")
 $C$, $E$### Python 实现
 
 每层所有节点同时标记为 `focus`，已遍历层标记为 `visited`。$E$);
@@ -2045,16 +2119,22 @@ with dv.binary_search_tree(label="inorder_bst") as bst:
         n14 = bst.insert(14)
 
     # 中序: 1, 3, 6, 8, 10, 14
-    order = [(n1,1), (n3,3), (n6,6), (n8,8), (n10,10), (n14,14)]
     visited = []
 
+    def visit(nid, val):
+        bst.step(note=f"访问 {val}", highlights=[
+            *[dv.node(v, "visited") for v in visited],
+            dv.node(nid, "focus", level=3)
+        ])
+        visited.append(nid)
+
     with bst.phase("中序遍历"):
-        for nid, val in order:
-            bst.step(note=f"访问 {val}", highlights=[
-                *[dv.node(v, "visited") for v in visited],
-                dv.node(nid, "focus", level=3)
-            ])
-            visited.append(nid)
+        visit(n1, 1)
+        visit(n3, 3)
+        visit(n6, 6)
+        visit(n8, 8)
+        visit(n10, 10)
+        visit(n14, 14)
 $C$, $E$### Python 实现
 
 中序遍历 BST 输出有序序列：1→3→6→8→10→14。$E$);
@@ -2063,6 +2143,16 @@ INSERT INTO template_codes (template_id, language, code, explanation) VALUES
 (currval('templates_id_seq'), 'c', $C$#define DS4VIZ_IMPLEMENTATION
 #define DS4VIZ_SHORT_NAMES
 #include "ds4viz.h"
+#include <stdio.h>
+
+#define BST_INORDER_VISIT_LINE 8
+
+#define VISIT(obj, val, ...)                                                  \
+    do {                                                                      \
+        char _dv_note[64];                                                    \
+        snprintf(_dv_note, sizeof _dv_note, "访问 %d", (val));                \
+        dvStepAt((obj), BST_INORDER_VISIT_LINE, _dv_note, __VA_ARGS__);      \
+    } while (0)
 
 int main(void) {
     dvConfig((dvConfigOptions){ .title = "BST 中序遍历 (有序输出)" });
@@ -2080,19 +2170,22 @@ int main(void) {
         }
 
         dvPhase(bst, "中序遍历") {
-            dvStep(bst, "访问 1", dvNode(n1, DV_FOCUS, 3));
-            dvStep(bst, "访问 3",
-                dvNode(n1, DV_VISITED), dvNode(n3, DV_FOCUS, 3));
-            dvStep(bst, "访问 6",
+            VISIT(bst, 1,
+                dvNode(n1, DV_FOCUS, 3));
+            VISIT(bst, 3,
+                dvNode(n1, DV_VISITED),
+                dvNode(n3, DV_FOCUS, 3));
+            VISIT(bst, 6,
                 dvNode(n1, DV_VISITED), dvNode(n3, DV_VISITED),
                 dvNode(n6, DV_FOCUS, 3));
-            dvStep(bst, "访问 8",
+            VISIT(bst, 8,
                 dvNode(n1, DV_VISITED), dvNode(n3, DV_VISITED), dvNode(n6, DV_VISITED),
                 dvNode(n8, DV_FOCUS, 3));
-            dvStep(bst, "访问 10",
+            VISIT(bst, 10,
                 dvNode(n1, DV_VISITED), dvNode(n3, DV_VISITED), dvNode(n6, DV_VISITED),
-                dvNode(n8, DV_VISITED), dvNode(n10, DV_FOCUS, 3));
-            dvStep(bst, "访问 14",
+                dvNode(n8, DV_VISITED),
+                dvNode(n10, DV_FOCUS, 3));
+            VISIT(bst, 14,
                 dvNode(n1, DV_VISITED), dvNode(n3, DV_VISITED), dvNode(n6, DV_VISITED),
                 dvNode(n8, DV_VISITED), dvNode(n10, DV_VISITED),
                 dvNode(n14, DV_FOCUS, 3));
@@ -2100,6 +2193,7 @@ int main(void) {
     }
     return 0;
 }
+
 $C$, $E$### C 实现
 
 BST 中序遍历天然输出升序，验证 BST 的有序性质。$E$);
@@ -2361,7 +2455,7 @@ with dv.graph_undirected(label="dfs_demo") as g:
         g.step(note=f"进入 {label}", highlights=[
             *[dv.node(v, "visited") for v in visited],
             dv.node(nid, "focus", level=3)
-        ])
+        ], line_offset=1)
         visited.append(nid)
 
     with g.phase("DFS"):
@@ -2611,7 +2705,7 @@ with dv.graph_directed(label="dfs_digraph") as g:
         g.step(note=f"进入 {label}", highlights=[
             *[dv.node(v, "visited") for v in visited],
             dv.node(nid, "focus", level=3)
-        ])
+        ], line_offset=1)
         visited.append(nid)
 
     with g.phase("DFS"):
@@ -2747,7 +2841,7 @@ with dv.graph_directed(label="topo_sort") as g:
         g.step(note=note, highlights=[
             *[dv.node(v, "visited") for v in visited],
             dv.node(nid, "focus", level=3)
-        ])
+        ], line_offset=1)
         visited.append(nid)
 
     with g.phase("拓扑排序"):

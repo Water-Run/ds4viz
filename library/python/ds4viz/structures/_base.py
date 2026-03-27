@@ -3,7 +3,7 @@ r"""
 
 :file: ds4viz/structures/_base.py
 :author: WaterRun
-:time: 2026-03-23
+:time: 2026-03-27
 """
 
 import re
@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from types import TracebackType
 from typing import Any
 
-from ds4viz.session import ContextManager, get_caller_line
+from ds4viz.session import ContextManager, get_caller_line, get_user_caller_line
 from ds4viz.exception import StructureError
 
 ValueType = int | float | str | bool
@@ -142,39 +142,43 @@ class BaseStructure(ContextManager, ABC):
             phase=self._current_phase
         )
 
+
     def _raise_error(self, message: str) -> None:
         r"""
-        抛出数据结构错误
+            抛出数据结构错误.
+            不创建步骤, error.step 保持为 None 以符合 IR 约束.
 
-        :param message: 错误消息
-        :return None: 无返回值
-        :raise StructureError: 始终抛出
-        """
+            :param message: 错误消息
+            :return None: 无返回值
+            :raise StructureError: 始终抛出
+            """
         line: int = get_caller_line(3)
-        step_id: int = self._session.step_counter
-        self._session._failed_step_id = step_id
         raise StructureError(message, line)
 
     def step(
         self,
         note: str | None = None,
-        highlights: list[dict[str, Any]] | None = None
+        highlights: list[dict[str, Any]] | None = None,
+        line_offset: int = 0
     ) -> None:
         r"""
-        记录一次观察步骤, 不改变数据结构的状态, 但会创建新的状态快照
-        以反映别名等展示属性的变化
+        记录一次观察步骤, 不改变数据结构的状态.
+        在 IR 中生成 op = "observe"、before == after 的 step.
+        适用于遍历、查找等需要逐步展示但不修改结构的场景.
 
         :param note: 步骤说明, 长度 1..256
         :param highlights: 高亮标记列表
+        :param line_offset: 用户调用栈偏移量.
+                            0 表示记录 step() 调用处;
+                            1 表示记录 step() 外层封装函数调用处
         :return None: 无返回值
         """
-        before: int = self._session.get_last_state_id()
-        line: int = get_caller_line(2)
-        after: int = self._session.add_state(self._build_data())
+        current: int = self._session.get_last_state_id()
+        line: int = get_user_caller_line(line_offset)
         self._session.add_step(
             op="observe",
-            before=before,
-            after=after,
+            before=current,
+            after=current,
             args={},
             line=line,
             note=note,
@@ -236,3 +240,4 @@ class BaseStructure(ContextManager, ABC):
                 if nid != node_id and existing == name:
                     self._raise_error(f"Alias already in use: {name}")
             self._aliases[node_id] = name
+        self._session.update_last_state_data(self._build_data())

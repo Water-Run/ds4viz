@@ -182,7 +182,8 @@ def edge(
 def step(
     self,
     note: str | None = None,
-    highlights: list | None = None
+    highlights: list | None = None,
+    line_offset: int = 0
 ) -> None:
     r"""
     记录一次观察步骤, 不改变数据结构的状态.
@@ -191,6 +192,9 @@ def step(
 
     :param note: 步骤说明, 长度 1..256
     :param highlights: 高亮标记列表, 由 dv.node() / dv.item() / dv.edge() 构造
+    :param line_offset: 用户调用栈偏移量.
+                        0 表示记录 step() 调用处;
+                        1 表示记录 step() 外层封装函数调用处
     :return None: 无返回值
     """
 ```

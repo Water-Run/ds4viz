@@ -3,13 +3,13 @@ r"""
 
 :file: test/unit_test.py
 :author: WaterRun
-:time: 2026-03-23
+:time: 2026-03-27
 """
 
 import sys
 from pathlib import Path
 from typing import Any
-
+import inspect
 import pytest
 
 from ds4viz.exception import DS4VizError, StructureError, ValidationError, ErrorType
@@ -1417,16 +1417,41 @@ class TestStepAmendPhase:
         assert 'style = "visited"' in content
         assert 'style = "focus"' in content
 
-    def test_step_also_produces_new_state(self, tmp_path: Path) -> None:
-        r"""测试 step() 虽不改变数据但仍产生新状态快照"""
+    def test_step_does_not_produce_new_state(self, tmp_path: Path) -> None:
+        r"""测试 step() 不改变数据也不产生新状态快照, before == after"""
         output: Path = tmp_path / "step_state.toml"
         with Stack(output=str(output)) as s:
             s.push(10)
             state_before: int = s._session.get_last_state_id()
             s.step(note="观察")
             state_after: int = s._session.get_last_state_id()
-            assert state_after == state_before + 1
+            assert state_after == state_before
+            last_step: Step | None = s._session.get_last_step()
+            assert last_step is not None
+            assert last_step.before == last_step.after
 
+    def test_step_records_caller_line_number(
+        self, tmp_path: Path
+    ) -> None:
+        r"""测试 step() 记录的行号精确指向调用处源码行,
+        确保前端可以正确高亮对应代码行"""
+        output: Path = tmp_path / "line_check.toml"
+        with Stack(output=str(output)) as s:
+            s.push(42)
+            expected_line: int = inspect.currentframe().f_lineno + 1
+            s.step(note="检查行号")
+            last_step: Step = s._session._steps[-1]
+            assert last_step.code is not None, (
+                "step 应记录 code 字段"
+            )
+            assert last_step.code.line == expected_line, (
+                f"期望行号 {expected_line}, "
+                f"实际 {last_step.code.line}"
+            )
+            assert last_step.before == last_step.after, (
+                f"observe 步骤 before({last_step.before}) "
+                f"应等于 after({last_step.after})"
+            )
 
 class TestAliasMethod:
     r"""alias 方法测试"""

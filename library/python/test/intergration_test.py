@@ -3,12 +3,13 @@ r"""
 
 :file: test/intergration_test.py
 :author: WaterRun
-:time: 2026-03-23
+:time: 2026-03-27
 """
 
 import re
 from pathlib import Path
-
+import inspect
+import tomllib
 import pytest
 
 import ds4viz
@@ -1505,15 +1506,146 @@ class TestEdgeCases:
         assert 'note = "第二次"' in content
 
     def test_step_only_no_mutations(self, tmp_path: Path) -> None:
-        r"""测试仅使用 step 不做结构变更, step 仍会生成新的 state 快照"""
+        r"""测试仅使用 step 不做结构变更, step 不生成新的 state 快照, before == after"""
         out = tmp_path / "so.toml"
         with stack(output=str(out)) as s:
             s.step(note="观察空栈")
         content: str = out.read_text(encoding="utf-8")
         _validate(content)
         assert 'op = "observe"' in content
-        assert content.count("[[states]]") == 2
+        assert content.count("[[states]]") == 1
 
+    def test_step_line_offset_for_wrapped_visit(self, tmp_path: Path) -> None:
+        r"""
+        测试 step(line_offset=1) 在封装函数场景下记录外层调用行号
+        """
+        out: Path = tmp_path / "wrapped_step_line.toml"
+        observe_lines: list[int] = []
+
+        with binary_tree(output=str(out)) as tree:
+            root: int = tree.insert_root(10)
+            n5: int = tree.insert_left(root, 5)
+            n15: int = tree.insert_right(root, 15)
+            visited: list[int] = []
+
+            def visit(node_id: int, label: int) -> None:
+                r"""
+                封装访问逻辑, 使用 line_offset=1 记录外层调用行
+
+                :param node_id: 节点 ID
+                :param label: 节点标签值
+                :return None: 无返回值
+                """
+                tree.step(
+                    note=f"访问 {label}",
+                    highlights=[
+                        *[ds4viz.node(v, "visited") for v in visited],
+                        ds4viz.node(node_id, "focus", level=3)
+                    ],
+                    line_offset=1
+                )
+                visited.append(node_id)
+
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            visit(root, 10)
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            visit(n5, 5)
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            visit(n15, 15)
+
+        content: str = out.read_text(encoding="utf-8")
+        _validate(content)
+        data: dict[str, Any] = tomllib.loads(content)
+
+        observe_steps: list[dict[str, Any]] = [
+            s for s in data["steps"] if s["op"] == "observe"
+        ]
+        assert len(observe_steps) == 3
+
+        actual_lines: list[int] = [s["code"]["line"] for s in observe_steps]
+        assert actual_lines == observe_lines
+        
+    def test_bst_inorder_traversal_line_numbers(
+        self, tmp_path: Path
+    ) -> None:
+        r"""测试二叉搜索树中序遍历中每个 observe 步骤的行号正确性,
+        验证 before == after 约束, 状态不增长, 以及 commit.line
+        指向最后一次操作的行号"""
+        output: Path = tmp_path / "bst_traversal.toml"
+        observe_lines: list[int] = []
+
+        with ds4viz.structures.binary_search_tree(output=str(output)) as tree:
+            tree.insert(4)
+            tree.insert(2)
+            tree.insert(6)
+            tree.insert(1)
+            tree.insert(3)
+            # 模拟中序遍历: 1 → 2 → 3 → 4 → 6
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 1")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 2")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 3")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 4")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 6")
+
+        content: str = output.read_text(encoding="utf-8")
+        _validate(content)
+        data: dict = tomllib.loads(content)
+
+        # ---- 验证 observe 步骤 ----
+        observe_steps: list[dict] = [
+            s for s in data["steps"] if s["op"] == "observe"
+        ]
+        assert len(observe_steps) == 5, (
+            f"应有 5 个 observe 步骤, 实际 {len(observe_steps)} 个"
+        )
+
+        for i, obs in enumerate(observe_steps):
+            # before == after
+            assert obs["before"] == obs["after"], (
+                f"observe[{i}]: before={obs['before']} "
+                f"!= after={obs['after']}"
+            )
+            # code 字段存在
+            assert obs.get("code") is not None, (
+                f"observe[{i}]: 缺少 code 字段"
+            )
+            # 行号与源码一致
+            actual_line: int = obs["code"]["line"]
+            assert actual_line == observe_lines[i], (
+                f"observe[{i}]: 期望行号 {observe_lines[i]}, "
+                f"实际行号 {actual_line}"
+            )
+
+        # ---- 验证 mutate 步骤 (insert) 的 before != after ----
+        mutate_steps: list[dict] = [
+            s for s in data["steps"] if s["op"] != "observe"
+        ]
+        assert len(mutate_steps) == 5, (
+            f"应有 5 个 insert 步骤, 实际 {len(mutate_steps)} 个"
+        )
+        for ms in mutate_steps:
+            assert ms["before"] != ms["after"], (
+                f"insert 步骤 before 应不等于 after, "
+                f"got before={ms['before']}, after={ms['after']}"
+            )
+
+        # ---- 验证状态数: init(1) + 5 次 insert = 6, observe 不增长 ----
+        assert len(data["states"]) == 6, (
+            f"应有 6 个状态, 实际 {len(data['states'])} 个"
+        )
+
+        # ---- 验证 commit.line 指向最后一次操作的行号 ----
+        commit_line: int = data["result"]["commit"]["line"]
+        assert commit_line == observe_lines[-1], (
+            f"commit.line 应为 {observe_lines[-1]}, "
+            f"实际为 {commit_line}"
+        )
+        
     def test_highlight_level_boundaries(self, tmp_path: Path) -> None:
         r"""测试高亮 level 边界值 1 和 9"""
         out = tmp_path / "hl.toml"
@@ -1525,6 +1657,87 @@ class TestEdgeCases:
         _validate(content)
         assert "level = 1" in content
         assert "level = 9" in content
+        
+    def test_bst_inorder_traversal_line_numbers(
+        self, tmp_path: Path
+    ) -> None:
+        r"""测试二叉搜索树中序遍历中每个 observe 步骤的行号正确性,
+        验证 before == after 约束, 状态不增长, 以及 commit.line
+        指向最后一次操作的行号"""
+        output: Path = tmp_path / "bst_traversal.toml"
+        observe_lines: list[int] = []
+
+        with ds4viz.structures.BinarySearchTree(output=str(output)) as tree:
+            tree.insert(4)
+            tree.insert(2)
+            tree.insert(6)
+            tree.insert(1)
+            tree.insert(3)
+            # 模拟中序遍历: 1 → 2 → 3 → 4 → 6
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 1")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 2")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 3")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 4")
+            observe_lines.append(inspect.currentframe().f_lineno + 1)
+            tree.step(note="遍历到节点 6")
+
+        content: str = output.read_text(encoding="utf-8")
+        _validate(content)
+        data: dict = tomllib.loads(content)
+
+        # ---- 验证 observe 步骤 ----
+        observe_steps: list[dict] = [
+            s for s in data["steps"] if s["op"] == "observe"
+        ]
+        assert len(observe_steps) == 5, (
+            f"应有 5 个 observe 步骤, 实际 {len(observe_steps)} 个"
+        )
+
+        for i, obs in enumerate(observe_steps):
+            # before == after
+            assert obs["before"] == obs["after"], (
+                f"observe[{i}]: before={obs['before']} "
+                f"!= after={obs['after']}"
+            )
+            # code 字段存在
+            assert obs.get("code") is not None, (
+                f"observe[{i}]: 缺少 code 字段"
+            )
+            # 行号与源码一致
+            actual_line: int = obs["code"]["line"]
+            assert actual_line == observe_lines[i], (
+                f"observe[{i}]: 期望行号 {observe_lines[i]}, "
+                f"实际行号 {actual_line}"
+            )
+
+        # ---- 验证 mutate 步骤 (insert) 的 before != after ----
+        mutate_steps: list[dict] = [
+            s for s in data["steps"] if s["op"] != "observe"
+        ]
+        assert len(mutate_steps) == 5, (
+            f"应有 5 个 insert 步骤, 实际 {len(mutate_steps)} 个"
+        )
+        for ms in mutate_steps:
+            assert ms["before"] != ms["after"], (
+                f"insert 步骤 before 应不等于 after, "
+                f"got before={ms['before']}, after={ms['after']}"
+            )
+
+        # ---- 验证状态数: init(1) + 5 次 insert = 6, observe 不增长 ----
+        assert len(data["states"]) == 6, (
+            f"应有 6 个状态, 实际 {len(data['states'])} 个"
+        )
+
+        # ---- 验证 commit.line 指向最后一次操作的行号 ----
+        commit_line: int = data["result"]["commit"]["line"]
+        assert commit_line == observe_lines[-1], (
+            f"commit.line 应为 {observe_lines[-1]}, "
+            f"实际为 {commit_line}"
+        )
 
     def test_empty_binary_tree(self, tmp_path: Path) -> None:
         r"""测试空二叉树"""

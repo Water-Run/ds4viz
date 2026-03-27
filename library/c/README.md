@@ -97,7 +97,9 @@ int main(void) {
 ### 运行语义
 
 - 进入结构作用域时: 创建对象并写入初始状态
-- 每次 API 调用: 写入一个 `step` 与对应新 `state`
+- 变更 API 调用: 写入一个 `step` 与对应新 `state`
+- `dvStep()` 调用: 写入 `op = "observe"` 且 `before == after`
+- `dvAlias()` 调用: 不写入 `step`, 不新增 `state`; 会更新当前最新 `state` 的别名视图
 - 作用域正常结束: 输出 `[result]`
 - 作用域内发生错误: 后续操作静默跳过, 退出时输出 `[error]`
 
@@ -320,6 +322,26 @@ dvStep(obj, note);                        // 有 note, 无 highlights
 dvStep(obj, note, ...);                   // 有 note + highlights (note 可为 NULL)
 ```
 
+
+#### `dvStepAt()`  
+
+```c
+/**
+ * 显式指定 steps.code.line 的观察步骤.
+ * 其余行为与 dvStep() 一致: op = "observe", before == after.
+ *
+ * @param obj 数据结构对象
+ * @param line 要写入 IR 的源码行号
+ * @param note 步骤说明 (可选)
+ * @param ... 高亮标记 (可选)
+ */
+dvStepAt(obj, line);                  // 无 note, 无 highlights
+dvStepAt(obj, line, note);            // 有 note, 无 highlights
+dvStepAt(obj, line, note, ...);       // 有 note + highlights
+```
+
+> 适用于封装函数场景: 可将外层 `__LINE__` 透传给 `dvStepAt`，避免行号全部指向封装内部。
+
 **示例:**
 
 ```c
@@ -427,8 +449,8 @@ dvBinarySearchTree(bst) {
 ```c
 /**
  * 设置或清除节点别名.
- * 别名会出现在后续的状态快照中, 供渲染器展示.
- * 不产生新的步骤.
+ * 别名会出现在状态快照中, 供渲染器展示.
+ * 不产生新的步骤, 不新增状态; 会回写当前最新状态的别名视图.
  *
  * @param obj 数据结构对象
  * @param node_id 节点 id
@@ -1323,6 +1345,7 @@ last_state = 1
 | 长名                 | 短名             |
 |----------------------|------------------|
 | `ds4vizStep`         | `dvStep`         |
+| `ds4vizStepAt`       | `dvStepAt`       |
 | `ds4vizAmend`        | `dvAmend`        |
 | `ds4vizAmendHL`      | `dvAmendHL`      |
 | `ds4vizAmendClearHL` | `dvAmendClearHL` |

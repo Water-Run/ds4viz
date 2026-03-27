@@ -9,8 +9,7 @@
  * 运行: ./test
  *
  * @author WaterRun
- * @date 2026-03-23
- * @version 0.1.0
+ * @date 2026-03-27
  * @see https://github.com/Water-Run/ds4viz
  */
 
@@ -291,6 +290,88 @@ validate_toml(const char *p_c)
     {
         return false;
     }
+    return true;
+}
+
+/**
+ * @brief 读取 [result.commit] 的 line 值
+ *
+ * @param p_c TOML 内容
+ * @param p_line 输出行号
+ * @return bool 读取成功返回 true
+ */
+static bool
+toml_get_commit_line(const char *p_c, int *p_line)
+{
+    const char *p_pos;
+    char *p_end;
+    long v;
+
+    if (!p_c || !p_line)
+    {
+        return false;
+    }
+    p_pos = strstr(p_c, "[result.commit]");
+    if (!p_pos)
+    {
+        return false;
+    }
+    p_pos = strstr(p_pos, "line = ");
+    if (!p_pos)
+    {
+        return false;
+    }
+    p_pos += 7;
+    v = strtol(p_pos, &p_end, 10);
+    if (p_end == p_pos)
+    {
+        return false;
+    }
+    *p_line = (int)v;
+    return true;
+}
+
+/**
+ * @brief 在指定 token 之后读取最近的 [steps.code].line
+ *
+ * @param p_c TOML 内容
+ * @param p_token 锚点 token
+ * @param p_line 输出行号
+ * @return bool 读取成功返回 true
+ */
+static bool
+toml_get_step_line_after_token(const char *p_c, const char *p_token, int *p_line)
+{
+    const char *p_pos;
+    char *p_end;
+    long v;
+
+    if (!p_c || !p_token || !p_line)
+    {
+        return false;
+    }
+    p_pos = strstr(p_c, p_token);
+    if (!p_pos)
+    {
+        return false;
+    }
+    p_pos = strstr(p_pos, "[steps.code]");
+    if (!p_pos)
+    {
+        return false;
+    }
+    p_pos = strstr(p_pos, "line = ");
+    if (!p_pos)
+    {
+        return false;
+    }
+    p_pos += 7;
+    v = strtol(p_pos, &p_end, 10);
+    if (p_end == p_pos)
+    {
+        return false;
+    }
+    *p_line = (int)v;
     return true;
 }
 
@@ -3067,6 +3148,95 @@ test_edge_amend_clear_highlights(void)
     T_TEARDOWN(p_c);
 }
 
+/**
+ * @brief 测试 alias 不新增 state / step, 且会回写最后 state
+ */
+static void
+test_ir_alias_no_extra_state(void)
+{
+    char *p_c;
+
+    setup_test("ir_alias_no_extra_state");
+    ds4vizBinaryTree(t)
+    {
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        ds4vizAlias(t, root, "root");
+        ds4vizBtInsertLeft(t, root, 5);
+    }
+    p_c = get_output();
+    T_VALID(p_c);
+
+    T_INT_EQ(str_count(p_c, "[[states]]"), 3);
+    T_INT_EQ(str_count(p_c, "[[steps]]"), 2);
+    T_CONTAINS(p_c, "alias = \"root\"");
+
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试 result.commit.line 跟随最后一次成功用户调用
+ */
+static void
+test_ir_commit_line_last_user_call(void)
+{
+    char *p_c;
+    int expected;
+    int commit_line;
+    bool ok;
+
+    setup_test("ir_commit_line");
+    expected = 0;
+    ds4vizStack(s)
+    {
+        expected = __LINE__ + 1;
+        ds4vizStackPush(s, 1);
+    }
+
+    p_c = get_output();
+    T_VALID(p_c);
+
+    ok = toml_get_commit_line(p_c, &commit_line);
+    T_ASSERT(ok, "commit line should be readable");
+    T_INT_EQ(commit_line, expected);
+
+    T_TEARDOWN(p_c);
+}
+
+/**
+ * @brief 测试 StepAt 显式行号覆盖
+ */
+static void
+test_ir_stepat_line_override(void)
+{
+    char *p_c;
+    int marker;
+    int line_read;
+    bool ok;
+
+    setup_test("ir_stepat");
+    marker = 0;
+    ds4vizBinaryTree(t)
+    {
+        int root;
+
+        root = ds4vizBtInsertRoot(t, 10);
+        marker = __LINE__ + 1;
+        ds4vizStepAt(t, marker, "manual line",
+                     ds4vizNode(root, DS4VIZ_FOCUS, 3));
+    }
+
+    p_c = get_output();
+    T_VALID(p_c);
+
+    ok = toml_get_step_line_after_token(p_c, "note = \"manual line\"", &line_read);
+    T_ASSERT(ok, "observe line should be readable");
+    T_INT_EQ(line_read, marker);
+
+    T_TEARDOWN(p_c);
+}
+
 /* ================================================================
  * TestComplexScenarios: 复杂场景测试
  * ================================================================ */
@@ -3709,6 +3879,9 @@ int main(void)
     RUN_TEST(test_edge_empty_dlist);
     RUN_TEST(test_edge_empty_graph);
     RUN_TEST(test_edge_amend_clear_highlights);
+    RUN_TEST(test_ir_alias_no_extra_state);
+    RUN_TEST(test_ir_commit_line_last_user_call);
+    RUN_TEST(test_ir_stepat_line_override);
 
     printf("\n--- Complex Scenarios ---\n");
     RUN_TEST(test_complex_bst_deletion);

@@ -5,7 +5,7 @@
 #   make clean    清理构建产物和测试输出
 
 CC      = gcc
-CFLAGS  = -std=c2x -Wall -Wextra -Wpedantic
+CFLAGS  = -std=c2x -Wall -Wextra -Wpedantic -Werror -O2
 LDFLAGS = -lm
 
 .PHONY: all clean

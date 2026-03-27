@@ -13,7 +13,7 @@
  *     #define DS4VIZ_SHORT_NAMES
  *
  * @author WaterRun
- * @date 2026-03-25
+ * @date 2026-03-27
  * @see https://github.com/Water-Run/ds4viz
  */
 
@@ -387,7 +387,8 @@ extern "C"
     int alias_cap;                                        \
     ds4viz_p_pstep_t pending;                             \
     ds4viz_p_ws_fn_t ws_fn;                               \
-    ds4viz_p_strpool_t ret_pool
+    ds4viz_p_strpool_t ret_pool;                          \
+    int last_user_line
 
     /* ---- 栈 ---- */
 
@@ -632,12 +633,12 @@ extern "C"
     void ds4viz_p_step_fn_(void *p_obj, const char *p_note,
                            const ds4viz_p_hl_t *p_hls, int nhl, int line);
     void ds4viz_p_amend_fn_(void *p_obj, const char *p_note,
-                            const ds4viz_p_hl_t *p_hls, int nhl);
-    void ds4viz_p_amend_hl_fn_(void *p_obj, const ds4viz_p_hl_t *p_hls, int nhl);
-    void ds4viz_p_amend_clear_hl_fn_(void *p_obj);
+                            const ds4viz_p_hl_t *p_hls, int nhl, int line);
+    void ds4viz_p_amend_hl_fn_(void *p_obj, const ds4viz_p_hl_t *p_hls, int nhl, int line);
+    void ds4viz_p_amend_clear_hl_fn_(void *p_obj, int line);
     void ds4viz_p_phase_push_(void *p_obj, const char *p_name);
     void ds4viz_p_phase_pop_(void *p_obj);
-    void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name);
+    void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name, int line);
 
     /* ================================================================
      * 值转换内联函数与宏
@@ -856,6 +857,45 @@ extern "C"
 #define DS4VIZ_P_STP_16(obj, note, ...) DS4VIZ_P_STP_HL_(obj, note, __VA_ARGS__)
 
 /* ================================================================
+ * ds4vizStepAt 宏 (显式代码行号)
+ * ================================================================ */
+
+/**
+ * @brief 记录一次观察步骤 (显式指定代码行号)
+ *
+ * 不改变数据结构状态, 在 IR 中生成 op = "observe", before == after 的 step.
+ *
+ * @param obj 数据结构对象
+ * @param line 步骤对应源码行号
+ * @param note 步骤说明 (可选)
+ * @param ... 高亮标记 (可选)
+ */
+#define ds4vizStepAt(obj, line, ...) \
+    DS4VIZ_P_CAT_(DS4VIZ_P_STPA_, DS4VIZ_P_CNTX_(__VA_ARGS__))(obj, line __VA_OPT__(, ) __VA_ARGS__)
+
+#define DS4VIZ_P_STPA_0(obj, line) ds4viz_p_step_fn_((void *)&(obj), NULL, NULL, 0, (line))
+#define DS4VIZ_P_STPA_1(obj, line, note) ds4viz_p_step_fn_((void *)&(obj), (note), NULL, 0, (line))
+#define DS4VIZ_P_STPA_HL_(obj, line, note, ...)             \
+    ds4viz_p_step_fn_((void *)&(obj), (note),               \
+                      (const ds4viz_p_hl_t[]){__VA_ARGS__}, \
+                      (int)(sizeof((const ds4viz_p_hl_t[]){__VA_ARGS__}) / sizeof(ds4viz_p_hl_t)), (line))
+#define DS4VIZ_P_STPA_2(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_3(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_4(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_5(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_6(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_7(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_8(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_9(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_10(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_11(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_12(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_13(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_14(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_15(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+#define DS4VIZ_P_STPA_16(obj, line, note, ...) DS4VIZ_P_STPA_HL_(obj, line, note, __VA_ARGS__)
+
+/* ================================================================
  * ds4vizAmend 宏
  * ================================================================ */
 
@@ -869,11 +909,11 @@ extern "C"
 #define ds4vizAmend(obj, note, ...) \
     DS4VIZ_P_CAT_(DS4VIZ_P_AMD_, DS4VIZ_P_CNTX_(__VA_ARGS__))(obj, note __VA_OPT__(, ) __VA_ARGS__)
 
-#define DS4VIZ_P_AMD_0(obj, note) ds4viz_p_amend_fn_((void *)&(obj), (note), NULL, 0)
+#define DS4VIZ_P_AMD_0(obj, note) ds4viz_p_amend_fn_((void *)&(obj), (note), NULL, 0, __LINE__)
 #define DS4VIZ_P_AMD_HL_(obj, note, ...)                     \
     ds4viz_p_amend_fn_((void *)&(obj), (note),               \
                        (const ds4viz_p_hl_t[]){__VA_ARGS__}, \
-                       (int)(sizeof((const ds4viz_p_hl_t[]){__VA_ARGS__}) / sizeof(ds4viz_p_hl_t)))
+                       (int)(sizeof((const ds4viz_p_hl_t[]){__VA_ARGS__}) / sizeof(ds4viz_p_hl_t)), __LINE__)
 #define DS4VIZ_P_AMD_1(obj, note, ...) DS4VIZ_P_AMD_HL_(obj, note, __VA_ARGS__)
 #define DS4VIZ_P_AMD_2(obj, note, ...) DS4VIZ_P_AMD_HL_(obj, note, __VA_ARGS__)
 #define DS4VIZ_P_AMD_3(obj, note, ...) DS4VIZ_P_AMD_HL_(obj, note, __VA_ARGS__)
@@ -904,14 +944,14 @@ extern "C"
 #define ds4vizAmendHL(obj, ...)                                 \
     ds4viz_p_amend_hl_fn_((void *)&(obj),                       \
                           (const ds4viz_p_hl_t[]){__VA_ARGS__}, \
-                          (int)(sizeof((const ds4viz_p_hl_t[]){__VA_ARGS__}) / sizeof(ds4viz_p_hl_t)))
+                          (int)(sizeof((const ds4viz_p_hl_t[]){__VA_ARGS__}) / sizeof(ds4viz_p_hl_t)), __LINE__)
 
 /**
  * @brief 清除上一步的所有高亮标记
  *
  * @param obj 数据结构对象
  */
-#define ds4vizAmendClearHL(obj) ds4viz_p_amend_clear_hl_fn_((void *)&(obj))
+#define ds4vizAmendClearHL(obj) ds4viz_p_amend_clear_hl_fn_((void *)&(obj), __LINE__)
 
 /* ================================================================
  * ds4vizPhase 宏 (支持嵌套, 内层优先)
@@ -942,7 +982,7 @@ extern "C"
  * @param nid 节点 id
  * @param name 别名, NULL 表示清除
  */
-#define ds4vizAlias(obj, nid, name) ds4viz_p_alias_fn_((void *)&(obj), (nid), (name))
+#define ds4vizAlias(obj, nid, name) ds4viz_p_alias_fn_((void *)&(obj), (nid), (name), __LINE__)
 
 /* ================================================================
  * 结构作用域宏
@@ -1130,6 +1170,7 @@ extern "C"
 #define dvItem ds4vizItem
 #define dvEdge ds4vizEdge
 #define dvStep ds4vizStep
+#define dvStepAt ds4vizStepAt
 #define dvAmend ds4vizAmend
 #define dvAmendHL ds4vizAmendHL
 #define dvAmendClearHL ds4vizAmendClearHL
@@ -1624,6 +1665,81 @@ ds4viz_p_alias_get_(void *p_obj, int nid)
     return NULL;
 }
 
+/**
+ * @brief 更新对象最近一次用户调用行号
+ */
+static void
+ds4viz_p_touch_line_(void *p_obj, int line)
+{
+    int *p_last_user_line;
+
+    if (line <= 0)
+    {
+        return;
+    }
+    p_last_user_line = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, last_user_line));
+    *p_last_user_line = line;
+}
+
+/**
+ * @brief 从后向前查找子串
+ */
+static char *
+ds4viz_p_rfind_(char *p_hay, const char *p_ndl)
+{
+    char *p_cur;
+    char *p_last;
+
+    if (!p_hay || !p_ndl || !p_ndl[0])
+    {
+        return NULL;
+    }
+    p_cur = strstr(p_hay, p_ndl);
+    p_last = NULL;
+    while (p_cur)
+    {
+        p_last = p_cur;
+        p_cur = strstr(p_cur + 1, p_ndl);
+    }
+    return p_last;
+}
+
+/**
+ * @brief 重写最后一个 state (保持 state_id 不变)
+ */
+static void
+ds4viz_p_rewrite_last_state_(void *p_obj)
+{
+    ds4viz_p_buf_t *p_sb;
+    int *p_state_id;
+    ds4viz_p_ws_fn_t *p_ws;
+    char *p_pos;
+    int sid_saved;
+
+    p_sb = (ds4viz_p_buf_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, states_buf));
+    p_state_id = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, state_id));
+    p_ws = (ds4viz_p_ws_fn_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, ws_fn));
+
+    if (!p_sb->p_data || *p_state_id <= 0 || !(*p_ws))
+    {
+        return;
+    }
+
+    p_pos = ds4viz_p_rfind_(p_sb->p_data, "\n[[states]]\n");
+    if (!p_pos)
+    {
+        return;
+    }
+
+    p_sb->len = (int)(p_pos - p_sb->p_data);
+    p_sb->p_data[p_sb->len] = '\0';
+
+    sid_saved = *p_state_id;
+    *p_state_id = sid_saved - 1;
+    (*p_ws)(p_obj);
+    *p_state_id = sid_saved;
+}
+
 /* ----------------------------------------------------------------
  * 高亮序列化
  * ---------------------------------------------------------------- */
@@ -1763,12 +1879,18 @@ ds4viz_p_new_step_(void *p_obj, const char *p_op, int before, int after,
     ds4viz_p_buf_t *p_sb;
     ds4viz_p_pstep_t *p_p;
     int *p_sid;
+    int *p_last_user_line;
     int phase_depth;
     const char **p_phase_stack;
 
     p_sb = (ds4viz_p_buf_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, steps_buf));
     p_p = (ds4viz_p_pstep_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, pending));
     p_sid = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, step_id));
+    p_last_user_line = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, last_user_line));
+    if (line > 0)
+    {
+        *p_last_user_line = line;
+    }
     phase_depth = *(int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, phase_depth));
     p_phase_stack = (const char **)((char *)p_obj + offsetof(ds4viz_p_stack_t, p_phase_stack));
 
@@ -1862,7 +1984,7 @@ void ds4viz_p_step_fn_(void *p_obj, const char *p_note,
 }
 
 void ds4viz_p_amend_fn_(void *p_obj, const char *p_note,
-                        const ds4viz_p_hl_t *p_hls, int nhl)
+                        const ds4viz_p_hl_t *p_hls, int nhl, int line)
 {
     bool *p_err;
     ds4viz_p_pstep_t *p_p;
@@ -1872,10 +1994,13 @@ void ds4viz_p_amend_fn_(void *p_obj, const char *p_note,
     {
         return;
     }
+
+    ds4viz_p_touch_line_(p_obj, line);
+
     p_p = (ds4viz_p_pstep_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, pending));
     if (!p_p->valid)
     {
-        DS4VIZ_P_ERR_((ds4viz_p_stack_t *)p_obj, 0, "No previous step to amend");
+        DS4VIZ_P_ERR_((ds4viz_p_stack_t *)p_obj, line, "No previous step to amend");
         return;
     }
     if (p_note)
@@ -1900,12 +2025,12 @@ void ds4viz_p_amend_fn_(void *p_obj, const char *p_note,
     }
 }
 
-void ds4viz_p_amend_hl_fn_(void *p_obj, const ds4viz_p_hl_t *p_hls, int nhl)
+void ds4viz_p_amend_hl_fn_(void *p_obj, const ds4viz_p_hl_t *p_hls, int nhl, int line)
 {
-    ds4viz_p_amend_fn_(p_obj, NULL, p_hls, nhl);
+    ds4viz_p_amend_fn_(p_obj, NULL, p_hls, nhl, line);
 }
 
-void ds4viz_p_amend_clear_hl_fn_(void *p_obj)
+void ds4viz_p_amend_clear_hl_fn_(void *p_obj, int line)
 {
     bool *p_err;
     ds4viz_p_pstep_t *p_p;
@@ -1915,6 +2040,9 @@ void ds4viz_p_amend_clear_hl_fn_(void *p_obj)
     {
         return;
     }
+
+    ds4viz_p_touch_line_(p_obj, line);
+
     p_p = (ds4viz_p_pstep_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, pending));
     if (!p_p->valid)
     {
@@ -1949,27 +2077,28 @@ void ds4viz_p_phase_pop_(void *p_obj)
     }
 }
 
-void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name)
+void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name, int line)
 {
     bool *p_err;
     ds4viz_p_alias_t **pp_a;
     int *p_cnt;
     int *p_cap;
-    ds4viz_p_ws_fn_t *p_ws;
-    int *p_state_id;
     int i;
-    bool changed = false;
+    bool changed;
 
     p_err = (bool *)((char *)p_obj + offsetof(ds4viz_p_stack_t, err));
     if (*p_err)
     {
         return;
     }
+
+    ds4viz_p_touch_line_(p_obj, line);
+
     pp_a = (ds4viz_p_alias_t **)((char *)p_obj + offsetof(ds4viz_p_stack_t, p_aliases));
     p_cnt = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, alias_cnt));
     p_cap = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, alias_cap));
-    p_ws = (ds4viz_p_ws_fn_t *)((char *)p_obj + offsetof(ds4viz_p_stack_t, ws_fn));
-    p_state_id = (int *)((char *)p_obj + offsetof(ds4viz_p_stack_t, state_id));
+
+    changed = false;
 
     if (!p_name)
     {
@@ -1982,10 +2111,9 @@ void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name)
                 break;
             }
         }
-        if (changed && *p_ws)
+        if (changed)
         {
-            (*p_ws)(p_obj);
-            (*p_state_id)++;
+            ds4viz_p_rewrite_last_state_(p_obj);
         }
         return;
     }
@@ -2013,10 +2141,9 @@ void ds4viz_p_alias_fn_(void *p_obj, int nid, const char *p_name)
         changed = true;
     }
 
-    if (changed && *p_ws)
+    if (changed)
     {
-        (*p_ws)(p_obj);
-        (*p_state_id)++;
+        ds4viz_p_rewrite_last_state_(p_obj);
     }
 }
 
@@ -2081,7 +2208,7 @@ ds4viz_p_flush_(const char *p_kind, const char *p_label,
                 ds4viz_p_pstep_t *p_pend,
                 bool err, const char *p_errmsg,
                 int err_step, int err_ls, int err_line,
-                int final_state, int scope_line)
+                int final_state, int scope_line, int commit_line)
 {
     char ts[64];
     char cv[32];
@@ -2168,9 +2295,13 @@ ds4viz_p_flush_(const char *p_kind, const char *p_label,
     }
     else
     {
+        if (commit_line <= 0)
+        {
+            commit_line = scope_line > 0 ? scope_line : 1;
+        }
         ds4viz_p_bf_(&out,
                      "\n[result]\nfinal_state = %d\n\n[result.commit]\nop = \"commit\"\nline = %d\n",
-                     final_state, scope_line);
+                     final_state, commit_line);
     }
 
     p_f = fopen(ds4viz_p_outpath_(), "w");
@@ -2194,7 +2325,8 @@ ds4viz_p_flush_(const char *p_kind, const char *p_label,
     ds4viz_p_flush_((p)->p_kind, (p)->p_label,                                 \
                     &(p)->states_buf, &(p)->steps_buf, &(p)->pending,          \
                     (p)->err, (p)->errmsg, (p)->err_step, (p)->err_last_state, \
-                    (p)->err_line, (p)->state_id - 1, (p)->scope_line);        \
+                    (p)->err_line, (p)->state_id - 1, (p)->scope_line,         \
+                    (p)->last_user_line);                                      \
     free((p)->p_aliases);                                                      \
     ds4viz_p_bfree_(&(p)->states_buf);                                         \
     ds4viz_p_bfree_(&(p)->steps_buf);                                          \

@@ -3,7 +3,7 @@ r"""
 
 :file: ds4viz/session.py
 :author: WaterRun
-:time: 2026-03-23
+:time: 2026-03-27
 """
 
 import inspect
@@ -94,6 +94,39 @@ def get_caller_line(depth: int = 2) -> int:
         del frame
 
 
+def get_user_caller_line(offset: int = 0) -> int:
+    r"""
+    获取用户调用栈中的代码行号, 自动跳过 ds4viz 内部帧.
+
+    :param offset: 用户调用栈偏移量.
+                   0 表示最近一层用户帧, 1 表示上一层用户帧
+    :return int: 对应用户帧的代码行号, 获取失败时返回 1
+    """
+    normalized_offset: int = offset if offset >= 0 else 0
+    frame = inspect.currentframe()
+    try:
+        if frame is None:
+            return 1
+        frame = frame.f_back
+        user_lines: list[int] = []
+        while frame is not None:
+            module_name_raw: Any = frame.f_globals.get("__name__", "")
+            module_name: str = module_name_raw if isinstance(
+                module_name_raw, str) else ""
+            is_internal: bool = module_name == "ds4viz" or module_name.startswith(
+                "ds4viz.")
+            if not is_internal:
+                user_lines.append(frame.f_lineno)
+            frame = frame.f_back
+
+        if not user_lines:
+            return 1
+        if normalized_offset < len(user_lines):
+            return user_lines[normalized_offset]
+        return user_lines[-1]
+    finally:
+        del frame
+        
 class Session:
     r"""
     会话管理器, 用于管理数据结构的操作轨迹记录
@@ -124,6 +157,7 @@ class Session:
         self._entry_line: int = 1
         self._exit_line: int = 1
         self._failed_step_id: int | None = None
+        self._last_op_line: int = 0
 
     @property
     def failed_step_id(self) -> int | None:
@@ -184,6 +218,8 @@ class Session:
         step_id: int = self._step_counter
         code_loc: CodeLocation | None = CodeLocation(
             line=line) if line is not None else None
+        if line is not None:
+            self._last_op_line = line
         self._steps.append(Step(
             id=step_id,
             op=op,
@@ -284,9 +320,10 @@ class Session:
             error = self._error
         else:
             final_state_id: int = self._states[-1].id if self._states else 0
+            commit_line: int = self._last_op_line if self._last_op_line > 0 else self._exit_line
             result = Result(
                 final_state=final_state_id,
-                commit=Commit(op="commit", line=self._exit_line)
+                commit=Commit(op="commit", line=commit_line)
             )
         return Trace(
             meta=meta,
@@ -308,6 +345,18 @@ class Session:
         trace: Trace = self.build_trace()
         writer = TomlWriter(trace)
         writer.write(self._output)
+        
+    def update_last_state_data(self, data: dict[str, Any]) -> None:
+        r"""
+        更新最后一个状态的快照数据, 不新增状态 ID
+
+        :param data: 最新状态数据
+        :return None: 无返回值
+        """
+        if self._states:
+            self._states[-1].data = data
+        else:
+            self.add_state(data)
 
 
 class ContextManager:
