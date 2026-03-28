@@ -178,7 +178,9 @@ onMounted(async () => {
     await authStore.fetchCurrentUser()
   } catch {
     await authStore.logout()
-    router.push({ name: 'login' })
+    window.setTimeout(() => {
+      router.replace({ name: 'login' })
+    }, 0)
     return
   }
   initializing.value = false
@@ -237,18 +239,16 @@ onBeforeUnmount(() => {
     </Transition>
 
     <main class="app-layout__main">
-      <Transition name="route-fade" mode="out-in">
-        <div v-if="initializing" key="init" class="app-layout__loading">
-          <Loading message="加载中..." />
-        </div>
-        <div v-else key="content" class="app-layout__view">
-          <router-view v-slot="{ Component, route: viewRoute }">
-            <Transition name="view-fade" mode="out-in">
-              <component :is="Component" :key="viewRoute.path" />
-            </Transition>
-          </router-view>
-        </div>
-      </Transition>
+      <div v-if="initializing" class="app-layout__loading">
+        <Loading message="加载中..." />
+      </div>
+      <div v-else class="app-layout__view">
+        <router-view v-slot="{ Component, route: viewRoute }">
+          <Transition name="view-fade" mode="out-in">
+            <component :is="Component" :key="viewRoute.path" />
+          </Transition>
+        </router-view>
+      </div>
     </main>
   </div>
 </template>

@@ -5,18 +5,14 @@
  * 卡片列表 + 分类筛选 + 实时搜索 + 收藏切换 + 无限滚动。
  * 点击卡片展开详情面板查看代码与信息。
  *
- * 修复点：
- * 1) “全部”下收藏区延迟出现：进入“全部且非搜索”后自动预取若干页，尽量让“我收藏的”首屏可见。
- * 2) 分类/搜索切换动画生硬：增加切换遮罩与过渡 key，避免瞬时闪断。
- * 3) 搜索与分类联动：保留当前分类状态，UI 上持续高亮当前分类。
- *
  * @file src/views/Templates.vue
  * @author WaterRun
  * @date 2026-03-28
  * @component Templates
  */
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
 import { extractErrorMessage } from '@/utils/error'
@@ -29,6 +25,8 @@ import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import TemplateDetailPanel from '@/components/common/TemplateDetailPanel.vue'
 
+const route = useRoute()
+const router = useRouter()
 const store = useTemplatesStore()
 const {
   items,
@@ -75,6 +73,9 @@ const isSwitching = ref<boolean>(false)
 /** 内容切换动画种子 */
 const transitionSeed = ref<number>(0)
 
+/** 是否已完成首屏加载（用于抑制首屏 tpl-fade） */
+const initialLoaded = ref<boolean>(false)
+
 /**
  * 编辑器当前语言
  */
@@ -93,7 +94,7 @@ const otherItems = computed(() => items.value.filter((item) => !item.isFavorited
 /** 是否存在已收藏项 */
 const hasFavorited = computed<boolean>(() => favoritedItems.value.length > 0)
 
-/** 内容切换动画 key */
+/** 内容切换动画 key（首屏不变化以避免闪烁） */
 const contentKey = computed<string>(
   () => `${selectedCategory.value}/${keyword.value}/${transitionSeed.value}`,
 )
@@ -112,7 +113,7 @@ const searchStatusText = computed<string>(() => {
   const categoryPart = selectedCategory.value.length > 0
     ? `分类「${selectedCategory.value}」`
     : '全部分类'
-  return `${categoryPart}下搜索「${keyword.value}」共 ${total.value} 条结果`
+  return `搜索「${keyword.value}」共 ${total.value} 条结果`
 })
 
 /** 滚动内容区到顶部 */
@@ -121,8 +122,8 @@ const scrollToTop = (): void => {
 }
 
 /**
- * 在“全部 + 非搜索”场景下预取少量分页，
- * 尽量让“我收藏的”首屏可见（避免必须滚动到哨兵才出现）
+ * 在"全部 + 非搜索"场景下预取少量分页，
+ * 尽量让"我收藏的"首屏可见（避免必须滚动到哨兵才出现）
  */
 const prefetchForFavoritesSection = async (): Promise<void> => {
   if (selectedCategory.value.length > 0 || isSearchMode.value) return
@@ -255,6 +256,22 @@ const handleSelectCategory = async (category: string): Promise<void> => {
   })
 }
 
+/**
+ * 消费路由 query 中的 templateId 参数（来自个人页收藏跳转等场景）
+ */
+const consumeTemplateIdQuery = (): void => {
+  const queryVal = route.query.templateId
+  if (typeof queryVal !== 'string') return
+  const id = Number(queryVal)
+  if (Number.isNaN(id)) return
+
+  selectedTemplateId.value = id
+
+  const query = { ...route.query }
+  delete query.templateId
+  router.replace({ query })
+}
+
 onMounted(async () => {
   /* 重置 store 状态以确保导航切换后数据一致 */
   store.page = 1
@@ -279,8 +296,25 @@ onMounted(async () => {
 
   await Promise.all([store.loadCategories(), store.loadTemplates()])
   await prefetchForFavoritesSection()
-  transitionSeed.value += 1
+
+  /* 首屏加载完成，不触发 tpl-fade（避免叠加路由过渡产生二次闪烁） */
+  initialLoaded.value = true
+
+  /* 消费路由 query 中的 templateId */
+  consumeTemplateIdQuery()
 })
+
+/**
+ * 监听路由 query 变化（已在模板页时从外部再次跳入并携带 templateId）
+ */
+watch(
+  () => route.query.templateId,
+  (val) => {
+    if (!initialLoaded.value) return
+    if (typeof val !== 'string') return
+    consumeTemplateIdQuery()
+  },
+)
 
 watchEffect(() => {
   const el = sentinel.value

@@ -14,6 +14,11 @@
  * - remarks 与 label 并列展示
  * - 展示 IR / Object / Step 可得信息
  *
+ * 节点变更卡片：
+ * - 仅 slist / dlist / binary_tree / bst / graph_* 类结构启用
+ * - 横向数组式时间线布局，严格契合设计语言
+ * - 消逝节点以自绘 SVG 虚线圆表示
+ *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
  * @date 2026-03-28
@@ -28,6 +33,7 @@ import type {
   IrStateData,
   IrValue,
   IrRemarks,
+  IrDocument,
   StackStateData,
   QueueStateData,
   SListStateData,
@@ -42,13 +48,25 @@ import type {
   GraphEdge,
   IrObjectKind,
 } from '@/types/ir'
-import type { StepSummary, PhaseSegment } from '@/types/viz'
+import type { StepSummary, PhaseSegment, Frame } from '@/types/viz'
+import type { NodeLifespan, NodeChangeTimeline } from '@/types/node-change'
 import { vizFlags, logDebug } from '@/utils/viz-flags'
+import {
+  isNodeBasedKind,
+  buildLifespans,
+  buildTimeline,
+  getDepartedKeys,
+} from '@/utils/node-timeline'
 
 import VizPlaceholder from './VizPlaceholder.vue'
 import VizSettings from './VizSettings.vue'
+import ChangeCard from './ChangeCard.vue'
+import DepartedNodes from './DepartedNodes.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
+/**
+ * 组件属性定义
+ */
 interface Props {
   kind?: IrObjectKind
   data?: IrStateData
@@ -62,6 +80,12 @@ interface Props {
   phases?: PhaseSegment[]
   /** 当前所处阶段索引，null 表示不在任何阶段内 */
   currentPhaseIndex?: number | null
+  /** 帧列表（变更卡片需要） */
+  frameList?: Frame[]
+  /** 当前帧索引（变更卡片需要） */
+  currentFrameIndex?: number
+  /** 完整 IR 文档引用（变更卡片需要） */
+  irDocument?: IrDocument
 }
 
 /**
@@ -133,6 +157,12 @@ type DiffStatus = 'added' | 'removed' | 'unchanged'
 
 const ACCENT_COLOR = 'var(--color-accent)'
 const WARNING_COLOR = 'var(--color-warning)'
+
+/** 卡片布局估算尺寸 */
+const CARD_W_EST = 300
+const CARD_H_SIMPLE = 56
+const CARD_H_DETAIL = 76
+const CARD_GAP = 16
 
 /* ================================================================
  *  Ghost / Diff 缓存
@@ -229,6 +259,43 @@ function buildLabels(roles: Array<{ text: string; color: string }>): LayoutLabel
  * ================================================================ */
 
 const canvasRef = ref<HTMLDivElement | null>(null)
+
+/* ================================================================
+ *  变更卡片状态
+ * ================================================================ */
+
+/** 已展开的变更卡片节点键集合 */
+const expandedCards = ref<Set<string>>(new Set())
+
+/** 消逝节点中已展开的卡片键集合 */
+const departedCards = ref<Set<string>>(new Set())
+
+/** 各卡片的"展示全部帧"状态 */
+const showAllFramesMap = ref<Map<string, boolean>>(new Map())
+
+/** 全局变更卡片详细模式 */
+const changeCardDetailMode = ref<boolean>(false)
+
+/**
+ * 节点最后已知位置缓存（响应式，保证消逝节点位置可追踪）
+ *
+ * key = 节点标识键（n-3 / t-0 / g-5）
+ */
+const lastKnownPositions = ref<Map<string, { x: number; y: number; r: number }>>(new Map())
+
+/** 变更时间线缓存（按 IrDocument 实例） */
+let timelineCacheDoc: object | null = null
+const timelineCache = new Map<string, NodeChangeTimeline>()
+
+/* ---- 布局 ref 前置声明（避免 computed TDZ） ---- */
+const slistLayout = shallowRef<ListLayout | null>(null)
+const dlistLayout = shallowRef<ListLayout | null>(null)
+const treeLayout = shallowRef<TreeLayout | null>(null)
+const graphLayout = shallowRef<GraphLayout | null>(null)
+
+/* ================================================================
+ *  分阶段渲染状态
+ * ================================================================ */
 
 /** 分阶段渲染：实际提交给布局的状态 */
 const committedData = shallowRef<IrStateData | undefined>(props.data)
@@ -343,6 +410,188 @@ const isWeighted = computed<boolean>(() => kindStr.value === 'graph_weighted')
 
 const smoothEnabled = computed<boolean>(() => {
   return vizFlags.enableSmoothTransitions && !suppressSmoothOnce.value
+})
+
+/* ---- 变更卡片派生 ---- */
+
+/**
+ * 有效帧索引（兜底 0）
+ */
+const effectiveFrameIndex = computed<number>(() => props.currentFrameIndex ?? 0)
+
+/**
+ * 当前结构是否支持节点变更卡片
+ *
+ * Stack / Queue 不启用变更卡片。
+ */
+const isNodeStructure = computed<boolean>(() => {
+  if (!vizFlags.showChangeCards) return false
+  if (!props.irDocument || !props.frameList) return false
+  return isNodeBasedKind(kindStr.value)
+})
+
+/**
+ * 所有节点的生命周期概要
+ */
+const nodeLifespans = computed<Map<string, NodeLifespan>>(() => {
+  if (!props.irDocument || !props.frameList) return new Map()
+  return buildLifespans(props.irDocument, props.frameList)
+})
+
+/**
+ * 当前帧已消逝节点键列表
+ */
+const departedKeys = computed<string[]>(() => {
+  if (!isNodeStructure.value) return []
+  return getDepartedKeys(nodeLifespans.value, effectiveFrameIndex.value)
+})
+
+/**
+ * 消逝节点生命周期列表（传给 DepartedNodes 组件）
+ */
+const departedLifespans = computed<NodeLifespan[]>(() => {
+  return departedKeys.value
+    .map((k) => nodeLifespans.value.get(k))
+    .filter((s): s is NodeLifespan => s !== undefined)
+})
+
+/**
+ * 是否显示消逝节点按钮
+ */
+const showDepartedButton = computed<boolean>(() => {
+  return isNodeStructure.value && departedKeys.value.length > 0
+})
+
+/**
+ * 当前可见节点的位置映射（从各布局 ref 中提取）
+ */
+const currentNodePositions = computed<Map<string, { x: number; y: number; r: number }>>(() => {
+  const map = new Map<string, { x: number; y: number; r: number }>()
+
+  if (treeLayout.value) {
+    for (const n of treeLayout.value.nodes) {
+      map.set(`t-${n.id}`, { x: n.x, y: n.y, r: treeLayout.value.treeR })
+    }
+  }
+
+  if (graphLayout.value) {
+    for (const n of graphLayout.value.nodes) {
+      map.set(`g-${n.id}`, { x: n.x, y: n.y, r: graphLayout.value.graphR })
+    }
+  }
+
+  if (slistLayout.value) {
+    for (const n of slistLayout.value.nodes) {
+      const cx = n.x + slistLayout.value.nodeW / 2
+      const cy = PAD + 20 + slistLayout.value.nodeH / 2
+      map.set(`n-${n.id}`, { x: cx, y: cy, r: slistLayout.value.nodeH / 2 })
+    }
+  }
+
+  if (dlistLayout.value) {
+    for (const n of dlistLayout.value.nodes) {
+      const cx = n.x + dlistLayout.value.nodeW / 2
+      const cy = PAD + 20 + dlistLayout.value.nodeH / 2
+      map.set(`n-${n.id}`, { x: cx, y: cy, r: dlistLayout.value.nodeH / 2 })
+    }
+  }
+
+  return map
+})
+
+/**
+ * 同步当前节点位置到 lastKnownPositions
+ */
+watch(
+  currentNodePositions,
+  (positions) => {
+    const next = new Map(lastKnownPositions.value)
+    for (const [key, pos] of positions) {
+      next.set(key, pos)
+    }
+    lastKnownPositions.value = next
+  },
+)
+
+/**
+ * 消逝节点的 SVG 渲染位置（取最后已知位置）
+ */
+const departedNodePositions = computed<Map<string, { x: number; y: number; r: number }>>(() => {
+  const map = new Map<string, { x: number; y: number; r: number }>()
+  for (const key of departedKeys.value) {
+    const pos = lastKnownPositions.value.get(key)
+    if (pos) map.set(key, pos)
+  }
+  return map
+})
+
+/**
+ * 所有活跃卡片的键（含展开节点与消逝卡片）
+ */
+const allActiveCardKeys = computed<string[]>(() => {
+  const keys: string[] = []
+  for (const k of expandedCards.value) {
+    if (currentNodePositions.value.has(k)) keys.push(k)
+  }
+  for (const k of departedCards.value) {
+    if (lastKnownPositions.value.has(k)) keys.push(k)
+  }
+  return keys
+})
+
+/**
+ * 活跃卡片的时间线映射
+ */
+const activeTimelines = computed<Map<string, NodeChangeTimeline>>(() => {
+  const map = new Map<string, NodeChangeTimeline>()
+  for (const key of allActiveCardKeys.value) {
+    const tl = getOrBuildTimeline(key)
+    if (tl) map.set(key, tl)
+  }
+  return map
+})
+
+/**
+ * 活跃卡片的布局位置（四方向候选 + AABB 碰撞检测）
+ */
+const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
+  const result = new Map<string, { x: number; y: number }>()
+  const placed: Array<{ x: number; y: number; w: number; h: number }> = []
+  const cardH = changeCardDetailMode.value ? CARD_H_DETAIL : CARD_H_SIMPLE
+
+  for (const key of allActiveCardKeys.value) {
+    const nodePos = currentNodePositions.value.get(key)
+      ?? lastKnownPositions.value.get(key)
+    if (!nodePos) continue
+
+    const candidates = [
+      { x: nodePos.x + nodePos.r + CARD_GAP, y: nodePos.y - cardH / 2 },
+      { x: nodePos.x - nodePos.r - CARD_GAP - CARD_W_EST, y: nodePos.y - cardH / 2 },
+      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y + nodePos.r + CARD_GAP },
+      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y - nodePos.r - CARD_GAP - cardH },
+    ]
+
+    let best = candidates[0]
+    for (const pos of candidates) {
+      const rect = { x: pos.x, y: pos.y, w: CARD_W_EST, h: cardH }
+      const collides = placed.some(
+        (p) =>
+          rect.x < p.x + p.w
+          && rect.x + rect.w > p.x
+          && rect.y < p.y + p.h
+          && rect.y + rect.h > p.y,
+      )
+      if (!collides) {
+        best = pos
+        break
+      }
+    }
+
+    result.set(key, best)
+    placed.push({ x: best.x, y: best.y, w: CARD_W_EST, h: cardH })
+  }
+
+  return result
 })
 
 /* ---- 元数据显示 ---- */
@@ -490,9 +739,6 @@ const showZoomHint = computed<boolean>(() => {
 
 /* ---- 标题渲染 ---- */
 
-/**
- * 内容区域原始边界（fitViewBox 传入的值）
- */
 const contentBounds = ref<{ minX: number; minY: number; maxX: number; maxY: number }>({
   minX: 0,
   minY: 0,
@@ -500,33 +746,16 @@ const contentBounds = ref<{ minX: number; minY: number; maxX: number; maxY: numb
   maxY: 400,
 })
 
-/**
-* 标题文本
-*/
 const titleText = computed<string>(() => props.remarks?.title ?? '')
-
-/**
-* 副标题：comment
-*/
 const commentText = computed<string>(() => props.remarks?.comment ?? '')
-
-/**
-* 副标题：author
-*/
 const authorText = computed<string>(() => props.remarks?.author ?? '')
 
-/**
-* 标签文本（与 title 不同时才显示）
-*/
 const labelDisplayText = computed<string>(() => {
   const l = props.label ?? ''
   if (l === titleText.value) return ''
   return l
 })
 
-/**
-* 标题区块总高度（标题 + comment + author + 间距）
-*/
 const headerTotalH = computed<number>(() => {
   if (!vizFlags.showVizTitle) return 0
   let h = 0
@@ -538,25 +767,16 @@ const headerTotalH = computed<number>(() => {
   return h
 })
 
-/**
-* 标题 SVG x 坐标
-*/
 const effectiveTitleX = computed<number>(() => {
   if (isStructureEmpty.value) return 150
   return (contentBounds.value.minX + contentBounds.value.maxX) / 2
 })
 
-/**
-* label SVG y 坐标
-*/
 const effectiveLabelY = computed<number>(() => {
   if (isStructureEmpty.value) return 12
   return contentBounds.value.minY - headerTotalH.value + 12
 })
 
-/**
-* 标题 SVG y 坐标
-*/
 const effectiveTitleY = computed<number>(() => {
   let base: number
   if (isStructureEmpty.value) {
@@ -569,16 +789,10 @@ const effectiveTitleY = computed<number>(() => {
   return base
 })
 
-/**
-* comment SVG y 坐标
-*/
 const effectiveCommentY = computed<number>(() => {
   return effectiveTitleY.value + 12
 })
 
-/**
-* author SVG y 坐标（跟在 comment 后，或跟在 title 后）
-*/
 const effectiveAuthorY = computed<number>(() => {
   if (commentText.value.length > 0) return effectiveCommentY.value + 7
   return effectiveTitleY.value + 12
@@ -602,7 +816,7 @@ const animateToVb = (target: ViewBoxState, duration = 200): void => {
 
   const animate = (now: number): void => {
     const t = Math.min(1, (now - start) / duration)
-    const ease = t < 0.5 ? 2 * t * t : 1 - (Math.pow(-2 * t + 2, 2) / 2)
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2
 
     vb.value = {
       x: from.x + (target.x - from.x) * ease,
@@ -700,6 +914,126 @@ const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): voi
 const handleDblClick = (): void => {
   animateToVb({ ...idealVb.value }, 200)
   userManualZoom.value = false
+}
+
+/* ================================================================
+ *  变更卡片交互
+ * ================================================================ */
+
+/**
+ * 获取指定节点的 SVG 位置（优先当前帧，降级最后已知）
+ *
+ * @param key - 节点标识键
+ * @returns 位置信息
+ */
+function getNodePos(key: string): { x: number; y: number; r: number } {
+  return (
+    currentNodePositions.value.get(key)
+    ?? lastKnownPositions.value.get(key)
+    ?? { x: 0, y: 0, r: 0 }
+  )
+}
+
+/**
+ * 获取或构建指定节点的变更时间线（懒加载 + 缓存）
+ *
+ * @param key - 节点标识键
+ * @returns 变更时间线，数据不足时返回 null
+ */
+function getOrBuildTimeline(key: string): NodeChangeTimeline | null {
+  if (!props.irDocument || !props.frameList) return null
+
+  if (timelineCacheDoc !== props.irDocument) {
+    timelineCache.clear()
+    timelineCacheDoc = props.irDocument
+  }
+
+  const cached = timelineCache.get(key)
+  if (cached) return cached
+
+  const timeline = buildTimeline(props.irDocument, props.frameList, key)
+  timelineCache.set(key, timeline)
+  return timeline
+}
+
+/**
+ * 点击节点切换变更卡片
+ *
+ * @param key - 节点标识键
+ * @param event - 点击事件
+ */
+function handleNodeCardClick(key: string, event: Event): void {
+  event.stopPropagation()
+  if (!isNodeStructure.value) return
+
+  const next = new Set(expandedCards.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedCards.value = next
+}
+
+/**
+ * 消逝节点卡片选中
+ *
+ * @param key - 节点标识键
+ */
+function handleDepartedSelect(key: string): void {
+  const next = new Set(departedCards.value)
+  next.add(key)
+  departedCards.value = next
+}
+
+/**
+ * 关闭消逝节点卡片
+ *
+ * @param key - 节点标识键
+ */
+function handleDepartedCardClose(key: string): void {
+  const next = new Set(departedCards.value)
+  next.delete(key)
+  departedCards.value = next
+}
+
+/**
+ * 展开当前帧全部节点的变更卡片
+ */
+function handleExpandAllCards(): void {
+  const next = new Set(expandedCards.value)
+  for (const key of currentNodePositions.value.keys()) {
+    next.add(key)
+  }
+  expandedCards.value = next
+}
+
+/**
+ * 折叠全部变更卡片
+ */
+function handleCollapseAllCards(): void {
+  expandedCards.value = new Set()
+  departedCards.value = new Set()
+}
+
+/**
+ * 卡片内跳帧
+ *
+ * @param frameIndex - 目标帧索引
+ */
+function handleCardJumpToFrame(frameIndex: number): void {
+  emit('jump-to-frame', frameIndex)
+}
+
+/**
+ * 切换指定卡片的"展示全部帧"
+ *
+ * @param key - 节点标识键
+ */
+function toggleShowAllFrames(key: string): void {
+  const map = new Map(showAllFramesMap.value)
+  map.set(key, !(map.get(key) ?? false))
+  showAllFramesMap.value = map
 }
 
 /* ================================================================
@@ -1176,10 +1510,8 @@ interface ListLayout {
   nodes: ListLayoutNode[]
 }
 
-const slistLayout = shallowRef<ListLayout | null>(null)
-const dlistLayout = shallowRef<ListLayout | null>(null)
-
 watch(
+  () => slistOrdered.value,
   () => slistOrdered.value,
   (ordered) => {
     if (!slistData.value) {
@@ -1345,8 +1677,6 @@ interface TreeLayout {
   edges: TreeLayoutEdge[]
 }
 
-const treeLayout = shallowRef<TreeLayout | null>(null)
-
 watch(
   () => treeData.value,
   (data) => {
@@ -1490,8 +1820,6 @@ interface GraphLayout {
   nodes: GraphLayoutNode[]
   edges: GraphLayoutEdge[]
 }
-
-const graphLayout = shallowRef<GraphLayout | null>(null)
 
 watch(
   () => graphData.value,
@@ -1682,29 +2010,28 @@ watch(
   },
 )
 
+/**
+ * showChangeCards 关闭时折叠全部卡片
+ */
+watch(
+  () => vizFlags.showChangeCards,
+  (enabled) => {
+    if (!enabled) {
+      handleCollapseAllCards()
+    }
+  },
+)
+
 /* ================================================================
  *  阶段导航
  * ================================================================ */
 
-/**
- * 阶段列表浮层开关
- */
 const phasePopoverOpen = ref<boolean>(false)
 
-/**
- * 内部维护的当前阶段索引
- * 乐观更新 + watch 同步 props.currentPhaseIndex
- */
 const activePhaseIndex = ref<number | null>(props.currentPhaseIndex ?? null)
 
-/**
- * 有效阶段列表（兜底空数组）
- */
 const effectivePhases = computed<PhaseSegment[]>(() => props.phases ?? [])
 
-/**
- * 是否展示阶段指示条
- */
 const showPhaseIndicator = computed<boolean>(() => {
   if (!vizFlags.showPhases) return false
   if (effectivePhases.value.length === 0) return false
@@ -1712,35 +2039,23 @@ const showPhaseIndicator = computed<boolean>(() => {
   return activePhaseIndex.value !== null
 })
 
-/**
- * 当前阶段名称
- */
 const currentPhaseName = computed<string>(() => {
   if (activePhaseIndex.value === null) return ''
   return effectivePhases.value[activePhaseIndex.value]?.name ?? ''
 })
 
-/**
- * 是否可跳转上一阶段
- */
 const canPrevPhase = computed<boolean>(() => {
   if (props.autoPlaying) return false
   if (activePhaseIndex.value === null) return false
   return activePhaseIndex.value > 0
 })
 
-/**
- * 是否可跳转下一阶段
- */
 const canNextPhase = computed<boolean>(() => {
   if (props.autoPlaying) return false
   if (activePhaseIndex.value === null) return false
   return activePhaseIndex.value < effectivePhases.value.length - 1
 })
 
-/**
- * 跳转上一阶段
- */
 const handlePrevPhase = (): void => {
   if (!canPrevPhase.value || activePhaseIndex.value === null) return
   const prevIndex = activePhaseIndex.value - 1
@@ -1751,9 +2066,6 @@ const handlePrevPhase = (): void => {
   }
 }
 
-/**
- * 跳转下一阶段
- */
 const handleNextPhase = (): void => {
   if (!canNextPhase.value || activePhaseIndex.value === null) return
   const nextIndex = activePhaseIndex.value + 1
@@ -1764,11 +2076,6 @@ const handleNextPhase = (): void => {
   }
 }
 
-/**
- * 跳转至指定阶段开头
- *
- * @param index - 阶段索引
- */
 const handleJumpToPhase = (index: number): void => {
   if (props.autoPlaying) return
   const target = effectivePhases.value[index]
@@ -1779,9 +2086,6 @@ const handleJumpToPhase = (index: number): void => {
   }
 }
 
-/**
- * 切换阶段列表浮层（自动播放时禁止打开）
- */
 const togglePhasePopover = (): void => {
   if (props.autoPlaying) return
   phasePopoverOpen.value = !phasePopoverOpen.value
@@ -1816,7 +2120,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="viz-panel" :class="{ 'viz-panel--smooth': smoothEnabled }">
+  <section class="viz-panel" :class="{
+    'viz-panel--smooth': smoothEnabled,
+    'viz-panel--node-clickable': isNodeStructure,
+  }">
     <header class="viz-panel__header">
       <div class="viz-panel__title">
         <MaterialIcon name="graph_3" :size="18" />
@@ -1979,9 +2286,10 @@ onBeforeUnmount(() => {
                 :class="{ 'viz-box--accent': item.labels.length > 0, 'viz-node--added': item.diff === 'added' }"
                 :style="getHlStyle(`q-${index}`)" />
               <text :x="item.x + queueLayout.boxW / 2" :y="item.displayLines.length === 1
-                ? PAD + 20 + queueLayout.boxH / 2 + 4
-                : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4" class="viz-val"
-                @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)" @pointerleave="hideTip">
+                  ? PAD + 20 + queueLayout.boxH / 2 + 4
+                  : PAD + 20 + queueLayout.boxH / 2 - LINE_H / 2 + 4
+                " class="viz-val" @pointerenter="showTip(queueTipLines(index, item.value, item.labels), $event)"
+                @pointerleave="hideTip">
                 <template v-if="item.displayLines.length === 1">
                   {{ item.displayLines[0] }}
                 </template>
@@ -2018,10 +2326,11 @@ onBeforeUnmount(() => {
                 class="viz-node-rect" :class="{
                   'viz-node-rect--accent': node.labels.length > 0,
                   'viz-node--added': node.diff === 'added',
-                }" :style="getHlStyle(`n-${node.id}`)" />
+                }" :style="getHlStyle(`n-${node.id}`)" @click.stop="handleNodeCardClick(`n-${node.id}`, $event)" />
               <text :x="node.x + slistLayout.nodeW / 2" :y="node.displayLines.length === 1
-                ? PAD + 20 + slistLayout.nodeH / 2 - 4
-                : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
+                  ? PAD + 20 + slistLayout.nodeH / 2 - 4
+                  : PAD + 20 + slistLayout.nodeH / 2 - LINE_H / 2 - 2
+                " class="viz-val"
                 @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, slistOrdered[index]?.next), $event)"
                 @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
@@ -2070,12 +2379,22 @@ onBeforeUnmount(() => {
                 class="viz-node-rect" :class="{
                   'viz-node-rect--accent': node.labels.length > 0,
                   'viz-node--added': node.diff === 'added',
-                }" :style="getHlStyle(`n-${node.id}`)" />
+                }" :style="getHlStyle(`n-${node.id}`)" @click.stop="handleNodeCardClick(`n-${node.id}`, $event)" />
               <text :x="node.x + dlistLayout.nodeW / 2" :y="node.displayLines.length === 1
-                ? PAD + 20 + dlistLayout.nodeH / 2 - 4
-                : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2" class="viz-val"
-                @pointerenter="showTip(listTipLines(node.id, node.value, node.labels, dlistOrdered[index]?.next, dlistOrdered[index]?.prev), $event)"
-                @pointerleave="hideTip">
+                  ? PAD + 20 + dlistLayout.nodeH / 2 - 4
+                  : PAD + 20 + dlistLayout.nodeH / 2 - LINE_H / 2 - 2
+                " class="viz-val" @pointerenter="
+                  showTip(
+                    listTipLines(
+                      node.id,
+                      node.value,
+                      node.labels,
+                      dlistOrdered[index]?.next,
+                      dlistOrdered[index]?.prev,
+                    ),
+                    $event,
+                  )
+                  " @pointerleave="hideTip">
                 <template v-if="node.displayLines.length === 1">
                   {{ node.displayLines[0] }}
                 </template>
@@ -2117,7 +2436,8 @@ onBeforeUnmount(() => {
           <g v-if="treeLayout">
             <line v-for="(edge, index) in treeLayout.edges" :key="`te-${index}`" :x1="edge.x1" :y1="edge.y1"
               :x2="edge.x2" :y2="edge.y2" class="viz-edge" />
-            <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`">
+            <g v-for="node in treeLayout.nodes" :key="`tn-${node.id}`"
+              @click.stop="handleNodeCardClick(`t-${node.id}`, $event)">
               <circle :cx="node.x" :cy="node.y" :r="treeLayout.treeR" class="viz-tree-node" :class="{
                 'viz-tree-node--root': node.isRoot,
                 'viz-node--added': node.diff === 'added',
@@ -2139,7 +2459,8 @@ onBeforeUnmount(() => {
               v-show="isWeighted && edge.weight !== undefined" :x="edge.mx" :y="edge.my - 6" class="viz-weight">
               {{ edge.weight }}
             </text>
-            <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`">
+            <g v-for="node in graphLayout.nodes" :key="`gn-${node.id}`"
+              @click.stop="handleNodeCardClick(`g-${node.id}`, $event)">
               <circle :cx="node.x" :cy="node.y" :r="graphLayout.graphR" class="viz-graph-node"
                 :class="{ 'viz-node--added': node.diff === 'added' }"
                 :style="getGraphNodeHlStyle(node.id, node.color)" />
@@ -2149,6 +2470,23 @@ onBeforeUnmount(() => {
               </text>
             </g>
           </g>
+
+          <!-- 消逝节点虚线圆 -->
+          <template v-if="isNodeStructure">
+            <circle v-for="[dKey, dPos] in departedNodePositions" :key="`departed-${dKey}`" :cx="dPos.x" :cy="dPos.y"
+              :r="dPos.r" class="viz-departed-ghost" @click.stop="handleDepartedSelect(dKey)" />
+          </template>
+
+          <!-- 变更卡片 -->
+          <template v-if="isNodeStructure">
+            <ChangeCard v-for="[cKey, tl] in activeTimelines" :key="`cc-${cKey}`" :timeline="tl"
+              :current-frame-index="effectiveFrameIndex" :card-x="cardPositions.get(cKey)?.x ?? 0"
+              :card-y="cardPositions.get(cKey)?.y ?? 0" :node-x="getNodePos(cKey).x" :node-y="getNodePos(cKey).y"
+              :show-all-frames="showAllFramesMap.get(cKey) ?? false" :detail-mode="changeCardDetailMode"
+              :departed="departedCards.has(cKey)" @jump-to-frame="handleCardJumpToFrame"
+              @toggle-all-frames="toggleShowAllFrames(cKey)"
+              @toggle-detail="changeCardDetailMode = !changeCardDetailMode" @close="handleDepartedCardClose(cKey)" />
+          </template>
 
           <!-- Ghost（移除渐出） -->
           <template v-for="ghost in removedKeys" :key="`ghost-${ghost.key}`">
@@ -2179,6 +2517,20 @@ onBeforeUnmount(() => {
 
       <VizSettings />
 
+      <!-- 消逝节点浮层 -->
+      <DepartedNodes v-if="showDepartedButton" :lifespans="departedLifespans" @select="handleDepartedSelect" />
+
+      <!-- 变更卡片控制按钮 -->
+      <div v-if="isNodeStructure && !isEmpty && !isStructureEmpty" class="change-card-controls">
+        <button class="change-card-controls__btn" title="展开全部变更" @click="handleExpandAllCards">
+          <MaterialIcon name="unfold_more" :size="16" />
+        </button>
+        <button class="change-card-controls__btn" title="折叠全部变更"
+          :disabled="expandedCards.size === 0 && departedCards.size === 0" @click="handleCollapseAllCards">
+          <MaterialIcon name="unfold_less" :size="16" />
+        </button>
+      </div>
+
       <!-- Phase indicator -->
       <Transition name="fade">
         <div v-if="showPhaseIndicator" class="viz-phase-bar">
@@ -2199,8 +2551,9 @@ onBeforeUnmount(() => {
                   :class="{ 'viz-phase-popover__item--active': idx === activePhaseIndex }"
                   @click="handleJumpToPhase(idx)">
                   <span class="viz-phase-popover__name" :title="phase.name">{{ phase.name }}</span>
-                  <span class="viz-phase-popover__range">步骤 {{ phase.targetFrameIndex }}–{{ phase.endFrameIndex
-                    }}</span>
+                  <span class="viz-phase-popover__range">
+                    步骤 {{ phase.targetFrameIndex }}–{{ phase.endFrameIndex }}
+                  </span>
                 </div>
               </div>
             </Transition>
@@ -2572,6 +2925,14 @@ onBeforeUnmount(() => {
   stroke-width: 1.5;
 }
 
+/* ---- 节点可点击态（仅变更卡片可用的结构类型） ---- */
+
+.viz-panel--node-clickable .viz-tree-node,
+.viz-panel--node-clickable .viz-graph-node,
+.viz-panel--node-clickable .viz-node-rect {
+  cursor: pointer;
+}
+
 /* 新增渐入 */
 .viz-node--added {
   transform-box: fill-box;
@@ -2616,6 +2977,65 @@ onBeforeUnmount(() => {
     opacity: 0;
     transform: scale(0.86);
   }
+}
+
+/* ---- 消逝节点虚线圆 ---- */
+
+.viz-departed-ghost {
+  fill: none;
+  stroke: var(--color-error);
+  stroke-width: 1;
+  stroke-dasharray: 5 3;
+  opacity: 0.4;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.viz-departed-ghost:hover {
+  opacity: 0.7;
+}
+
+/* ---- 变更卡片控制按钮 ---- */
+
+.change-card-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  gap: 4px;
+}
+
+.change-card-controls__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  box-shadow: var(--shadow-static);
+  transition:
+    background-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease);
+}
+
+.change-card-controls__btn:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.change-card-controls__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.change-card-controls__btn :deep(.material-icon) {
+  width: 16px;
+  height: 16px;
 }
 
 /* 平滑位移 */
@@ -2850,8 +3270,6 @@ onBeforeUnmount(() => {
     min-height: 240px;
   }
 }
-
-
 
 @media (prefers-reduced-motion: reduce) {
   .viz-node--added {

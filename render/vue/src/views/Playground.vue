@@ -552,7 +552,8 @@ watch(currentFrameIndex, (next, prev) => {
 
               <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
                 :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
-                :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
+                :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"                 
+                :frame-list="frameList" :current-frame-index="currentFrameIndex" :ir-document="irDoc"
                 @jump-to-frame="handleJumpToFrame" />
             </Transition>
 

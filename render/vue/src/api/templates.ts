@@ -6,7 +6,7 @@
  *
  * @file src/api/templates.ts
  * @author WaterRun
- * @date 2026-02-11
+ * @date 2026-03-28
  */
 
 import { get, post, del } from './http'
@@ -198,7 +198,7 @@ export async function fetchTemplatesApi(
 /**
  * 搜索模板
  *
- * @param params - 必须包含 keyword，可选分页
+ * @param params - 必须包含 keyword，可选分页与分类
  * @returns 搜索结果分页列表
  * @throws {ApiError} 422 缺少 keyword
  */
@@ -209,6 +209,7 @@ export async function searchTemplatesApi(
     '/templates/search',
     {
       keyword: params.keyword,
+      category: params.category,
       page: params.page,
       limit: params.limit,
     },

@@ -25,12 +25,6 @@ export default defineConfig({
 
     allowedHosts: ["evader84.picp.io"],
 
-    hmr: {
-      host: "evader84.picp.io",
-      protocol: "ws",
-      clientPort: 5173,
-    },
-
     proxy: {
       "/api": {
         target: "http://127.0.0.1:10000",

@@ -36,6 +36,8 @@ export interface VizFlagsState {
     showPhases: boolean
     /** 显示可视化标题/标签/备注信息 */
     showVizTitle: boolean
+    /** 启用节点变更卡片功能 */
+    showChangeCards: boolean
     /** 自动播放间隔（毫秒，0–10000，步进 100） */
     playbackInterval: number
 }
@@ -60,6 +62,7 @@ const DEFAULT_FLAGS: VizFlagsState = {
     autoPlayOnGenerate: false,
     showPhases: true,
     showVizTitle: true,
+    showChangeCards: true,
     playbackInterval: 768,
 }
 
