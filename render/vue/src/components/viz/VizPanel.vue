@@ -558,6 +558,36 @@ const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
   const result = new Map<string, { x: number; y: number }>()
   const placed: Array<{ x: number; y: number; w: number; h: number }> = []
   const cardH = changeCardDetailMode.value ? CARD_H_DETAIL : CARD_H_SIMPLE
+  const gap = CARD_GAP + 8
+
+  /* 将所有可见节点加入碰撞池，防止卡片与节点重叠 */
+  for (const [, pos] of currentNodePositions.value) {
+    placed.push({
+      x: pos.x - pos.r - 4,
+      y: pos.y - pos.r - 4,
+      w: pos.r * 2 + 8,
+      h: pos.r * 2 + 8,
+    })
+  }
+  for (const [, pos] of departedNodePositions.value) {
+    placed.push({
+      x: pos.x - pos.r - 4,
+      y: pos.y - pos.r - 4,
+      w: pos.r * 2 + 8,
+      h: pos.r * 2 + 8,
+    })
+  }
+
+  const collides = (
+    rect: { x: number; y: number; w: number; h: number },
+  ): boolean =>
+    placed.some(
+      (p) =>
+        rect.x < p.x + p.w
+        && rect.x + rect.w > p.x
+        && rect.y < p.y + p.h
+        && rect.y + rect.h > p.y,
+    )
 
   for (const key of allActiveCardKeys.value) {
     const nodePos = currentNodePositions.value.get(key)
@@ -565,23 +595,17 @@ const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
     if (!nodePos) continue
 
     const candidates = [
-      { x: nodePos.x + nodePos.r + CARD_GAP, y: nodePos.y - cardH / 2 },
-      { x: nodePos.x - nodePos.r - CARD_GAP - CARD_W_EST, y: nodePos.y - cardH / 2 },
-      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y + nodePos.r + CARD_GAP },
-      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y - nodePos.r - CARD_GAP - cardH },
+      { x: nodePos.x + nodePos.r + gap, y: nodePos.y - cardH / 2 },
+      { x: nodePos.x - nodePos.r - gap - CARD_W_EST, y: nodePos.y - cardH / 2 },
+      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y + nodePos.r + gap },
+      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y - nodePos.r - gap - cardH },
+      { x: nodePos.x + nodePos.r + gap, y: nodePos.y - cardH },
+      { x: nodePos.x - nodePos.r - gap - CARD_W_EST, y: nodePos.y },
     ]
 
     let best = candidates[0]
     for (const pos of candidates) {
-      const rect = { x: pos.x, y: pos.y, w: CARD_W_EST, h: cardH }
-      const collides = placed.some(
-        (p) =>
-          rect.x < p.x + p.w
-          && rect.x + rect.w > p.x
-          && rect.y < p.y + p.h
-          && rect.y + rect.h > p.y,
-      )
-      if (!collides) {
+      if (!collides({ x: pos.x, y: pos.y, w: CARD_W_EST, h: cardH })) {
         best = pos
         break
       }
@@ -593,7 +617,6 @@ const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
 
   return result
 })
-
 /* ---- 元数据显示 ---- */
 
 function formatUnknownValue(value: unknown): string {
@@ -799,6 +822,8 @@ const effectiveAuthorY = computed<number>(() => {
 })
 
 const isPanning = ref<boolean>(false)
+const didDrag = ref<boolean>(false)
+const DRAG_THRESHOLD = 4
 const panOrigin = ref<{ cx: number; cy: number; vx: number; vy: number }>({
   cx: 0,
   cy: 0,
@@ -855,39 +880,44 @@ const onWheel = (event: WheelEvent): void => {
 }
 
 const onPanStart = (event: PointerEvent): void => {
-  isPanning.value = true
-  panOrigin.value = {
-    cx: event.clientX,
-    cy: event.clientY,
-    vx: vb.value.x,
-    vy: vb.value.y,
+    isPanning.value = true
+    didDrag.value = false
+    panOrigin.value = {
+      cx: event.clientX,
+      cy: event.clientY,
+      vx: vb.value.x,
+      vy: vb.value.y,
+    }
   }
-    ; (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId)
-}
 
 const onPanMove = (event: PointerEvent): void => {
-  if (!isPanning.value) return
+    if (!isPanning.value) return
 
-  const svg = event.currentTarget as SVGSVGElement
-  const rect = svg.getBoundingClientRect()
-  const dx = ((event.clientX - panOrigin.value.cx) / rect.width) * vb.value.w
-  const dy = ((event.clientY - panOrigin.value.cy) / rect.height) * vb.value.h
+    const rawDx = event.clientX - panOrigin.value.cx
+    const rawDy = event.clientY - panOrigin.value.cy
 
-  vb.value = {
-    ...vb.value,
-    x: panOrigin.value.vx - dx,
-    y: panOrigin.value.vy - dy,
+    if (!didDrag.value && (Math.abs(rawDx) > DRAG_THRESHOLD || Math.abs(rawDy) > DRAG_THRESHOLD)) {
+      didDrag.value = true
+    }
+
+    const svg = event.currentTarget as SVGSVGElement
+    const rect = svg.getBoundingClientRect()
+    const dx = (rawDx / rect.width) * vb.value.w
+    const dy = (rawDy / rect.height) * vb.value.h
+
+    vb.value = {
+      ...vb.value,
+      x: panOrigin.value.vx - dx,
+      y: panOrigin.value.vy - dy,
+    }
   }
-}
 
 const onPanEnd = (): void => {
-  if (isPanning.value) {
-    const dx = Math.abs(vb.value.x - panOrigin.value.vx)
-    const dy = Math.abs(vb.value.y - panOrigin.value.vy)
-    if (dx > 1 || dy > 1) userManualZoom.value = true
+    if (isPanning.value && didDrag.value) {
+      userManualZoom.value = true
+    }
+    isPanning.value = false
   }
-  isPanning.value = false
-}
 
 const fitViewBox = (minX: number, minY: number, maxX: number, maxY: number): void => {
   contentBounds.value = { minX, minY, maxX, maxY }
@@ -964,6 +994,7 @@ function getOrBuildTimeline(key: string): NodeChangeTimeline | null {
  */
 function handleNodeCardClick(key: string, event: Event): void {
   event.stopPropagation()
+  if (didDrag.value) return
   if (!isNodeStructure.value) return
 
   const next = new Set(expandedCards.value)
@@ -976,13 +1007,30 @@ function handleNodeCardClick(key: string, event: Event): void {
 }
 
 /**
+ * 获取消逝节点的显示标签（截断）
+ *
+ * @param key - 节点标识键
+ * @returns 截断后的显示文本
+ */
+function formatDepartedLabel(key: string): string {
+  const span = nodeLifespans.value.get(key)
+  if (!span) return ''
+  const v = span.lastValue !== undefined ? String(span.lastValue) : (span.lastLabel ?? '')
+  return v.length > 4 ? `${v.slice(0, 3)}…` : v
+}
+
+/**
  * 消逝节点卡片选中
  *
  * @param key - 节点标识键
  */
 function handleDepartedSelect(key: string): void {
   const next = new Set(departedCards.value)
-  next.add(key)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
   departedCards.value = next
 }
 
@@ -1511,7 +1559,6 @@ interface ListLayout {
 }
 
 watch(
-  () => slistOrdered.value,
   () => slistOrdered.value,
   (ordered) => {
     if (!slistData.value) {
@@ -2473,8 +2520,19 @@ onBeforeUnmount(() => {
 
           <!-- 消逝节点虚线圆 -->
           <template v-if="isNodeStructure">
-            <circle v-for="[dKey, dPos] in departedNodePositions" :key="`departed-${dKey}`" :cx="dPos.x" :cy="dPos.y"
-              :r="dPos.r" class="viz-departed-ghost" @click.stop="handleDepartedSelect(dKey)" />
+            <g v-for="[dKey, dPos] in departedNodePositions" :key="`departed-${dKey}`"
+              @click.stop="handleDepartedSelect(dKey)">
+              <!-- 展开态红色高亮背景 -->
+              <circle v-if="departedCards.has(dKey)" :cx="dPos.x" :cy="dPos.y" :r="dPos.r + 3"
+                fill="rgba(239,68,68,0.10)" stroke="none" />
+              <!-- 虚线圆 -->
+              <circle :cx="dPos.x" :cy="dPos.y" :r="dPos.r"
+                :class="departedCards.has(dKey) ? 'viz-departed-ghost--active' : 'viz-departed-ghost'" />
+              <!-- 节点最后已知值 -->
+              <text :x="dPos.x" :y="dPos.y + 4" class="viz-departed-ghost__label">
+                {{ formatDepartedLabel(dKey) }}
+              </text>
+            </g>
           </template>
 
           <!-- 变更卡片 -->
@@ -2482,9 +2540,9 @@ onBeforeUnmount(() => {
             <ChangeCard v-for="[cKey, tl] in activeTimelines" :key="`cc-${cKey}`" :timeline="tl"
               :current-frame-index="effectiveFrameIndex" :card-x="cardPositions.get(cKey)?.x ?? 0"
               :card-y="cardPositions.get(cKey)?.y ?? 0" :node-x="getNodePos(cKey).x" :node-y="getNodePos(cKey).y"
-              :show-all-frames="showAllFramesMap.get(cKey) ?? false" :detail-mode="changeCardDetailMode"
-              :departed="departedCards.has(cKey)" @jump-to-frame="handleCardJumpToFrame"
-              @toggle-all-frames="toggleShowAllFrames(cKey)"
+              :node-radius="getNodePos(cKey).r" :show-all-frames="showAllFramesMap.get(cKey) ?? false"
+              :detail-mode="changeCardDetailMode" :departed="departedCards.has(cKey)"
+              @jump-to-frame="handleCardJumpToFrame" @toggle-all-frames="toggleShowAllFrames(cKey)"
               @toggle-detail="changeCardDetailMode = !changeCardDetailMode" @close="handleDepartedCardClose(cKey)" />
           </template>
 
@@ -2523,11 +2581,22 @@ onBeforeUnmount(() => {
       <!-- 变更卡片控制按钮 -->
       <div v-if="isNodeStructure && !isEmpty && !isStructureEmpty" class="change-card-controls">
         <button class="change-card-controls__btn" title="展开全部变更" @click="handleExpandAllCards">
-          <MaterialIcon name="unfold_more" :size="16" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="1" width="12" height="5" rx="1.5" />
+            <rect x="2" y="10" width="12" height="5" rx="1.5" />
+            <polyline points="6.5,8.5 8,7 9.5,8.5" />
+          </svg>
         </button>
         <button class="change-card-controls__btn" title="折叠全部变更"
           :disabled="expandedCards.size === 0 && departedCards.size === 0" @click="handleCollapseAllCards">
-          <MaterialIcon name="unfold_less" :size="16" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="12" height="3.5" rx="1.5" />
+            <rect x="2" y="8.5" width="12" height="3.5" rx="1.5" />
+            <polyline points="6.5,2.5 8,4 9.5,2.5" />
+            <polyline points="6.5,13.5 8,12 9.5,13.5" />
+          </svg>
         </button>
       </div>
 
@@ -2995,6 +3064,29 @@ onBeforeUnmount(() => {
   opacity: 0.7;
 }
 
+.viz-departed-ghost--active {
+  fill: rgba(239, 68, 68, 0.06);
+  stroke: var(--color-error);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.viz-departed-ghost--active:hover {
+  opacity: 0.9;
+}
+
+.viz-departed-ghost__label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  fill: var(--color-error);
+  text-anchor: middle;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
 /* ---- 变更卡片控制按钮 ---- */
 
 .change-card-controls {
@@ -3033,9 +3125,10 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.change-card-controls__btn :deep(.material-icon) {
+.change-card-controls__btn svg {
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
 }
 
 /* 平滑位移 */

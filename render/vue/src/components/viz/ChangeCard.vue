@@ -11,7 +11,7 @@
  * @component ChangeCard
  */
 
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { NodeChangeTimeline, NodeChangeEntry, NodeChangeType } from '@/types/node-change'
 import { CHANGE_TYPE_SYMBOL } from '@/types/node-change'
 import type { IrValue } from '@/types/ir'
@@ -32,6 +32,8 @@ interface Props {
     nodeX: number
     /** 节点中心 y */
     nodeY: number
+    /** 节点渲染半径 */
+    nodeRadius: number
     /** 是否展示全部帧 */
     showAllFrames: boolean
     /** 是否详细模式 */
@@ -60,11 +62,11 @@ const emit = defineEmits<Emits>()
 /* ---- 尺寸常量 ---- */
 
 const PAD = 6
-const HEADER_W = 48
-const CELL_W_SIMPLE = 32
-const CELL_W_DETAIL = 46
-const CELL_H_SIMPLE = 42
-const CELL_H_DETAIL = 62
+const HEADER_W = 56
+const CELL_W_SIMPLE = 40
+const CELL_W_DETAIL = 54
+const CELL_H_SIMPLE = 50
+const CELL_H_DETAIL = 72
 const MAX_VISIBLE = 7
 const NAV_W = 14
 const BORDER_R = 10
@@ -148,17 +150,39 @@ const navRightX = computed<number>(() => {
 /**
  * Leader line 目标点（节点中心，相对于卡片原点）
  */
-const leaderTarget = computed<{ x: number; y: number }>(() => ({
+/**
+* 节点中心（相对于卡片原点）
+*/
+const nodeCenter = computed<{ x: number; y: number }>(() => ({
     x: props.nodeX - props.cardX,
     y: props.nodeY - props.cardY,
 }))
 
 /**
+* Leader line 终点（节点边缘，而非中心）
+*/
+const leaderTarget = computed<{ x: number; y: number }>(() => {
+    const cx = totalW.value / 2
+    const cy = totalH.value / 2
+    const dx = nodeCenter.value.x - cx
+    const dy = nodeCenter.value.y - cy
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist === 0) return nodeCenter.value
+    const ux = dx / dist
+    const uy = dy / dist
+    const r = Math.max(props.nodeRadius, 4)
+    return {
+        x: nodeCenter.value.x - ux * r,
+        y: nodeCenter.value.y - uy * r,
+    }
+})
+
+/**
  * Leader line 起始点（卡片边缘最近点）
  */
 const leaderStart = computed<{ x: number; y: number }>(() => {
-    const tx = leaderTarget.value.x
-    const ty = leaderTarget.value.y
+    const tx = nodeCenter.value.x
+    const ty = nodeCenter.value.y
     const cx = totalW.value / 2
     const cy = totalH.value / 2
     const dx = tx - cx
@@ -290,6 +314,10 @@ function scrollToCurrent(): void {
     }
 }
 
+onMounted(() => {
+    scrollToCurrent()
+})
+
 /**
  * 处理单元格点击
  *
@@ -320,6 +348,15 @@ function handleScrollRight(event: Event): void {
     event.stopPropagation()
     if (hasRight.value) scrollOffset.value += 1
 }
+
+import { onMounted as onCardMounted } from 'vue'
+
+/**
+ * 卡片挂载时自动滚动至当前帧附近
+ */
+onCardMounted(() => {
+    scrollToCurrent()
+})
 </script>
 
 <template>
@@ -327,7 +364,7 @@ function handleScrollRight(event: Event): void {
         <!-- Leader line -->
         <line :x1="leaderStart.x" :y1="leaderStart.y" :x2="leaderTarget.x" :y2="leaderTarget.y"
             :class="departed ? 'change-card__leader--departed' : 'change-card__leader'" />
-        <circle :cx="leaderTarget.x" :cy="leaderTarget.y" r="3"
+        <circle :cx="leaderTarget.x" :cy="leaderTarget.y" r="2.5"
             :class="departed ? 'change-card__dot--departed' : 'change-card__dot'" />
 
         <!-- Card background -->
@@ -337,15 +374,15 @@ function handleScrollRight(event: Event): void {
         <!-- Header cell -->
         <g :transform="`translate(${PAD}, ${PAD})`">
             <rect x="0" y="0" :width="HEADER_W" :height="CELL_H" rx="6" class="change-card__header-bg" />
-            <text :x="HEADER_W / 2" y="14" class="change-card__id">#{{ timeline.nodeId }}</text>
-            <text v-if="timeline.lastAlias" :x="HEADER_W / 2" y="25" class="change-card__alias">{{ timeline.lastAlias
+            <text :x="HEADER_W / 2" y="16" class="change-card__id">#{{ timeline.nodeId }}</text>
+            <text v-if="timeline.lastAlias" :x="HEADER_W / 2" y="28" class="change-card__alias">{{ timeline.lastAlias
                 }}</text>
-            <text :x="HEADER_W / 2" :y="timeline.lastAlias ? 36 : 28" class="change-card__header-val">{{ headerValue
+            <text :x="HEADER_W / 2" :y="timeline.lastAlias ? 39 : 32" class="change-card__header-val">{{ headerValue
                 }}</text>
         </g>
 
         <!-- Toggle buttons (top right of header) -->
-        <g :transform="`translate(${PAD + 2}, ${PAD + CELL_H - 14})`" class="change-card__toggles">
+        <g :transform="`translate(${PAD + 2}, ${PAD + CELL_H - 12})`" class="change-card__toggles">
             <text x="0" y="0" class="change-card__toggle-btn" @click.stop="emit('toggle-all-frames')">{{ showAllFrames ?
                 '◂' : '▸' }}</text>
             <text x="12" y="0" class="change-card__toggle-btn" @click.stop="emit('toggle-detail')">{{ detailMode ? '−' :
@@ -358,7 +395,7 @@ function handleScrollRight(event: Event): void {
         <g v-if="hasLeft" :transform="`translate(${navLeftX}, ${PAD})`" class="change-card__nav"
             @click.stop="handleScrollLeft">
             <rect x="0" y="0" :width="NAV_W" :height="CELL_H" rx="4" class="change-card__nav-bg" />
-            <text :x="NAV_W / 2" :y="CELL_H / 2 + 4" class="change-card__nav-arrow">‹</text>
+            <text :x="NAV_W / 2" :y="CELL_H / 2 + 5" class="change-card__nav-arrow">‹</text>
         </g>
 
         <!-- Entry cells -->
@@ -371,20 +408,60 @@ function handleScrollRight(event: Event): void {
                 'change-card__cell--deleted': entry.primaryType === 'deleted',
             }" />
 
-            <!-- Type indicator dot -->
-            <circle :cx="CELL_W / 2" cy="10" r="3" :fill="typeColor(entry.primaryType)" />
+            <!-- Type indicator icon -->
+            <g :transform="`translate(${CELL_W / 2}, 12)`">
+                <template v-if="entry.primaryType === 'created'">
+                    <circle r="5" fill="rgba(34,197,94,0.15)" stroke="#22c55e" stroke-width="0.8" />
+                    <line x1="-2.5" y1="0" x2="2.5" y2="0" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" />
+                    <line x1="0" y1="-2.5" x2="0" y2="2.5" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" />
+                </template>
+                <template v-else-if="entry.primaryType === 'deleted'">
+                    <circle r="5" fill="rgba(239,68,68,0.15)" stroke="#ef4444" stroke-width="0.8" />
+                    <line x1="-2" y1="-2" x2="2" y2="2" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" />
+                    <line x1="2" y1="-2" x2="-2" y2="2" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" />
+                </template>
+                <template v-else-if="entry.primaryType === 'value_changed'">
+                    <circle r="5" fill="rgba(0,120,212,0.12)" stroke="#0078d4" stroke-width="0.8" />
+                    <line x1="-2.5" y1="0" x2="2" y2="0" stroke="#0078d4" stroke-width="1" stroke-linecap="round" />
+                    <polyline points="0.5,-2 2.5,0 0.5,2" fill="none" stroke="#0078d4" stroke-width="1"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </template>
+                <template v-else-if="entry.primaryType === 'structural'">
+                    <circle r="5" fill="rgba(8,145,178,0.12)" stroke="#0891b2" stroke-width="0.8" />
+                    <line x1="-2.5" y1="0" x2="2.5" y2="0" stroke="#0891b2" stroke-width="1" stroke-linecap="round" />
+                    <polyline points="-1,-1.8 -2.5,0 -1,1.8" fill="none" stroke="#0891b2" stroke-width="0.8"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                    <polyline points="1,-1.8 2.5,0 1,1.8" fill="none" stroke="#0891b2" stroke-width="0.8"
+                        stroke-linecap="round" stroke-linejoin="round" />
+                </template>
+                <template v-else-if="entry.primaryType === 'highlighted'">
+                    <circle r="5" fill="rgba(217,119,6,0.12)" stroke="#d97706" stroke-width="0.8" />
+                    <circle r="2" fill="#d97706" />
+                </template>
+                <template v-else-if="entry.primaryType === 'alias_changed'">
+                    <circle r="5" fill="rgba(124,58,237,0.12)" stroke="#7c3aed" stroke-width="0.8" />
+                    <line x1="-2" y1="-1.5" x2="2" y2="-1.5" stroke="#7c3aed" stroke-width="1" stroke-linecap="round" />
+                    <line x1="-2" y1="0" x2="2" y2="0" stroke="#7c3aed" stroke-width="1" stroke-linecap="round" />
+                    <line x1="-2" y1="1.5" x2="2" y2="1.5" stroke="#7c3aed" stroke-width="1" stroke-linecap="round" />
+                </template>
+                <template v-else>
+                    <circle r="5" fill="rgba(3,105,161,0.12)" stroke="#0369a1" stroke-width="0.8" />
+                    <text y="1" font-size="6" fill="#0369a1" text-anchor="middle" dominant-baseline="central"
+                        font-weight="700">W</text>
+                </template>
+            </g>
 
-            <!-- Type symbol -->
-            <text :x="CELL_W / 2" cy="10" y="22" class="change-card__cell-sym">{{ cellValue(entry) }}</text>
+            <!-- Value text -->
+            <text :x="CELL_W / 2" y="27" class="change-card__cell-sym">{{ cellValue(entry) }}</text>
 
             <!-- Frame number -->
-            <text :x="CELL_W / 2" y="33" class="change-card__cell-frame">F{{ entry.frameIndex }}</text>
+            <text :x="CELL_W / 2" y="38" class="change-card__cell-frame">F{{ entry.frameIndex }}</text>
 
             <!-- Detail mode extra line -->
-            <text v-if="detailMode" :x="CELL_W / 2" y="44" class="change-card__cell-detail">{{ detailText(entry)
+            <text v-if="detailMode" :x="CELL_W / 2" y="50" class="change-card__cell-detail">{{ detailText(entry)
                 }}</text>
 
-            <text v-if="detailMode && entry.op" :x="CELL_W / 2" y="55" class="change-card__cell-op">{{ entry.op.length >
+            <text v-if="detailMode && entry.op" :x="CELL_W / 2" y="62" class="change-card__cell-op">{{ entry.op.length >
                 6 ? entry.op.slice(0, 5) + '…' : entry.op }}</text>
         </g>
 
@@ -392,7 +469,7 @@ function handleScrollRight(event: Event): void {
         <g v-if="hasRight" :transform="`translate(${navRightX}, ${PAD})`" class="change-card__nav"
             @click.stop="handleScrollRight">
             <rect x="0" y="0" :width="NAV_W" :height="CELL_H" rx="4" class="change-card__nav-bg" />
-            <text :x="NAV_W / 2" :y="CELL_H / 2 + 4" class="change-card__nav-arrow">›</text>
+            <text :x="NAV_W / 2" :y="CELL_H / 2 + 5" class="change-card__nav-arrow">›</text>
         </g>
     </g>
 </template>

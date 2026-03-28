@@ -12,7 +12,6 @@
 
 import { ref, onUnmounted } from 'vue'
 import type { NodeLifespan } from '@/types/node-change'
-import MaterialIcon from '@/components/common/MaterialIcon.vue'
 
 /**
  * 组件属性定义
@@ -84,7 +83,11 @@ onUnmounted(() => cancelClose())
 <template>
     <div class="departed-nodes" @pointerenter="handleEnter" @pointerleave="handleLeave">
         <button class="departed-nodes__trigger">
-            <MaterialIcon name="skull" :size="14" />
+            <svg width="14" height="14" viewBox="0 0 14 14" class="departed-nodes__icon" aria-hidden="true">
+                <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"
+                    stroke-dasharray="3 2" />
+                <circle cx="7" cy="7" r="1.5" fill="currentColor" />
+            </svg>
             <span class="departed-nodes__count">{{ lifespans.length }}</span>
         </button>
 
@@ -141,9 +144,8 @@ onUnmounted(() => cancelClose())
     box-shadow: var(--shadow-hover);
 }
 
-.departed-nodes__trigger :deep(.material-icon) {
-    width: 14px;
-    height: 14px;
+.departed-nodes__icon {
+    flex-shrink: 0;
 }
 
 .departed-nodes__count {
