@@ -16,7 +16,7 @@
  *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-03-28
  * @component VizPanel
  */
 
@@ -68,8 +68,8 @@ interface Props {
  * 组件事件定义
  */
 interface Emits {
-  /** 跳转至指定状态 */
-  (event: 'jump-to-state', stateIndex: number): void
+  /** 跳转至指定帧 */
+  (event: 'jump-to-frame', frameIndex: number): void
 }
 
 const props = defineProps<Props>()
@@ -1787,7 +1787,7 @@ const handlePrevPhase = (): void => {
   const target = effectivePhases.value[prevIndex]
   if (target) {
     activePhaseIndex.value = prevIndex
-    emit('jump-to-state', target.targetStateIndex)
+    emit('jump-to-frame', target.targetFrameIndex)
   }
 }
 
@@ -1800,7 +1800,7 @@ const handleNextPhase = (): void => {
   const target = effectivePhases.value[nextIndex]
   if (target) {
     activePhaseIndex.value = nextIndex
-    emit('jump-to-state', target.targetStateIndex)
+    emit('jump-to-frame', target.targetFrameIndex)
   }
 }
 
@@ -1814,7 +1814,7 @@ const handleJumpToPhase = (index: number): void => {
   const target = effectivePhases.value[index]
   if (target) {
     activePhaseIndex.value = index
-    emit('jump-to-state', target.targetStateIndex)
+    emit('jump-to-frame', target.targetFrameIndex)
     phasePopoverOpen.value = false
   }
 }

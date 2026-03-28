@@ -8,7 +8,7 @@
  *
  * @file src/views/Templates.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-03-28
  * @component Templates
  */
 
@@ -16,6 +16,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
+import { useAuthStore } from '@/stores/auth'
+import { fetchFavoritesApi } from '@/api/users'
+import type { FavoriteItem } from '@/api/users'
 import { extractErrorMessage } from '@/utils/error'
 import { formatRelativeTime } from '@/utils/time'
 import { LANGUAGES } from '@/types/api'
@@ -30,6 +33,8 @@ const route = useRoute()
 const router = useRouter()
 
 const store = useTemplatesStore()
+const authStore = useAuthStore()
+const { currentUser } = storeToRefs(authStore)
 const {
   items,
   total,
@@ -45,26 +50,35 @@ const {
 /** 搜索输入框绑定值 */
 const searchInput = ref<string>('')
 
-/** 中文输入法组合状态 */
+/** 是否处于输入法组合输入（IME） */
 const isComposing = ref<boolean>(false)
 
-/** 搜索防抖定时器 */
+/** 搜索防抖计时器 */
 let searchTimer: number | null = null
 
-/** IntersectionObserver 实例 */
-let observer: IntersectionObserver | null = null
-
 /** 无限滚动哨兵元素 */
-const sentinel = ref<HTMLElement | null>(null)
+const sentinel = ref<HTMLDivElement | null>(null)
 
-/** 内容区容器引用 */
+/** 内容滚动容器 */
 const contentRef = ref<HTMLElement | null>(null)
+
+/** 无限滚动观察器 */
+let observer: IntersectionObserver | null = null
 
 /** 收藏操作中的模板 ID 集合 */
 const togglingIds = ref<Set<number>>(new Set())
 
 /** 收藏操作错误提示 */
 const favoriteError = ref<string>('')
+
+/** 收藏区独立数据 */
+const favoriteTemplates = ref<FavoriteItem[]>([])
+
+/** 收藏区加载状态 */
+const favoriteTemplatesLoading = ref<boolean>(false)
+
+/** 收藏区加载错误 */
+const favoriteTemplatesError = ref<string>('')
 
 /** 当前展开的模板 ID */
 const selectedTemplateId = ref<number | null>(null)
@@ -78,14 +92,20 @@ const currentPlaygroundLanguage = computed<Language>(() => {
   return 'python'
 })
 
-/** 我收藏的模板 */
-const favoritedItems = computed(() => items.value.filter((item) => item.isFavorited))
+/**
+ * 是否展示“我收藏的”分组
+ *
+ * 仅在“全部 + 非搜索”模式展示，避免与筛选/搜索语义冲突。
+ */
+const showFavoriteSection = computed<boolean>(() => {
+  return selectedCategory.value.length === 0 && !isSearchMode.value
+})
 
-/** 其他模板 */
+/** 其他模板（来自模板列表数据源） */
 const otherItems = computed(() => items.value.filter((item) => !item.isFavorited))
 
-/** 是否存在已收藏项 */
-const hasFavorited = computed<boolean>(() => favoritedItems.value.length > 0)
+/** 是否存在收藏模板 */
+const hasFavorited = computed<boolean>(() => favoriteTemplates.value.length > 0)
 
 /** 内容切换动画 key */
 const contentKey = computed<string>(() => `${selectedCategory.value}/${keyword.value}`)
@@ -101,6 +121,44 @@ const emptyMessage = computed<string>(() => {
 /** 滚动内容区到顶部 */
 const scrollToTop = (): void => {
   contentRef.value?.scrollTo({ top: 0 })
+}
+
+/**
+ * 加载“我收藏的”列表（独立数据源）
+ *
+ * 通过用户收藏接口全量拉取，避免受模板分页/滚动影响。
+ */
+const loadFavoriteTemplates = async (): Promise<void> => {
+  const userId = currentUser.value?.id
+  if (!userId) {
+    favoriteTemplates.value = []
+    favoriteTemplatesLoading.value = false
+    favoriteTemplatesError.value = ''
+    return
+  }
+
+  favoriteTemplatesLoading.value = true
+  favoriteTemplatesError.value = ''
+
+  try {
+    const merged: FavoriteItem[] = []
+    let page = 1
+    const limit = 50
+    let totalCount = 0
+
+    do {
+      const result = await fetchFavoritesApi(userId, { page, limit })
+      merged.push(...result.items)
+      totalCount = result.total
+      page += 1
+    } while (merged.length < totalCount)
+
+    favoriteTemplates.value = merged
+  } catch (error: unknown) {
+    favoriteTemplatesError.value = extractErrorMessage(error)
+  } finally {
+    favoriteTemplatesLoading.value = false
+  }
 }
 
 /** 防抖搜索 */
@@ -122,12 +180,20 @@ const handleInput = (): void => {
   debouncedSearch()
 }
 
-const handleCompositionStart = (): void => { isComposing.value = true }
-const handleCompositionEnd = (): void => { isComposing.value = false; debouncedSearch() }
+const handleCompositionStart = (): void => {
+  isComposing.value = true
+}
+const handleCompositionEnd = (): void => {
+  isComposing.value = false
+  debouncedSearch()
+}
 
 const handleClearSearch = async (): Promise<void> => {
   searchInput.value = ''
-  if (searchTimer !== null) { window.clearTimeout(searchTimer); searchTimer = null }
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
   await store.clearSearch()
   scrollToTop()
 }
@@ -139,8 +205,10 @@ const handleToggleFavorite = async (templateId: number): Promise<void> => {
   if (togglingIds.value.has(templateId)) return
   togglingIds.value.add(templateId)
   favoriteError.value = ''
+
   try {
     await store.toggleFavorite(templateId)
+    await loadFavoriteTemplates()
   } catch (error: unknown) {
     favoriteError.value = extractErrorMessage(error)
   } finally {
@@ -172,7 +240,10 @@ const handlePanelToggleFavorite = async (templateId: number): Promise<void> => {
 
 const handleSelectCategory = async (category: string): Promise<void> => {
   searchInput.value = ''
-  if (searchTimer !== null) { window.clearTimeout(searchTimer); searchTimer = null }
+  if (searchTimer !== null) {
+    window.clearTimeout(searchTimer)
+    searchTimer = null
+  }
   selectedTemplateId.value = null
   await store.selectCategory(category)
   scrollToTop()
@@ -207,15 +278,30 @@ onMounted(async () => {
     (entries) => {
       const entry = entries[0]
       if (entry?.isIntersecting && !loading.value && hasMore.value) {
-        store.appendTemplates()
+        void store.appendTemplates()
       }
     },
     { rootMargin: '200px' },
   )
-  await Promise.all([store.loadCategories(), store.loadTemplates()])
+
+  await Promise.all([
+    store.loadCategories(),
+    store.loadTemplates(),
+    loadFavoriteTemplates(),
+  ])
 
   consumeTemplateIdQuery(route.query.templateId)
 })
+
+/**
+ * 登录态变化时同步收藏区
+ */
+watch(
+  () => currentUser.value?.id,
+  () => {
+    void loadFavoriteTemplates()
+  },
+)
 
 /**
  * 监听路由查询参数变化，处理从其他页面跳转并携带 templateId 的场景
@@ -260,6 +346,7 @@ onBeforeUnmount(() => {
 
     <ErrorBanner :message="errorMessage" @dismiss="errorMessage = ''" />
     <ErrorBanner :message="favoriteError" @dismiss="favoriteError = ''" />
+    <ErrorBanner :message="favoriteTemplatesError" @dismiss="favoriteTemplatesError = ''" />
 
     <div class="templates-page__body">
       <aside class="templates-page__sidebar">
@@ -268,12 +355,16 @@ onBeforeUnmount(() => {
           <li>
             <button class="category-list__item"
               :class="{ 'category-list__item--active': selectedCategory.length === 0 && !isSearchMode }"
-              @click="handleSelectCategory('')">全部</button>
+              @click="handleSelectCategory('')">
+              全部
+            </button>
           </li>
           <li v-for="cat in categories" :key="cat">
             <button class="category-list__item"
               :class="{ 'category-list__item--active': selectedCategory === cat && !isSearchMode }"
-              @click="handleSelectCategory(cat)">{{ cat }}</button>
+              @click="handleSelectCategory(cat)">
+              {{ cat }}
+            </button>
           </li>
         </ul>
       </aside>
@@ -305,27 +396,34 @@ onBeforeUnmount(() => {
         <template v-if="items.length > 0">
           <Transition name="tpl-fade" mode="out-in">
             <div :key="contentKey" class="templates-page__grids">
-              <div v-if="hasFavorited" class="template-section">
+              <div v-if="showFavoriteSection && (favoriteTemplatesLoading || hasFavorited)" class="template-section">
                 <h3 class="template-section__title">我收藏的</h3>
-                <div class="template-grid">
-                  <article v-for="item in favoritedItems" :key="item.id" class="template-card"
-                    :class="{ 'template-card--selected': selectedTemplateId === item.id }"
-                    @click="handleSelectTemplate(item.id)">
+
+                <div v-if="favoriteTemplatesLoading" class="templates-page__loading-more">
+                  <Loading />
+                </div>
+
+                <div v-else class="template-grid">
+                  <article v-for="item in favoriteTemplates" :key="item.templateId" class="template-card"
+                    :class="{ 'template-card--selected': selectedTemplateId === item.templateId }"
+                    @click="handleSelectTemplate(item.templateId)">
                     <div class="template-card__header">
                       <h3 class="template-card__title">{{ item.title }}</h3>
                       <span class="template-card__category">{{ item.category }}</span>
                     </div>
                     <p class="template-card__desc">{{ item.description }}</p>
                     <div class="template-card__footer">
-                      <span class="template-card__time">{{ formatRelativeTime(item.createdAt) }}</span>
-                      <button class="template-card__fav template-card__fav--active" :disabled="togglingIds.has(item.id)"
-                        aria-label="取消收藏" @click.stop="handleToggleFavorite(item.id)">
+                      <span class="template-card__time">收藏于 {{ formatRelativeTime(item.favoritedAt) }}</span>
+                      <button class="template-card__fav template-card__fav--active"
+                        :disabled="togglingIds.has(item.templateId)" aria-label="取消收藏"
+                        @click.stop="handleToggleFavorite(item.templateId)">
                         <MaterialIcon name="favorite" :size="18" />
                         <span class="template-card__fav-count">{{ item.favoriteCount }}</span>
                       </button>
                     </div>
                   </article>
                 </div>
+
                 <div class="template-section__divider" />
               </div>
 
@@ -643,7 +741,10 @@ onBeforeUnmount(() => {
   background-color: var(--color-bg-surface);
   box-shadow: var(--shadow-static);
   cursor: pointer;
-  transition: box-shadow var(--duration-normal) var(--ease), border-color var(--duration-normal) var(--ease), transform var(--duration-fast) var(--ease);
+  transition:
+    box-shadow var(--duration-normal) var(--ease),
+    border-color var(--duration-normal) var(--ease),
+    transform var(--duration-fast) var(--ease);
 }
 
 .template-card:hover {
@@ -725,7 +826,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   padding: 4px 6px;
   border-radius: var(--radius-sm);
-  transition: color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  transition:
+    color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
 }
 
 .template-card__fav:hover:not(:disabled) {

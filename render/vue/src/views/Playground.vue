@@ -9,7 +9,7 @@
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-03-28
  * @component Playground
  */
 
@@ -21,13 +21,13 @@ import { fetchTemplateCodeApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
 import { formatDuration } from '@/utils/time'
 import { parseIrToml } from '@/utils/ir'
-import { getStateByIndex, computePhaseSegments } from '@/utils/viz'
+import { getStateByIndex, computePhaseSegments, buildFrameList } from '@/utils/viz'
 import { getDefaultTemplate } from '@/utils/editor-templates'
 import { vizFlags, logDebug } from '@/utils/viz-flags'
 import { LANGUAGES } from '@/types/api'
 import type { Language } from '@/types/api'
-import type { IrDocument, IrStep } from '@/types/ir'
-import type { StepSummary, PhaseSegment } from '@/types/viz'
+import type { IrDocument } from '@/types/ir'
+import type { StepSummary, PhaseSegment, Frame } from '@/types/viz'
 
 import CodeEditor from '@/components/editor/CodeEditor.vue'
 import LanguageSelect from '@/components/editor/LanguageSelect.vue'
@@ -91,12 +91,10 @@ const restoreSplit = (): void => {
 /* ---- 可视化状态 ---- */
 
 const irDoc = shallowRef<IrDocument | null>(null)
-const currentStateIndex = ref<number>(0)
+const currentFrameIndex = ref<number>(0)
 const isPlaying = ref<boolean>(false)
 const playTimer = ref<number | null>(null)
 const vizStarted = ref<boolean>(false)
-
-const stepSummaryByStateIndex = shallowRef<Map<number, StepSummary>>(new Map())
 
 /* ---- 派生计算 ---- */
 
@@ -105,15 +103,39 @@ const isDefaultCode = computed<boolean>(() => {
   return trimmed.length === 0 || trimmed === getDefaultTemplate(language.value).trim()
 })
 
-const totalStates = computed<number>(() => irDoc.value?.states.length ?? 0)
+/**
+* 帧序列（初始帧 + 每个 step 各一帧）
+*/
+const frameList = computed<Frame[]>(() => {
+  if (!irDoc.value) return []
+  return buildFrameList(irDoc.value)
+})
 
+/**
+* 总帧数
+*/
+const totalFrames = computed<number>(() => frameList.value.length)
+
+/**
+* 当前帧
+*/
+const currentFrame = computed<Frame | null>(() => {
+  const list = frameList.value
+  const idx = currentFrameIndex.value
+  if (idx < 0 || idx >= list.length) return null
+  return list[idx]
+})
+
+/**
+* 当前帧对应的状态快照
+*/
 const currentState = computed(() => {
-  if (!irDoc.value) return null
-  return getStateByIndex(irDoc.value, currentStateIndex.value)
+  if (!irDoc.value || !currentFrame.value) return null
+  return getStateByIndex(irDoc.value, currentFrame.value.stateIndex)
 })
 
 const currentStepInfo = computed<StepSummary | null>(() => {
-  return stepSummaryByStateIndex.value.get(currentStateIndex.value) ?? null
+  return currentFrame.value?.summary ?? null
 })
 
 const highlightLine = computed<number | null>(() => {
@@ -134,52 +156,28 @@ const phaseSegments = computed<PhaseSegment[]>(() => {
  */
 const currentPhaseIndex = computed<number | null>(() => {
   if (phaseSegments.value.length === 0) return null
-  const stateIdx = currentStateIndex.value
+  const frameIdx = currentFrameIndex.value
   for (let i = 0; i < phaseSegments.value.length; i += 1) {
     const seg = phaseSegments.value[i]
-    if (stateIdx >= seg.targetStateIndex && stateIdx <= seg.endStateIndex) {
+    if (frameIdx >= seg.targetFrameIndex && frameIdx <= seg.endFrameIndex) {
       return i
     }
   }
   return null
 })
 
-const canStepBackward = computed<boolean>(() => currentStateIndex.value > 0)
-const canStepForward = computed<boolean>(() => currentStateIndex.value < totalStates.value - 1)
+const canStepBackward = computed<boolean>(() => currentFrameIndex.value > 0)
+const canStepForward = computed<boolean>(() => currentFrameIndex.value < totalFrames.value - 1)
 
 const showVizReady = computed<boolean>(() => {
   return (
     irDoc.value !== null
     && !vizStarted.value
     && !vizFlags.skipReadyPage
-    && totalStates.value > 1
-    && currentStateIndex.value === 0
+    && totalFrames.value > 1
+    && currentFrameIndex.value === 0
   )
 })
-
-/* ---- 步骤索引 ---- */
-
-function mapStepToSummary(step: IrStep): StepSummary {
-  return {
-    op: step.op,
-    line: step.code?.line,
-    note: step.note,
-    args: step.args as Record<string, unknown>,
-    ret: step.ret,
-  }
-}
-
-function rebuildStepSummaryIndex(doc: IrDocument | null): void {
-  const map = new Map<number, StepSummary>()
-  if (doc?.steps) {
-    for (const step of doc.steps) {
-      if (step.after !== undefined) {
-        map.set(step.after, mapStepToSummary(step))
-      }
-    }
-  }
-  stepSummaryByStateIndex.value = map
-}
 
 /* ---- TOML 解析 ---- */
 
@@ -189,15 +187,13 @@ const applyToml = (content: string): void => {
   if (!parsed.ok || !parsed.document) {
     executeError.value = parsed.errorMessage ?? 'TOML 解析失败'
     irDoc.value = null
-    stepSummaryByStateIndex.value = new Map()
-    currentStateIndex.value = 0
+    currentFrameIndex.value = 0
     vizStarted.value = false
     return
   }
 
   irDoc.value = parsed.document
-  rebuildStepSummaryIndex(parsed.document)
-  currentStateIndex.value = 0
+  currentFrameIndex.value = 0
   vizStarted.value = false
   executeError.value = parsed.document.error?.message ?? ''
 
@@ -207,7 +203,7 @@ const applyToml = (content: string): void => {
     vizStarted.value = true
   }
 
-  if (vizFlags.autoPlayOnGenerate && totalStates.value > 1) {
+  if (vizFlags.autoPlayOnGenerate && totalFrames.value > 1) {
     vizStarted.value = true
     startPlay()
   }
@@ -332,38 +328,38 @@ const handleLlmGenerated = (generatedCode: string): void => {
 
 const goFirst = (): void => {
   stopPlay()
-  currentStateIndex.value = 0
+  currentFrameIndex.value = 0
 }
 
 const goPrev = (): void => {
   stopPlay()
-  if (currentStateIndex.value > 0) {
-    currentStateIndex.value -= 1
+  if (currentFrameIndex.value > 0) {
+    currentFrameIndex.value -= 1
   }
 }
 
 const goNext = (): void => {
-  if (currentStateIndex.value < totalStates.value - 1) {
-    currentStateIndex.value += 1
+  if (currentFrameIndex.value < totalFrames.value - 1) {
+    currentFrameIndex.value += 1
   }
 }
 
 const goLast = (): void => {
   stopPlay()
-  if (totalStates.value > 0) {
-    currentStateIndex.value = totalStates.value - 1
+  if (totalFrames.value > 0) {
+    currentFrameIndex.value = totalFrames.value - 1
   }
 }
 
 /**
- * 跳转至指定状态（由 VizPanel 阶段导航触发）
- *
- * @param stateIndex - 目标状态索引
- */
-const handleJumpToState = (stateIndex: number): void => {
+* 跳转至指定帧（由 VizPanel 阶段导航触发）
+*
+* @param frameIndex - 目标帧索引
+*/
+const handleJumpToFrame = (frameIndex: number): void => {
   stopPlay()
-  if (stateIndex >= 0 && stateIndex < totalStates.value) {
-    currentStateIndex.value = stateIndex
+  if (frameIndex >= 0 && frameIndex < totalFrames.value) {
+    currentFrameIndex.value = frameIndex
   }
 }
 
@@ -378,7 +374,7 @@ const stopPlay = (): void => {
 }
 
 const startPlay = (): void => {
-  if (!irDoc.value || totalStates.value <= 1) return
+  if (!irDoc.value || totalFrames.value <= 1) return
 
   isPlaying.value = true
   const interval = Math.max(50, vizFlags.playbackInterval)
@@ -477,7 +473,7 @@ watch(
   { immediate: true },
 )
 
-watch(currentStateIndex, (next, prev) => {
+watch(currentFrameIndex, (next, prev) => {
   if (next !== prev && next > 0) {
     vizStarted.value = true
   }
@@ -522,7 +518,7 @@ watch(currentStateIndex, (next, prev) => {
                 <MaterialIcon name="chevron_left" :size="18" />
               </button>
               <span class="step-indicator">
-                {{ totalStates > 0 ? currentStateIndex + 1 : 0 }} / {{ totalStates }}
+                {{ totalFrames > 0 ? currentFrameIndex + 1 : 0 }} / {{ totalFrames }}
               </span>
               <button class="icon-btn" :disabled="!canStepForward" @click="goNext">
                 <MaterialIcon name="chevron_right" :size="18" />
@@ -530,7 +526,7 @@ watch(currentStateIndex, (next, prev) => {
               <button class="icon-btn" :disabled="!canStepForward" @click="goLast">
                 <MaterialIcon name="last_page" :size="18" />
               </button>
-              <button class="icon-btn" :disabled="totalStates <= 1" @click="togglePlay">
+              <button class="icon-btn" :disabled="totalFrames <= 1" @click="togglePlay">
                 <MaterialIcon :name="isPlaying ? 'pause' : 'play_arrow'" :size="18" />
               </button>
             </div>
@@ -541,7 +537,7 @@ watch(currentStateIndex, (next, prev) => {
               <div v-if="showVizReady" key="ready" class="viz-ready">
                 <MaterialIcon name="play_arrow" :size="40" class="viz-ready__icon" />
                 <p class="viz-ready__title">可视化结果已生成</p>
-                <p class="viz-ready__desc">共 {{ totalStates }} 个状态快照</p>
+                <p class="viz-ready__desc">共 {{ totalFrames }} 帧</p>
                 <div class="viz-ready__actions">
                   <button class="viz-ready__btn" @click="handleStartNext">
                     <MaterialIcon name="chevron_right" :size="18" />
@@ -557,7 +553,7 @@ watch(currentStateIndex, (next, prev) => {
               <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
                 :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
                 :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
-                @jump-to-state="handleJumpToState" />
+                @jump-to-frame="handleJumpToFrame" />
             </Transition>
 
             <button class="playground__edge-trigger playground__edge-trigger--right"

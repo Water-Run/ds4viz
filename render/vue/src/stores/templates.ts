@@ -5,7 +5,7 @@
  *
  * @file src/stores/templates.ts
  * @author WaterRun
- * @date 2026-02-26
+ * @date 2026-03-28
  */
 
 import { ref, computed } from 'vue'
@@ -91,16 +91,29 @@ export const useTemplatesStore = defineStore('templates', () => {
     /* ---- Internal ---- */
 
     /**
-     * 对非搜索模式的列表按收藏数降序排序
+     * 对非搜索模式列表排序：
+     * 1) 已收藏优先
+     * 2) 收藏数降序
+     * 3) ID 降序（稳定兜底）
      *
      * 搜索模式由后端保证排序，无需客户端排序。
      *
-     * @param list - 待排序的模板列表
+     * @param list - 待排序模板列表
      * @returns 排序后的列表（原地修改并返回）
      */
     const sortIfNeeded = (list: TemplateListItem[]): TemplateListItem[] => {
         if (!isSearchMode.value) {
-            list.sort((a, b) => b.favoriteCount - a.favoriteCount)
+            list.sort((a, b) => {
+                if (a.isFavorited !== b.isFavorited) {
+                    return a.isFavorited ? -1 : 1
+                }
+
+                if (a.favoriteCount !== b.favoriteCount) {
+                    return b.favoriteCount - a.favoriteCount
+                }
+
+                return b.id - a.id
+            })
         }
         return list
     }
@@ -148,9 +161,11 @@ export const useTemplatesStore = defineStore('templates', () => {
      */
     const appendTemplates = async (): Promise<void> => {
         if (loading.value || !hasMore.value) return
+
         page.value += 1
         loading.value = true
         errorMessage.value = ''
+
         try {
             const params = {
                 page: page.value,
@@ -250,6 +265,7 @@ export const useTemplatesStore = defineStore('templates', () => {
         detailLoading.value = true
         detailError.value = ''
         currentDetail.value = null
+
         try {
             currentDetail.value = await fetchTemplateDetailApi(id)
         } catch (error: unknown) {
@@ -290,6 +306,11 @@ export const useTemplatesStore = defineStore('templates', () => {
         if (detail !== null) {
             detail.isFavorited = !wasFavorited
             detail.favoriteCount += delta
+        }
+
+        // 非搜索模式下，收藏状态变化后需要立刻重排，确保“收藏置顶”即时生效
+        if (!isSearchMode.value) {
+            items.value = sortIfNeeded([...items.value])
         }
     }
 

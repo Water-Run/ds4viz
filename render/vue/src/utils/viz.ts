@@ -6,11 +6,11 @@
  *
  * @file src/utils/viz.ts
  * @author WaterRun
- * @date 2026-03-26
+ * @date 2026-03-28
  */
 
 import type { IrDocument, IrState, IrStep } from '@/types/ir'
-import type { StepSummary, PhaseSegment } from '@/types/viz'
+import type { StepSummary, PhaseSegment, Frame } from '@/types/viz'
 
 /**
  * 根据状态索引获取状态快照
@@ -70,10 +70,48 @@ export function getStepSummaryForState(doc: IrDocument, stateIndex: number): Ste
 }
 
 /**
+ * 构建帧序列
+ *
+ * 帧 0 为初始状态（无 step），后续每帧对应一个 step。
+ * 即使多个 step 指向同一 state（如 observe），也各自生成独立帧。
+ * 总帧数 = 1 + steps.length。
+ *
+ * @param doc - IR 文档
+ * @returns 帧列表
+ */
+export function buildFrameList(doc: IrDocument): Frame[] {
+  const frames: Frame[] = [{
+    index: 0,
+    stateIndex: 0,
+    summary: null,
+  }]
+
+  const steps = doc.steps ?? []
+  for (const step of steps) {
+    frames.push({
+      index: frames.length,
+      stateIndex: step.after ?? step.before,
+      summary: {
+        op: step.op,
+        line: step.code?.line,
+        note: step.note,
+        args: step.args as Record<string, unknown>,
+        ret: step.ret,
+        phase: step.phase,
+        highlights: step.highlights,
+      },
+    })
+  }
+
+  return frames
+}
+
+/**
  * 从 IR 文档中提取阶段段落列表
  *
  * 同一 phase 值的连续 steps 合并为一个段落，
  * 无 phase 的步骤跳过。
+ * 帧索引 = step.id + 1（帧 0 为初始状态）。
  *
  * @param doc - IR 文档
  * @returns 阶段段落数组（按步骤顺序）
@@ -101,13 +139,10 @@ export function computePhaseSegments(doc: IrDocument): PhaseSegment[] {
       j += 1
     }
 
-    const targetState = step.after ?? step.before
-    const endState = lastStep.after ?? lastStep.before
-
     segments.push({
       name: phaseName,
-      targetStateIndex: targetState,
-      endStateIndex: endState,
+      targetFrameIndex: step.id + 1,
+      endFrameIndex: lastStep.id + 1,
       stepCount: count,
       firstStepId: step.id,
       lastStepId: lastStep.id,
