@@ -7,7 +7,7 @@
  *
  * @file src/components/editor/LlmPanel.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-03-28
  * @component LlmPanel
  */
 
@@ -24,6 +24,8 @@ interface Props {
     language: Language
     /** 编辑器是否为默认代码 */
     isDefaultCode: boolean
+    /** 当前编辑器代码 */
+    currentCode?: string
 }
 
 /**
@@ -34,7 +36,9 @@ interface Emits {
     (event: 'generated', code: string): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+    currentCode: '',
+})
 const emit = defineEmits<Emits>()
 
 /** 面板开关状态 */
@@ -54,6 +58,9 @@ const errorMessage = ref<string>('')
 
 /** 覆盖确认状态 */
 const confirmingOverwrite = ref<boolean>(false)
+
+/** 是否修改当前代码（勾选后将当前代码注入 Prompt） */
+const modifyCurrentCode = ref<boolean>(false)
 
 /** 延迟关闭定时器 */
 const closeTimer = ref<number | null>(null)
@@ -129,7 +136,11 @@ const requestGenerate = (): void => {
 
     errorMessage.value = ''
 
-    if (!props.isDefaultCode && !confirmingOverwrite.value) {
+    if (
+        !modifyCurrentCode.value
+        && !props.isDefaultCode
+        && !confirmingOverwrite.value
+    ) {
         confirmingOverwrite.value = true
         return
     }
@@ -160,7 +171,10 @@ const executeGenerate = async (): Promise<void> => {
     generating.value = true
     errorMessage.value = ''
 
-    const systemPrompt = buildSystemPrompt(props.language)
+    const systemPrompt = buildSystemPrompt(props.language, {
+        modifyCurrentCode: modifyCurrentCode.value,
+        currentCode: props.currentCode,
+    })
 
     try {
         const result = await callLlm(systemPrompt, promptText.value.trim())
@@ -227,6 +241,12 @@ onUnmounted(() => cancelClose())
                         <textarea v-model="promptText" class="llm-panel__textarea" placeholder="描述需要生成的数据结构可视化代码…"
                             rows="3" :disabled="generating" @keydown="handleKeydown" />
                     </div>
+
+                    <!-- 修改当前代码开关 -->
+                    <label class="llm-panel__modify-toggle">
+                        <input v-model="modifyCurrentCode" type="checkbox" :disabled="generating" />
+                        <span>修改当前代码</span>
+                    </label>
 
                     <!-- 覆盖确认 -->
                     <Transition name="llm-fade">
@@ -439,6 +459,22 @@ onUnmounted(() => cancelClose())
 .llm-panel__textarea:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.llm-panel__modify-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+    user-select: none;
+}
+
+.llm-panel__modify-toggle input[type='checkbox'] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--color-accent);
+    cursor: pointer;
 }
 
 .llm-panel__confirm {

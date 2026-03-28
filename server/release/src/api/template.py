@@ -3,10 +3,10 @@ r"""
 
 :file: src/api/template.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-03-28
 """
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 
 from api import get_optional_user
 from model import TemplateDetail, TemplateListResponse, TemplateCodeResponse
@@ -54,6 +54,7 @@ def get_template_categories() -> dict[str, list[str]]:
 @router.get("/search", response_model=TemplateListResponse)
 def search(
     keyword: str = Query(...),
+    category: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
     user_id: int | None = Depends(get_optional_user),
@@ -62,12 +63,19 @@ def search(
     搜索模板
 
     :param keyword: 搜索关键词
+    :param category: 分类筛选（可选）
     :param page: 页码
     :param limit: 每页数量
     :param user_id: 当前用户ID（可选）
     :return TemplateListResponse: 搜索结果
     """
-    return search_templates(keyword=keyword, page=page, limit=limit, user_id=user_id)
+    return search_templates(
+        keyword=keyword,
+        category=category,
+        page=page,
+        limit=limit,
+        user_id=user_id,
+    )
 
 
 @router.get("/{template_id}", response_model=TemplateDetail)

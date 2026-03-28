@@ -160,13 +160,8 @@ onMounted(async () => {
         <div class="code-section__header">
           <h3 class="card-title">代码</h3>
           <div class="code-section__langs">
-            <button
-              v-for="lang in availableLanguages"
-              :key="lang"
-              class="code-lang-btn"
-              :class="{ 'code-lang-btn--active': selectedCodeLang === lang }"
-              @click="handleCodeLangChange(lang)"
-            >
+            <button v-for="lang in availableLanguages" :key="lang" class="code-lang-btn"
+              :class="{ 'code-lang-btn--active': selectedCodeLang === lang }" @click="handleCodeLangChange(lang)">
               {{ LANGUAGE_LABELS[lang as Language] ?? lang }}
             </button>
           </div>

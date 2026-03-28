@@ -11,10 +11,11 @@ export default defineConfig({
     },
   },
   server: {
+    host: true,
+    port: 5173,
     fs: {
-      // 允许访问到 ds4viz 项目根目录
       allow: [
-        fileURLToPath(new URL('.', import.meta.url)),        // render/vue/
+        fileURLToPath(new URL('.', import.meta.url)), // render/vue/
         fileURLToPath(new URL('../../library', import.meta.url)), // library/
       ],
     },

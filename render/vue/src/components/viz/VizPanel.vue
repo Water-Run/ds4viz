@@ -1682,46 +1682,6 @@ watch(
   },
 )
 
-/* ---- 高亮聚焦 ---- */
-
-watch(
-  highlightMap,
-  (map) => {
-    if (!vizFlags.highlightAutoFocus || map.size === 0) return
-
-    let maxLevel = 0
-    let targetKey = ''
-    for (const [key, hl] of map) {
-      if (hl.level > maxLevel) {
-        maxLevel = hl.level
-        targetKey = key
-      }
-    }
-
-    if (!targetKey) return
-    const pos = prevPositionCache.get(targetKey)
-    if (!pos) return
-
-    const inView =
-      pos.x >= vb.value.x &&
-      pos.x <= vb.value.x + vb.value.w &&
-      pos.y >= vb.value.y &&
-      pos.y <= vb.value.y + vb.value.h
-
-    if (!inView) {
-      animateToVb(
-        {
-          x: pos.x - vb.value.w / 2,
-          y: pos.y - vb.value.h / 2,
-          w: vb.value.w,
-          h: vb.value.h,
-        },
-        200,
-      )
-    }
-  },
-)
-
 /* ================================================================
  *  阶段导航
  * ================================================================ */
@@ -2239,7 +2199,8 @@ onBeforeUnmount(() => {
                   :class="{ 'viz-phase-popover__item--active': idx === activePhaseIndex }"
                   @click="handleJumpToPhase(idx)">
                   <span class="viz-phase-popover__name" :title="phase.name">{{ phase.name }}</span>
-                  <span class="viz-phase-popover__range">步骤 {{ phase.firstStepId }}–{{ phase.lastStepId }}</span>
+                  <span class="viz-phase-popover__range">步骤 {{ phase.targetFrameIndex }}–{{ phase.endFrameIndex
+                    }}</span>
                 </div>
               </div>
             </Transition>

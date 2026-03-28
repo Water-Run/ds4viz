@@ -6,7 +6,7 @@
  *
  * @file src/components/viz/VizSettings.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-03-28
  * @component VizSettings
  */
 
@@ -54,7 +54,6 @@ const booleanItems: BoolItem[] = [
     { key: 'enableAutoFit', label: '自适应画布' },
     { key: 'autoPlayOnGenerate', label: '生成后自动播放' },
     { key: 'showPhases', label: '显示阶段导航' },
-    { key: 'highlightAutoFocus', label: '高亮聚焦' },
     { key: 'showVizTitle', label: '可视化方案名' },
 ]
 
@@ -206,7 +205,6 @@ onUnmounted(() => cancelClose())
     bottom: 12px;
     left: 12px;
     z-index: 1000;
-    /* 明确给大值，避免变量不够高 */
     display: flex;
     flex-direction: column;
     align-items: flex-start;

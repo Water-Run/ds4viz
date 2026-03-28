@@ -252,8 +252,6 @@ const statsError = ref<string>('')
 const allExecItems = ref<ExecutionHistoryItem[]>([])
 const statsTotalFavorites = ref<number>(0)
 
-const statsPopoverRef = ref<HTMLElement | null>(null)
-
 /* ---- 派生状态 ---- */
 
 const currentUser = computed(() => authStore.currentUser)
@@ -533,35 +531,47 @@ const handleUnfavoriteFromCard = async (
   }
 }
 
-/**
- * 打开/关闭统计浮层（点击触发）
- */
-const handleToggleStatsPopover = async (): Promise<void> => {
-  statsPopoverOpen.value = !statsPopoverOpen.value
+/** 统计浮层延迟关闭计时器 */
+const statsCloseTimer = ref<number | null>(null)
 
-  if (statsPopoverOpen.value && !statsRequested.value) {
+/**
+ * 取消统计浮层延迟关闭
+ */
+const cancelStatsClose = (): void => {
+  if (statsCloseTimer.value !== null) {
+    window.clearTimeout(statsCloseTimer.value)
+    statsCloseTimer.value = null
+  }
+}
+
+/**
+ * 鼠标进入统计区域时展开浮层
+ */
+const handleStatsEnter = async (): Promise<void> => {
+  cancelStatsClose()
+  statsPopoverOpen.value = true
+  if (!statsRequested.value) {
     await loadStats()
   }
 }
 
 /**
- * 点击外部关闭统计浮层
+ * 鼠标离开统计区域时延迟关闭浮层
  */
-const handleClickOutside = (event: MouseEvent): void => {
-  if (!statsPopoverOpen.value) return
-  const target = event.target as Node
-  if (statsPopoverRef.value && !statsPopoverRef.value.contains(target)) {
+const handleStatsLeave = (): void => {
+  cancelStatsClose()
+  statsCloseTimer.value = window.setTimeout(() => {
     statsPopoverOpen.value = false
-  }
+    statsCloseTimer.value = null
+  }, 300)
 }
 
 onMounted(async () => {
   await Promise.all([loadFavorites(), loadExecutions()])
-  document.addEventListener('mousedown', handleClickOutside)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleClickOutside)
+  cancelStatsClose()
 })
 </script>
 
@@ -687,96 +697,91 @@ onBeforeUnmount(() => {
       </article>
 
       <!-- 执行记录 -->
-      <article class="profile-section profile-section--execution" ref="statsPopoverRef">
+      <article class="profile-section profile-section--execution">
         <header class="profile-section__header">
           <h3 class="profile-section__title">
             <MaterialIcon name="history" :size="16" />
             <span>执行记录</span>
           </h3>
-          <button class="stats-entry" @click.stop="handleToggleStatsPopover">
-            统计数据
-          </button>
-        </header>
-
-        <!-- 统计浮层 -->
-        <Transition name="fade">
-          <div v-if="statsPopoverOpen" class="stats-popover" @click.stop>
-            <div class="stats-popover__header">
-              <span>统计数据</span>
-              <button class="stats-popover__close" @click="statsPopoverOpen = false">
-                <MaterialIcon name="close" :size="14" />
-              </button>
-            </div>
-
-            <ErrorBanner :message="statsError" @dismiss="statsError = ''" />
-
-            <div v-if="statsLoading" class="stats-popover__loading">
-              <Loading message="统计中…" />
-            </div>
-
-            <div v-else-if="statsRequested && allExecItems.length === 0" class="stats-popover__empty">
-              <MaterialIcon name="analytics" :size="20" />
-              <span>暂无可统计数据</span>
-            </div>
-
-            <div v-else-if="statsReady" class="stats-popover__body">
-              <div class="stats-summary">
-                <div class="stats-summary__item">
-                  <span class="stats-summary__value">{{ allExecItems.length }}</span>
-                  <span class="stats-summary__label">总执行次数</span>
+          <div class="stats-hover-zone" @pointerenter="handleStatsEnter" @pointerleave="handleStatsLeave">
+            <button class="stats-entry">统计数据</button>
+            <Transition name="fade">
+              <div v-if="statsPopoverOpen" class="stats-popover">
+                <div class="stats-popover__header">
+                  <span>统计数据</span>
                 </div>
-                <div class="stats-summary__item">
-                  <span class="stats-summary__value">{{ avgExecTime }}</span>
-                  <span class="stats-summary__label">平均执行耗时</span>
-                </div>
-                <div class="stats-summary__item">
-                  <span class="stats-summary__value">{{ statsTotalFavorites }}</span>
-                  <span class="stats-summary__label">收藏总数</span>
-                </div>
-              </div>
 
-              <div class="stats-charts">
-                <div class="stats-chart">
-                  <div class="stats-chart__title">状态分布</div>
-                  <svg v-if="statusPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
-                    <path v-for="(slice, index) in statusPieSlices" :key="`sp-${index}`" :d="slice.pathD"
-                      :fill="slice.color" />
-                  </svg>
-                  <div v-else-if="statusPieSlices.length === 1" class="stats-chart__single"
-                    :style="{ color: statusPieSlices[0].color }">
-                    <span class="stats-chart__single-dot" :style="{ backgroundColor: statusPieSlices[0].color }" />
-                    {{ statusPieSlices[0].label }} 100%
+                <ErrorBanner :message="statsError" @dismiss="statsError = ''" />
+
+                <div v-if="statsLoading" class="stats-popover__loading">
+                  <Loading message="统计中…" />
+                </div>
+
+                <div v-else-if="statsRequested && allExecItems.length === 0" class="stats-popover__empty">
+                  <MaterialIcon name="analytics" :size="20" />
+                  <span>暂无可统计数据</span>
+                </div>
+
+                <div v-else-if="statsReady" class="stats-popover__body">
+                  <div class="stats-summary">
+                    <div class="stats-summary__item">
+                      <span class="stats-summary__value">{{ allExecItems.length }}</span>
+                      <span class="stats-summary__label">总执行次数</span>
+                    </div>
+                    <div class="stats-summary__item">
+                      <span class="stats-summary__value">{{ avgExecTime }}</span>
+                      <span class="stats-summary__label">平均执行耗时</span>
+                    </div>
+                    <div class="stats-summary__item">
+                      <span class="stats-summary__value">{{ statsTotalFavorites }}</span>
+                      <span class="stats-summary__label">收藏总数</span>
+                    </div>
                   </div>
-                  <div class="stats-chart__legend">
-                    <span v-for="(slice, index) in statusPieSlices" :key="`sl-${index}`" class="legend-item">
-                      <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
-                      {{ slice.label }} {{ slice.percentage }}%
-                    </span>
-                  </div>
-                </div>
 
-                <div class="stats-chart">
-                  <div class="stats-chart__title">语言分布</div>
-                  <svg v-if="langPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
-                    <path v-for="(slice, index) in langPieSlices" :key="`lp-${index}`" :d="slice.pathD"
-                      :fill="slice.color" />
-                  </svg>
-                  <div v-else-if="langPieSlices.length === 1" class="stats-chart__single"
-                    :style="{ color: langPieSlices[0].color }">
-                    <span class="stats-chart__single-dot" :style="{ backgroundColor: langPieSlices[0].color }" />
-                    {{ langPieSlices[0].label }} 100%
-                  </div>
-                  <div class="stats-chart__legend">
-                    <span v-for="(slice, index) in langPieSlices" :key="`ll-${index}`" class="legend-item">
-                      <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
-                      {{ slice.label }} {{ slice.percentage }}%
-                    </span>
+                  <div class="stats-charts">
+                    <div class="stats-chart">
+                      <div class="stats-chart__title">状态分布</div>
+                      <svg v-if="statusPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
+                        <path v-for="(slice, index) in statusPieSlices" :key="`sp-${index}`" :d="slice.pathD"
+                          :fill="slice.color" />
+                      </svg>
+                      <div v-else-if="statusPieSlices.length === 1" class="stats-chart__single"
+                        :style="{ color: statusPieSlices[0].color }">
+                        <span class="stats-chart__single-dot" :style="{ backgroundColor: statusPieSlices[0].color }" />
+                        {{ statusPieSlices[0].label }} 100%
+                      </div>
+                      <div class="stats-chart__legend">
+                        <span v-for="(slice, index) in statusPieSlices" :key="`sl-${index}`" class="legend-item">
+                          <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                          {{ slice.label }} {{ slice.percentage }}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="stats-chart">
+                      <div class="stats-chart__title">语言分布</div>
+                      <svg v-if="langPieSlices.length > 1" class="stats-chart__svg" viewBox="0 0 100 100">
+                        <path v-for="(slice, index) in langPieSlices" :key="`lp-${index}`" :d="slice.pathD"
+                          :fill="slice.color" />
+                      </svg>
+                      <div v-else-if="langPieSlices.length === 1" class="stats-chart__single"
+                        :style="{ color: langPieSlices[0].color }">
+                        <span class="stats-chart__single-dot" :style="{ backgroundColor: langPieSlices[0].color }" />
+                        {{ langPieSlices[0].label }} 100%
+                      </div>
+                      <div class="stats-chart__legend">
+                        <span v-for="(slice, index) in langPieSlices" :key="`ll-${index}`" class="legend-item">
+                          <span class="legend-item__dot" :style="{ backgroundColor: slice.color }" />
+                          {{ slice.label }} {{ slice.percentage }}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </Transition>
           </div>
-        </Transition>
+        </header>
 
         <ErrorBanner :message="executionsError" @dismiss="executionsError = ''" />
 
@@ -1192,9 +1197,10 @@ onBeforeUnmount(() => {
 /* 统计浮层 */
 .stats-popover {
   position: absolute;
-  top: 40px;
-  right: var(--space-2);
-  width: min(460px, calc(100% - 32px));
+  top: calc(100% + 6px);
+  right: 0;
+  width: 460px;
+  max-width: calc(100vw - 120px);
   z-index: var(--z-dropdown);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
@@ -1217,23 +1223,8 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.stats-popover__close {
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: none;
-  color: var(--color-text-tertiary);
-  border-radius: var(--radius-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
-}
-
-.stats-popover__close:hover {
-  background-color: var(--color-bg-hover);
-  color: var(--color-text-primary);
+.stats-hover-zone {
+  position: relative;
 }
 
 .stats-popover__loading,

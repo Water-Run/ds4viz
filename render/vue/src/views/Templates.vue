@@ -4,7 +4,11 @@
  *
  * 卡片列表 + 分类筛选 + 实时搜索 + 收藏切换 + 无限滚动。
  * 点击卡片展开详情面板查看代码与信息。
- * 支持通过路由查询参数 templateId 自动展开指定模板。
+ *
+ * 修复点：
+ * 1) “全部”下收藏区延迟出现：进入“全部且非搜索”后自动预取若干页，尽量让“我收藏的”首屏可见。
+ * 2) 分类/搜索切换动画生硬：增加切换遮罩与过渡 key，避免瞬时闪断。
+ * 3) 搜索与分类联动：保留当前分类状态，UI 上持续高亮当前分类。
  *
  * @file src/views/Templates.vue
  * @author WaterRun
@@ -12,13 +16,9 @@
  * @component Templates
  */
 
-import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useTemplatesStore } from '@/stores/templates'
-import { useAuthStore } from '@/stores/auth'
-import { fetchFavoritesApi } from '@/api/users'
-import type { FavoriteItem } from '@/api/users'
 import { extractErrorMessage } from '@/utils/error'
 import { formatRelativeTime } from '@/utils/time'
 import { LANGUAGES } from '@/types/api'
@@ -29,12 +29,7 @@ import Loading from '@/components/common/Loading.vue'
 import MaterialIcon from '@/components/common/MaterialIcon.vue'
 import TemplateDetailPanel from '@/components/common/TemplateDetailPanel.vue'
 
-const route = useRoute()
-const router = useRouter()
-
 const store = useTemplatesStore()
-const authStore = useAuthStore()
-const { currentUser } = storeToRefs(authStore)
 const {
   items,
   total,
@@ -50,20 +45,20 @@ const {
 /** 搜索输入框绑定值 */
 const searchInput = ref<string>('')
 
-/** 是否处于输入法组合输入（IME） */
+/** 中文输入法组合状态 */
 const isComposing = ref<boolean>(false)
 
-/** 搜索防抖计时器 */
+/** 搜索防抖定时器 */
 let searchTimer: number | null = null
 
-/** 无限滚动哨兵元素 */
-const sentinel = ref<HTMLDivElement | null>(null)
-
-/** 内容滚动容器 */
-const contentRef = ref<HTMLElement | null>(null)
-
-/** 无限滚动观察器 */
+/** IntersectionObserver 实例 */
 let observer: IntersectionObserver | null = null
+
+/** 无限滚动哨兵元素 */
+const sentinel = ref<HTMLElement | null>(null)
+
+/** 内容区容器引用 */
+const contentRef = ref<HTMLElement | null>(null)
 
 /** 收藏操作中的模板 ID 集合 */
 const togglingIds = ref<Set<number>>(new Set())
@@ -71,17 +66,14 @@ const togglingIds = ref<Set<number>>(new Set())
 /** 收藏操作错误提示 */
 const favoriteError = ref<string>('')
 
-/** 收藏区独立数据 */
-const favoriteTemplates = ref<FavoriteItem[]>([])
-
-/** 收藏区加载状态 */
-const favoriteTemplatesLoading = ref<boolean>(false)
-
-/** 收藏区加载错误 */
-const favoriteTemplatesError = ref<string>('')
-
 /** 当前展开的模板 ID */
 const selectedTemplateId = ref<number | null>(null)
+
+/** 列表上下文切换状态（分类切换/搜索切换） */
+const isSwitching = ref<boolean>(false)
+
+/** 内容切换动画种子 */
+const transitionSeed = ref<number>(0)
 
 /**
  * 编辑器当前语言
@@ -92,23 +84,19 @@ const currentPlaygroundLanguage = computed<Language>(() => {
   return 'python'
 })
 
-/**
- * 是否展示“我收藏的”分组
- *
- * 仅在“全部 + 非搜索”模式展示，避免与筛选/搜索语义冲突。
- */
-const showFavoriteSection = computed<boolean>(() => {
-  return selectedCategory.value.length === 0 && !isSearchMode.value
-})
+/** 我收藏的模板 */
+const favoritedItems = computed(() => items.value.filter((item) => item.isFavorited))
 
-/** 其他模板（来自模板列表数据源） */
+/** 其他模板 */
 const otherItems = computed(() => items.value.filter((item) => !item.isFavorited))
 
-/** 是否存在收藏模板 */
-const hasFavorited = computed<boolean>(() => favoriteTemplates.value.length > 0)
+/** 是否存在已收藏项 */
+const hasFavorited = computed<boolean>(() => favoritedItems.value.length > 0)
 
 /** 内容切换动画 key */
-const contentKey = computed<string>(() => `${selectedCategory.value}/${keyword.value}`)
+const contentKey = computed<string>(
+  () => `${selectedCategory.value}/${keyword.value}/${transitionSeed.value}`,
+)
 
 /** 空状态文案 */
 const emptyMessage = computed<string>(() => {
@@ -118,60 +106,70 @@ const emptyMessage = computed<string>(() => {
   return '暂无模板'
 })
 
+/** 搜索状态文案 */
+const searchStatusText = computed<string>(() => {
+  if (!isSearchMode.value) return ''
+  const categoryPart = selectedCategory.value.length > 0
+    ? `分类「${selectedCategory.value}」`
+    : '全部分类'
+  return `${categoryPart}下搜索「${keyword.value}」共 ${total.value} 条结果`
+})
+
 /** 滚动内容区到顶部 */
 const scrollToTop = (): void => {
-  contentRef.value?.scrollTo({ top: 0 })
+  contentRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 /**
- * 加载“我收藏的”列表（独立数据源）
- *
- * 通过用户收藏接口全量拉取，避免受模板分页/滚动影响。
+ * 在“全部 + 非搜索”场景下预取少量分页，
+ * 尽量让“我收藏的”首屏可见（避免必须滚动到哨兵才出现）
  */
-const loadFavoriteTemplates = async (): Promise<void> => {
-  const userId = currentUser.value?.id
-  if (!userId) {
-    favoriteTemplates.value = []
-    favoriteTemplatesLoading.value = false
-    favoriteTemplatesError.value = ''
-    return
+const prefetchForFavoritesSection = async (): Promise<void> => {
+  if (selectedCategory.value.length > 0 || isSearchMode.value) return
+  if (hasFavorited.value) return
+  if (!hasMore.value) return
+
+  let rounds = 0
+  const maxRounds = 4
+
+  while (
+    rounds < maxRounds &&
+    !loading.value &&
+    !hasFavorited.value &&
+    hasMore.value
+  ) {
+    await store.appendTemplates()
+    rounds += 1
   }
+}
 
-  favoriteTemplatesLoading.value = true
-  favoriteTemplatesError.value = ''
-
+/** 包装上下文切换动作，提供平滑过渡 */
+const runWithSwitching = async (action: () => Promise<void>): Promise<void> => {
+  isSwitching.value = true
   try {
-    const merged: FavoriteItem[] = []
-    let page = 1
-    const limit = 50
-    let totalCount = 0
-
-    do {
-      const result = await fetchFavoritesApi(userId, { page, limit })
-      merged.push(...result.items)
-      totalCount = result.total
-      page += 1
-    } while (merged.length < totalCount)
-
-    favoriteTemplates.value = merged
-  } catch (error: unknown) {
-    favoriteTemplatesError.value = extractErrorMessage(error)
+    await action()
+    await nextTick()
+    transitionSeed.value += 1
+    scrollToTop()
   } finally {
-    favoriteTemplatesLoading.value = false
+    isSwitching.value = false
   }
 }
 
 /** 防抖搜索 */
 const debouncedSearch = (): void => {
   if (searchTimer !== null) window.clearTimeout(searchTimer)
+
   searchTimer = window.setTimeout(async () => {
-    const query = searchInput.value.trim()
-    if (query.length > 0) {
-      await store.search(query)
-    } else {
-      await store.clearSearch()
-    }
-    scrollToTop()
+    await runWithSwitching(async () => {
+      const query = searchInput.value.trim()
+      if (query.length > 0) {
+        await store.search(query)
+      } else {
+        await store.clearSearch()
+        await prefetchForFavoritesSection()
+      }
+    })
   }, 300)
 }
 
@@ -183,6 +181,7 @@ const handleInput = (): void => {
 const handleCompositionStart = (): void => {
   isComposing.value = true
 }
+
 const handleCompositionEnd = (): void => {
   isComposing.value = false
   debouncedSearch()
@@ -194,8 +193,11 @@ const handleClearSearch = async (): Promise<void> => {
     window.clearTimeout(searchTimer)
     searchTimer = null
   }
-  await store.clearSearch()
-  scrollToTop()
+
+  await runWithSwitching(async () => {
+    await store.clearSearch()
+    await prefetchForFavoritesSection()
+  })
 }
 
 /**
@@ -203,12 +205,12 @@ const handleClearSearch = async (): Promise<void> => {
  */
 const handleToggleFavorite = async (templateId: number): Promise<void> => {
   if (togglingIds.value.has(templateId)) return
+
   togglingIds.value.add(templateId)
   favoriteError.value = ''
 
   try {
     await store.toggleFavorite(templateId)
-    await loadFavoriteTemplates()
   } catch (error: unknown) {
     favoriteError.value = extractErrorMessage(error)
   } finally {
@@ -244,27 +246,13 @@ const handleSelectCategory = async (category: string): Promise<void> => {
     window.clearTimeout(searchTimer)
     searchTimer = null
   }
+
   selectedTemplateId.value = null
-  await store.selectCategory(category)
-  scrollToTop()
-}
 
-/**
- * 消费路由查询参数 templateId，自动展开对应模板详情
- *
- * @param value - 查询参数值
- */
-const consumeTemplateIdQuery = (value: unknown): void => {
-  if (typeof value !== 'string') return
-  const id = Number(value)
-  if (Number.isNaN(id) || id <= 0) return
-
-  selectedTemplateId.value = id
-  scrollToTop()
-
-  const query = { ...route.query }
-  delete query.templateId
-  router.replace({ query })
+  await runWithSwitching(async () => {
+    await store.selectCategory(category)
+    await prefetchForFavoritesSection()
+  })
 }
 
 onMounted(async () => {
@@ -275,43 +263,24 @@ onMounted(async () => {
   searchInput.value = ''
 
   observer = new IntersectionObserver(
-    (entries) => {
+    async (entries) => {
       const entry = entries[0]
-      if (entry?.isIntersecting && !loading.value && hasMore.value) {
-        void store.appendTemplates()
+      if (
+        entry?.isIntersecting &&
+        !loading.value &&
+        !isSwitching.value &&
+        hasMore.value
+      ) {
+        await store.appendTemplates()
       }
     },
     { rootMargin: '200px' },
   )
 
-  await Promise.all([
-    store.loadCategories(),
-    store.loadTemplates(),
-    loadFavoriteTemplates(),
-  ])
-
-  consumeTemplateIdQuery(route.query.templateId)
+  await Promise.all([store.loadCategories(), store.loadTemplates()])
+  await prefetchForFavoritesSection()
+  transitionSeed.value += 1
 })
-
-/**
- * 登录态变化时同步收藏区
- */
-watch(
-  () => currentUser.value?.id,
-  () => {
-    void loadFavoriteTemplates()
-  },
-)
-
-/**
- * 监听路由查询参数变化，处理从其他页面跳转并携带 templateId 的场景
- */
-watch(
-  () => route.query.templateId,
-  (value) => {
-    consumeTemplateIdQuery(value)
-  },
-)
 
 watchEffect(() => {
   const el = sentinel.value
@@ -333,6 +302,7 @@ onBeforeUnmount(() => {
         <MaterialIcon name="dashboard" :size="18" />
         <span>模板库</span>
       </div>
+
       <div class="templates-page__search">
         <MaterialIcon name="search" class="templates-page__search-icon" :size="18" />
         <input v-model="searchInput" type="text" class="templates-page__search-input" placeholder="搜索模板…"
@@ -346,7 +316,6 @@ onBeforeUnmount(() => {
 
     <ErrorBanner :message="errorMessage" @dismiss="errorMessage = ''" />
     <ErrorBanner :message="favoriteError" @dismiss="favoriteError = ''" />
-    <ErrorBanner :message="favoriteTemplatesError" @dismiss="favoriteTemplatesError = ''" />
 
     <div class="templates-page__body">
       <aside class="templates-page__sidebar">
@@ -354,14 +323,13 @@ onBeforeUnmount(() => {
         <ul class="category-list">
           <li>
             <button class="category-list__item"
-              :class="{ 'category-list__item--active': selectedCategory.length === 0 && !isSearchMode }"
+              :class="{ 'category-list__item--active': selectedCategory.length === 0 }"
               @click="handleSelectCategory('')">
               全部
             </button>
           </li>
           <li v-for="cat in categories" :key="cat">
-            <button class="category-list__item"
-              :class="{ 'category-list__item--active': selectedCategory === cat && !isSearchMode }"
+            <button class="category-list__item" :class="{ 'category-list__item--active': selectedCategory === cat }"
               @click="handleSelectCategory(cat)">
               {{ cat }}
             </button>
@@ -370,6 +338,13 @@ onBeforeUnmount(() => {
       </aside>
 
       <section ref="contentRef" class="templates-page__content">
+        <!-- 切换遮罩（让切换更平滑） -->
+        <Transition name="fade-fast">
+          <div v-if="isSwitching" class="templates-page__switching-mask">
+            <Loading />
+          </div>
+        </Transition>
+
         <!-- 详情面板 -->
         <Transition name="slide-fade">
           <div v-if="selectedTemplateId !== null" class="templates-page__detail">
@@ -380,8 +355,10 @@ onBeforeUnmount(() => {
 
         <!-- 搜索状态 -->
         <div v-if="isSearchMode" class="templates-page__search-status">
-          <span class="templates-page__search-hint">搜索 "{{ keyword }}" 共 {{ total }} 条结果</span>
-          <button class="templates-page__search-reset" @click="handleClearSearch">清除搜索</button>
+          <span class="templates-page__search-hint">{{ searchStatusText }}</span>
+          <button class="templates-page__search-reset" @click="handleClearSearch">
+            清除搜索
+          </button>
         </div>
 
         <div v-if="loading && items.length === 0" class="templates-page__loading">
@@ -396,27 +373,24 @@ onBeforeUnmount(() => {
         <template v-if="items.length > 0">
           <Transition name="tpl-fade" mode="out-in">
             <div :key="contentKey" class="templates-page__grids">
-              <div v-if="showFavoriteSection && (favoriteTemplatesLoading || hasFavorited)" class="template-section">
+              <div v-if="hasFavorited" class="template-section">
                 <h3 class="template-section__title">我收藏的</h3>
 
-                <div v-if="favoriteTemplatesLoading" class="templates-page__loading-more">
-                  <Loading />
-                </div>
-
-                <div v-else class="template-grid">
-                  <article v-for="item in favoriteTemplates" :key="item.templateId" class="template-card"
-                    :class="{ 'template-card--selected': selectedTemplateId === item.templateId }"
-                    @click="handleSelectTemplate(item.templateId)">
+                <div class="template-grid">
+                  <article v-for="item in favoritedItems" :key="item.id" class="template-card"
+                    :class="{ 'template-card--selected': selectedTemplateId === item.id }"
+                    @click="handleSelectTemplate(item.id)">
                     <div class="template-card__header">
                       <h3 class="template-card__title">{{ item.title }}</h3>
                       <span class="template-card__category">{{ item.category }}</span>
                     </div>
+
                     <p class="template-card__desc">{{ item.description }}</p>
+
                     <div class="template-card__footer">
-                      <span class="template-card__time">收藏于 {{ formatRelativeTime(item.favoritedAt) }}</span>
-                      <button class="template-card__fav template-card__fav--active"
-                        :disabled="togglingIds.has(item.templateId)" aria-label="取消收藏"
-                        @click.stop="handleToggleFavorite(item.templateId)">
+                      <span class="template-card__time">{{ formatRelativeTime(item.createdAt) }}</span>
+                      <button class="template-card__fav template-card__fav--active" :disabled="togglingIds.has(item.id)"
+                        aria-label="取消收藏" @click.stop="handleToggleFavorite(item.id)">
                         <MaterialIcon name="favorite" :size="18" />
                         <span class="template-card__fav-count">{{ item.favoriteCount }}</span>
                       </button>
@@ -435,7 +409,9 @@ onBeforeUnmount(() => {
                     <h3 class="template-card__title">{{ item.title }}</h3>
                     <span class="template-card__category">{{ item.category }}</span>
                   </div>
+
                   <p class="template-card__desc">{{ item.description }}</p>
+
                   <div class="template-card__footer">
                     <span class="template-card__time">{{ formatRelativeTime(item.createdAt) }}</span>
                     <button class="template-card__fav" :class="{ 'template-card__fav--active': item.isFavorited }"
@@ -450,8 +426,8 @@ onBeforeUnmount(() => {
             </div>
           </Transition>
 
-          <div v-if="hasMore && !loading" ref="sentinel" class="sentinel" />
-          <div v-if="loading" class="templates-page__loading-more">
+          <div v-if="hasMore && !loading && !isSwitching" ref="sentinel" class="sentinel" />
+          <div v-if="loading && items.length > 0" class="templates-page__loading-more">
             <Loading />
           </div>
         </template>
@@ -627,6 +603,18 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   position: relative;
   isolation: isolate;
+}
+
+.templates-page__switching-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-bg-base) 88%, transparent);
+  backdrop-filter: blur(1px);
+  border-radius: var(--radius-lg);
 }
 
 .templates-page__detail {
@@ -868,6 +856,16 @@ onBeforeUnmount(() => {
 .tpl-fade-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+.fade-fast-enter-active,
+.fade-fast-leave-active {
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.fade-fast-enter-from,
+.fade-fast-leave-to {
+  opacity: 0;
 }
 
 .sentinel {

@@ -21,131 +21,98 @@ import {
     unfavoriteTemplateApi,
 } from '@/api/templates'
 
-/**
- * 模板 Store
- *
- * @example
- * ```typescript
- * const templates = useTemplatesStore()
- * await templates.loadTemplates()
- * ```
- */
 export const useTemplatesStore = defineStore('templates', () => {
-    /* ---- State ---- */
-
-    /** 模板列表 */
     const items = ref<TemplateListItem[]>([])
-
-    /** 总条数 */
     const total = ref<number>(0)
-
-    /** 当前页码 */
     const page = ref<number>(1)
-
-    /** 每页条数 */
     const limit = ref<number>(20)
 
-    /** 分类列表 */
     const categories = ref<string[]>([])
-
-    /** 当前选中分类（空字符串表示全部） */
     const selectedCategory = ref<string>('')
-
-    /** 搜索关键词（空字符串表示非搜索模式） */
     const keyword = ref<string>('')
 
-    /** 列表加载中 */
+    /** 首屏加载 / 追加加载共用 */
     const loading = ref<boolean>(false)
+    /** 分类切换/搜索切换时的“平滑过渡”态 */
+    const switching = ref<boolean>(false)
 
-    /** 列表加载错误消息 */
     const errorMessage = ref<string>('')
 
-    /** 当前查看的模板详情 */
     const currentDetail = ref<Template | null>(null)
-
-    /** 详情加载中 */
     const detailLoading = ref<boolean>(false)
-
-    /** 详情错误消息 */
     const detailError = ref<string>('')
 
-    /* ---- Getters ---- */
+    /** 用于触发内容过渡 key */
+    const viewVersion = ref<number>(0)
 
-    /**
-     * 总页数
-     */
     const totalPages = computed<number>(() =>
         Math.max(1, Math.ceil(total.value / limit.value)),
     )
 
-    /**
-     * 是否处于搜索模式
-     */
     const isSearchMode = computed<boolean>(() => keyword.value.length > 0)
-
-    /**
-     * 是否还有更多数据可加载
-     */
     const hasMore = computed<boolean>(() => items.value.length < total.value)
 
-    /* ---- Internal ---- */
-
-    /**
-     * 对非搜索模式列表排序：
-     * 1) 已收藏优先
-     * 2) 收藏数降序
-     * 3) ID 降序（稳定兜底）
-     *
-     * 搜索模式由后端保证排序，无需客户端排序。
-     *
-     * @param list - 待排序模板列表
-     * @returns 排序后的列表（原地修改并返回）
-     */
     const sortIfNeeded = (list: TemplateListItem[]): TemplateListItem[] => {
         if (!isSearchMode.value) {
-            list.sort((a, b) => {
-                if (a.isFavorited !== b.isFavorited) {
-                    return a.isFavorited ? -1 : 1
-                }
-
-                if (a.favoriteCount !== b.favoriteCount) {
-                    return b.favoriteCount - a.favoriteCount
-                }
-
-                return b.id - a.id
-            })
+            list.sort((a, b) => b.favoriteCount - a.favoriteCount)
         }
         return list
     }
 
-    /* ---- Actions ---- */
+    const buildParams = (targetPage: number) => ({
+        page: targetPage,
+        limit: limit.value,
+        category: selectedCategory.value.length > 0 ? selectedCategory.value : undefined,
+        keyword: keyword.value.length > 0 ? keyword.value : undefined,
+    })
+
+    const fetchPage = async (targetPage: number) => {
+        const params = buildParams(targetPage)
+        return keyword.value.length > 0
+            ? await searchTemplatesApi(params)
+            : await fetchTemplatesApi(params)
+    }
 
     /**
-     * 加载模板列表（根据当前筛选条件），替换当前列表
-     *
-     * 搜索关键词非空时走搜索接口，否则走列表接口。
+     * 解决“全部页收藏区要滚动才出现”：
+     * 在“全部 + 非搜索”且首屏未见收藏时，主动预取后续页（有上限），
+     * 直到出现收藏或无更多数据。
      */
+    const ensureFavoritesVisible = async (): Promise<void> => {
+        if (selectedCategory.value.length > 0 || isSearchMode.value) return
+        if (items.value.some((t) => t.isFavorited)) return
+        if (!hasMore.value) return
+
+        let prefetchCount = 0
+        const maxPrefetchPages = 4
+
+        while (
+            prefetchCount < maxPrefetchPages &&
+            !items.value.some((t) => t.isFavorited) &&
+            items.value.length < total.value
+        ) {
+            const nextPage = page.value + 1
+            const result = await fetchPage(nextPage)
+            if (result.items.length === 0) {
+                total.value = items.value.length
+                break
+            }
+            page.value = nextPage
+            items.value = sortIfNeeded([...items.value, ...result.items])
+            total.value = result.total
+            prefetchCount += 1
+        }
+    }
+
     const loadTemplates = async (): Promise<void> => {
         loading.value = true
         errorMessage.value = ''
         try {
-            const params = {
-                page: page.value,
-                limit: limit.value,
-                category: selectedCategory.value.length > 0
-                    ? selectedCategory.value
-                    : undefined,
-                keyword: keyword.value.length > 0
-                    ? keyword.value
-                    : undefined,
-            }
-
-            const result = keyword.value.length > 0
-                ? await searchTemplatesApi(params)
-                : await fetchTemplatesApi(params)
-
+            const result = await fetchPage(page.value)
             items.value = sortIfNeeded(result.items)
             total.value = result.total
+            await ensureFavoritesVisible()
+            viewVersion.value += 1
         } catch (error: unknown) {
             const { extractErrorMessage } = await import('@/utils/error')
             errorMessage.value = extractErrorMessage(error)
@@ -154,42 +121,21 @@ export const useTemplatesStore = defineStore('templates', () => {
         }
     }
 
-    /**
-     * 追加加载下一页模板（无限滚动）
-     *
-     * 如果当前正在加载或无更多数据则跳过。
-     */
     const appendTemplates = async (): Promise<void> => {
         if (loading.value || !hasMore.value) return
-
-        page.value += 1
         loading.value = true
         errorMessage.value = ''
-
         try {
-            const params = {
-                page: page.value,
-                limit: limit.value,
-                category: selectedCategory.value.length > 0
-                    ? selectedCategory.value
-                    : undefined,
-                keyword: keyword.value.length > 0
-                    ? keyword.value
-                    : undefined,
-            }
-
-            const result = keyword.value.length > 0
-                ? await searchTemplatesApi(params)
-                : await fetchTemplatesApi(params)
-
+            const nextPage = page.value + 1
+            const result = await fetchPage(nextPage)
             if (result.items.length === 0) {
                 total.value = items.value.length
             } else {
+                page.value = nextPage
                 items.value = sortIfNeeded([...items.value, ...result.items])
                 total.value = result.total
             }
         } catch (error: unknown) {
-            page.value -= 1
             const { extractErrorMessage } = await import('@/utils/error')
             errorMessage.value = extractErrorMessage(error)
         } finally {
@@ -197,9 +143,6 @@ export const useTemplatesStore = defineStore('templates', () => {
         }
     }
 
-    /**
-     * 加载分类列表
-     */
     const loadCategories = async (): Promise<void> => {
         try {
             categories.value = await fetchCategoriesApi()
@@ -208,64 +151,57 @@ export const useTemplatesStore = defineStore('templates', () => {
         }
     }
 
-    /**
-     * 切换分类筛选，重置列表并重新加载
-     *
-     * @param category - 分类名称，空字符串表示全部
-     */
+    /** 平滑切换（不先清空列表，避免生硬闪断） */
+    const switchContextAndReload = async (next: {
+        category?: string
+        keyword?: string
+    }): Promise<void> => {
+        switching.value = true
+        errorMessage.value = ''
+
+        if (typeof next.category === 'string') selectedCategory.value = next.category
+        if (typeof next.keyword === 'string') keyword.value = next.keyword
+
+        page.value = 1
+        total.value = 0
+        // 注意：这里不先置空 items，等新数据到达再替换
+
+        try {
+            const result = await fetchPage(1)
+            items.value = sortIfNeeded(result.items)
+            total.value = result.total
+            await ensureFavoritesVisible()
+            viewVersion.value += 1
+        } catch (error: unknown) {
+            const { extractErrorMessage } = await import('@/utils/error')
+            errorMessage.value = extractErrorMessage(error)
+        } finally {
+            switching.value = false
+        }
+    }
+
     const selectCategory = async (category: string): Promise<void> => {
-        selectedCategory.value = category
-        keyword.value = ''
-        page.value = 1
-        items.value = []
-        total.value = 0
-        await loadTemplates()
+        await switchContextAndReload({ category, keyword: '' })
     }
 
-    /**
-     * 执行搜索，重置列表并重新加载
-     *
-     * @param query - 搜索关键词
-     */
     const search = async (query: string): Promise<void> => {
-        keyword.value = query
-        page.value = 1
-        items.value = []
-        total.value = 0
-        await loadTemplates()
+        // 关键修复：不清空 selectedCategory，保留当前分类搜索
+        await switchContextAndReload({ keyword: query })
     }
 
-    /**
-     * 清除搜索状态，重置列表并重新加载
-     */
     const clearSearch = async (): Promise<void> => {
-        keyword.value = ''
-        page.value = 1
-        items.value = []
-        total.value = 0
-        await loadTemplates()
+        await switchContextAndReload({ keyword: '' })
     }
 
-    /**
-     * 跳转到指定页码并重新加载
-     *
-     * @param targetPage - 目标页码
-     */
     const goToPage = async (targetPage: number): Promise<void> => {
         page.value = targetPage
         await loadTemplates()
     }
 
-    /**
-     * 加载模板详情
-     *
-     * @param id - 模板 ID
-     */
     const loadDetail = async (id: number): Promise<void> => {
         detailLoading.value = true
         detailError.value = ''
         currentDetail.value = null
-
         try {
             currentDetail.value = await fetchTemplateDetailApi(id)
         } catch (error: unknown) {
@@ -276,17 +212,9 @@ export const useTemplatesStore = defineStore('templates', () => {
         }
     }
 
-    /**
-     * 切换收藏状态
-     *
-     * @param templateId - 模板 ID
-     * @throws {ApiError} 收藏/取消收藏失败
-     */
     const toggleFavorite = async (templateId: number): Promise<void> => {
         const item = items.value.find((t) => t.id === templateId)
-        const detail = currentDetail.value?.id === templateId
-            ? currentDetail.value
-            : null
+        const detail = currentDetail.value?.id === templateId ? currentDetail.value : null
 
         const wasFavorited = item?.isFavorited ?? detail?.isFavorited ?? false
 
@@ -307,11 +235,6 @@ export const useTemplatesStore = defineStore('templates', () => {
             detail.isFavorited = !wasFavorited
             detail.favoriteCount += delta
         }
-
-        // 非搜索模式下，收藏状态变化后需要立刻重排，确保“收藏置顶”即时生效
-        if (!isSearchMode.value) {
-            items.value = sortIfNeeded([...items.value])
-        }
     }
 
     return {
@@ -323,6 +246,7 @@ export const useTemplatesStore = defineStore('templates', () => {
         selectedCategory,
         keyword,
         loading,
+        switching,
         errorMessage,
         currentDetail,
         detailLoading,
@@ -330,6 +254,7 @@ export const useTemplatesStore = defineStore('templates', () => {
         totalPages,
         isSearchMode,
         hasMore,
+        viewVersion,
         loadTemplates,
         appendTemplates,
         loadCategories,

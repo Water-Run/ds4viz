@@ -3,7 +3,7 @@ r"""
 
 :file: src/service/template_service.py
 :author: WaterRun
-:time: 2026-01-29
+:time: 2026-03-28
 """
 
 from psycopg import sql
@@ -248,14 +248,16 @@ def get_categories() -> list[str]:
 
 def search_templates(
     keyword: str,
+    category: str | None = None,
     page: int = 1,
     limit: int = 20,
     user_id: int | None = None,
 ) -> TemplateListResponse:
     r"""
-    搜索模板
+    搜索模板（支持按分类过滤）
 
     :param keyword: 搜索关键词
+    :param category: 分类筛选（可选）
     :param page: 页码（从1开始）
     :param limit: 每页数量
     :param user_id: 当前用户ID（用于判断是否已收藏，可选）
@@ -266,25 +268,47 @@ def search_templates(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT COUNT(*) FROM templates
-                WHERE title ILIKE %s OR description ILIKE %s
-                """,
-                (search_pattern, search_pattern),
-            )
-            total: int = cur.fetchone()[0]
+            if category is None:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM templates
+                    WHERE title ILIKE %s OR description ILIKE %s
+                    """,
+                    (search_pattern, search_pattern),
+                )
+                total: int = cur.fetchone()[0]
 
-            cur.execute(
-                """
-                SELECT id, title, category, description, favorite_count, created_at
-                FROM templates
-                WHERE title ILIKE %s OR description ILIKE %s
-                ORDER BY favorite_count DESC, created_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                (search_pattern, search_pattern, limit, offset),
-            )
+                cur.execute(
+                    """
+                    SELECT id, title, category, description, favorite_count, created_at
+                    FROM templates
+                    WHERE title ILIKE %s OR description ILIKE %s
+                    ORDER BY favorite_count DESC, created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (search_pattern, search_pattern, limit, offset),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM templates
+                    WHERE (title ILIKE %s OR description ILIKE %s) AND category = %s
+                    """,
+                    (search_pattern, search_pattern, category),
+                )
+                total = cur.fetchone()[0]
+
+                cur.execute(
+                    """
+                    SELECT id, title, category, description, favorite_count, created_at
+                    FROM templates
+                    WHERE (title ILIKE %s OR description ILIKE %s) AND category = %s
+                    ORDER BY favorite_count DESC, created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (search_pattern, search_pattern, category, limit, offset),
+                )
+
             rows: list[tuple] = cur.fetchall()
             template_ids: list[int] = [row[0] for row in rows]
 

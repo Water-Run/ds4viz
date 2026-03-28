@@ -620,7 +620,8 @@ watch(currentFrameIndex, (next, prev) => {
               </svg>
             </button>
 
-            <LlmPanel :language="language" :is-default-code="isDefaultCode" @generated="handleLlmGenerated" />
+            <LlmPanel :language="language" :is-default-code="isDefaultCode" :current-code="code"
+              @generated="handleLlmGenerated" />
           </div>
 
           <div v-if="executionInfo" class="execution-info">

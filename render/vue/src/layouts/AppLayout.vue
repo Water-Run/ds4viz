@@ -355,7 +355,7 @@ onBeforeUnmount(() => {
   top: calc(100% + 6px);
   left: 0;
   padding: 6px 14px;
-  background-color: var(--color-bg-surface);
+  background-color: #ffffff;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-hover);
@@ -363,16 +363,17 @@ onBeforeUnmount(() => {
   font-weight: var(--weight-medium);
   color: var(--color-text-body);
   white-space: nowrap;
-  opacity: 0;
+  visibility: hidden;
   transform: translateY(-4px);
-  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+  transition: transform var(--duration-fast) var(--ease), visibility 0s linear var(--duration-fast);
   pointer-events: none;
   z-index: 10;
 }
 
 .sidebar__brand-link:hover .sidebar__brand-tooltip {
-  opacity: 1;
+  visibility: visible;
   transform: translateY(0);
+  transition: transform var(--duration-fast) var(--ease), visibility 0s linear 0s;
 }
 
 .sidebar__logo-img {
