@@ -3,25 +3,9 @@
 /**
  * 可视化面板
  *
- * 动画时序：
- * 1) 先渐出（红虚线 ghost）
- * 2) ghost 完全消失后 commit 新状态
- * 3) 仅新增元素渐入
- * 4) 视图缩放在 commit 后触发，避免与渐出重叠
- *
- * 元数据显示：
- * - Object.label 独立稳定显示
- * - remarks 与 label 并列展示
- * - 展示 IR / Object / Step 可得信息
- *
- * 节点变更卡片：
- * - 仅 slist / dlist / binary_tree / bst / graph_* 类结构启用
- * - 横向数组式时间线布局，严格契合设计语言
- * - 消逝节点以自绘 SVG 虚线圆表示
- *
  * @file src/components/viz/VizPanel.vue
  * @author WaterRun
- * @date 2026-03-28
+ * @date 2026-04-06
  * @component VizPanel
  */
 
@@ -546,35 +530,82 @@ const activeTimelines = computed<Map<string, NodeChangeTimeline>>(() => {
   const map = new Map<string, NodeChangeTimeline>()
   for (const key of allActiveCardKeys.value) {
     const tl = getOrBuildTimeline(key)
-    if (tl) map.set(key, tl)
+    if (tl) map.set(key, filterUnchangedEntries(tl))
   }
   return map
 })
 
+
 /**
- * 活跃卡片的布局位置（四方向候选 + AABB 碰撞检测）
+ * 计算点 (px,py) 到线段 (ax,ay)-(bx,by) 的最短距离
  */
+function pointToSegmentDist(
+  px: number, py: number,
+  ax: number, ay: number,
+  bx: number, by: number,
+): number {
+  const dx = bx - ax
+  const dy = by - ay
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
+  const projX = ax + t * dx
+  const projY = ay + t * dy
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
+}
+
+
+/**
+* 活跃卡片的布局位置
+*
+* 评分式算法：
+*   1) 对每个节点生成 24 角度 × 5 距离级别共 120 个候选位置
+*   2) 排除碰撞后，对每个候选评分：
+*      - 距离惩罚：偏好靠近源节点
+*      - 连线穿越惩罚：惩罚引线穿过其他节点
+*      - 拥挤惩罚：惩罚与已放置矩形过近
+*   3) 选取最低分候选；全部碰撞时兜底右侧偏移
+*
+* 碰撞池包含：全部可见节点、消逝节点、标题区域、已放置卡片。
+*/
 const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
   const result = new Map<string, { x: number; y: number }>()
   const placed: Array<{ x: number; y: number; w: number; h: number }> = []
   const cardH = changeCardDetailMode.value ? CARD_H_DETAIL : CARD_H_SIMPLE
   const gap = CARD_GAP + 8
 
-  /* 将所有可见节点加入碰撞池，防止卡片与节点重叠 */
+  /* 收集节点圆心，用于连线穿越检测 */
+  const nodeCenters: Array<{ x: number; y: number; r: number }> = []
+
   for (const [, pos] of currentNodePositions.value) {
-    placed.push({
+    const rect = {
       x: pos.x - pos.r - 4,
       y: pos.y - pos.r - 4,
       w: pos.r * 2 + 8,
       h: pos.r * 2 + 8,
-    })
+    }
+    placed.push(rect)
+    nodeCenters.push(pos)
   }
   for (const [, pos] of departedNodePositions.value) {
-    placed.push({
+    const rect = {
       x: pos.x - pos.r - 4,
       y: pos.y - pos.r - 4,
       w: pos.r * 2 + 8,
       h: pos.r * 2 + 8,
+    }
+    placed.push(rect)
+    nodeCenters.push(pos)
+  }
+
+  /* 标题 / 标注区域纳入碰撞池 */
+  if (vizFlags.showVizTitle && headerTotalH.value > 0 && !isStructureEmpty.value) {
+    const bounds = contentBounds.value
+    placed.push({
+      x: bounds.minX,
+      y: bounds.minY - headerTotalH.value - 6,
+      w: bounds.maxX - bounds.minX,
+      h: headerTotalH.value + 12,
     })
   }
 
@@ -589,34 +620,87 @@ const cardPositions = computed<Map<string, { x: number; y: number }>>(() => {
         && rect.y + rect.h > p.y,
     )
 
+  /**
+   * 统计从节点到卡片中心的引线穿越了多少个其他节点（跳过自身）
+   */
+  const countCrossings = (
+    cardCx: number,
+    cardCy: number,
+    nodeX: number,
+    nodeY: number,
+  ): number => {
+    let n = 0
+    for (const nc of nodeCenters) {
+      if (Math.abs(nc.x - nodeX) < 1 && Math.abs(nc.y - nodeY) < 1) continue
+      if (pointToSegmentDist(nc.x, nc.y, nodeX, nodeY, cardCx, cardCy) < nc.r + 8) {
+        n += 1
+      }
+    }
+    return n
+  }
+
+  /** 24 等分角度，5 级距离 → 最多 120 候选 */
+  const ANGLE_STEPS = 24
+  const DIST_MULTS = [1.0, 1.5, 2.2, 3.0, 4.0]
+
   for (const key of allActiveCardKeys.value) {
-    const nodePos = currentNodePositions.value.get(key)
-      ?? lastKnownPositions.value.get(key)
+    const nodePos =
+      currentNodePositions.value.get(key) ?? lastKnownPositions.value.get(key)
     if (!nodePos) continue
 
-    const candidates = [
-      { x: nodePos.x + nodePos.r + gap, y: nodePos.y - cardH / 2 },
-      { x: nodePos.x - nodePos.r - gap - CARD_W_EST, y: nodePos.y - cardH / 2 },
-      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y + nodePos.r + gap },
-      { x: nodePos.x - CARD_W_EST / 2, y: nodePos.y - nodePos.r - gap - cardH },
-      { x: nodePos.x + nodePos.r + gap, y: nodePos.y - cardH },
-      { x: nodePos.x - nodePos.r - gap - CARD_W_EST, y: nodePos.y },
-    ]
+    const baseDistance = nodePos.r + gap
+    let bestPos: { x: number; y: number } | null = null
+    let bestScore = Infinity
 
-    let best = candidates[0]
-    for (const pos of candidates) {
-      if (!collides({ x: pos.x, y: pos.y, w: CARD_W_EST, h: cardH })) {
-        best = pos
-        break
+    for (const dm of DIST_MULTS) {
+      const distance = baseDistance * dm
+      for (let a = 0; a < ANGLE_STEPS; a += 1) {
+        const angle = (2 * Math.PI * a) / ANGLE_STEPS
+        const cx = nodePos.x + Math.cos(angle) * distance - CARD_W_EST / 2
+        const cy = nodePos.y + Math.sin(angle) * distance - cardH / 2
+
+        if (collides({ x: cx, y: cy, w: CARD_W_EST, h: cardH })) continue
+
+        let score = 0
+
+        /* 距离惩罚：偏好近处 */
+        score += distance * 0.8
+
+        /* 连线穿越惩罚 */
+        const cardCx = cx + CARD_W_EST / 2
+        const cardCy = cy + cardH / 2
+        score += countCrossings(cardCx, cardCy, nodePos.x, nodePos.y) * 300
+
+        /* 拥挤惩罚：与已放置矩形中心过近 */
+        for (const p of placed) {
+          const pcx = p.x + p.w / 2
+          const pcy = p.y + p.h / 2
+          const d = Math.sqrt((cardCx - pcx) ** 2 + (cardCy - pcy) ** 2)
+          if (d < 120) score += (120 - d) * 0.4
+        }
+
+        if (score < bestScore) {
+          bestScore = score
+          bestPos = { x: cx, y: cy }
+        }
       }
     }
 
-    result.set(key, best)
-    placed.push({ x: best.x, y: best.y, w: CARD_W_EST, h: cardH })
+    /* 兜底 */
+    if (!bestPos) {
+      bestPos = {
+        x: nodePos.x + baseDistance,
+        y: nodePos.y - cardH / 2,
+      }
+    }
+
+    result.set(key, bestPos)
+    placed.push({ x: bestPos.x, y: bestPos.y, w: CARD_W_EST, h: cardH })
   }
 
   return result
 })
+
 /* ---- 元数据显示 ---- */
 
 function formatUnknownValue(value: unknown): string {
@@ -965,6 +1049,42 @@ function getNodePos(key: string): { x: number; y: number; r: number } {
 }
 
 /**
+ * 过滤时间线中连续未变化的条目，仅保留与前一条相比发生了变化的帧。
+ *
+ * 假设 NodeChangeTimeline 拥有 entries 数组，每条含 frameIndex 及其他状态字段。
+ * 比较时排除 frameIndex，仅以状态字段序列化结果判定是否变化。
+ *
+ * @param timeline - 原始时间线
+ * @returns 过滤后的时间线（entries 长度 ≤ 原始长度）
+ */
+function filterUnchangedEntries(timeline: NodeChangeTimeline): NodeChangeTimeline {
+  const { entries } = timeline as { entries: Array<Record<string, unknown>> }
+  if (!entries || entries.length <= 1) return timeline
+
+  const stateKey = (entry: Record<string, unknown>): string => {
+    const parts: string[] = []
+    for (const [k, v] of Object.entries(entry)) {
+      if (k !== 'frameIndex') parts.push(`${k}:${JSON.stringify(v)}`)
+    }
+    return parts.sort().join('|')
+  }
+
+  const filtered = [entries[0]]
+  let prevKey = stateKey(entries[0])
+
+  for (let i = 1; i < entries.length; i += 1) {
+    const key = stateKey(entries[i])
+    if (key !== prevKey) {
+      filtered.push(entries[i])
+      prevKey = key
+    }
+  }
+
+  return { ...timeline, entries: filtered } as unknown as NodeChangeTimeline
+}
+
+
+/**
  * 获取或构建指定节点的变更时间线（懒加载 + 缓存）
  *
  * @param key - 节点标识键
@@ -1063,6 +1183,14 @@ function handleCollapseAllCards(): void {
   expandedCards.value = new Set()
   departedCards.value = new Set()
 }
+
+/**
+ * 是否有任何变更卡片处于展开状态
+ */
+const hasAnyCardsExpanded = computed<boolean>(() => {
+  return expandedCards.value.size > 0 || departedCards.value.size > 0
+})
+
 
 /**
  * 卡片内跳帧
@@ -2069,6 +2197,43 @@ watch(
   },
 )
 
+/**
+ * 卡片展开/收起时自动扩展 viewBox，使变更卡片不溢出画布
+ */
+watch(
+  cardPositions,
+  (positions) => {
+    if (!vizFlags.enableAutoFit || userManualZoom.value) return
+
+    if (positions.size === 0) {
+      animateToVb({ ...idealVb.value }, 180)
+      return
+    }
+
+    const cardH = changeCardDetailMode.value ? CARD_H_DETAIL : CARD_H_SIMPLE
+    const base = contentBounds.value
+    let minX = base.minX
+    let minY = base.minY - headerTotalH.value
+    let maxX = base.maxX
+    let maxY = base.maxY
+
+    for (const [, pos] of positions) {
+      minX = Math.min(minX, pos.x)
+      minY = Math.min(minY, pos.y)
+      maxX = Math.max(maxX, pos.x + CARD_W_EST)
+      maxY = Math.max(maxY, pos.y + cardH)
+    }
+
+    const width = Math.max(200, maxX - minX + PAD * 2)
+    const height = Math.max(150, maxY - minY + PAD * 2)
+
+    animateToVb(
+      { x: minX - PAD, y: minY - PAD, w: width, h: height },
+      180,
+    )
+  },
+)
+
 /* ================================================================
  *  阶段导航
  * ================================================================ */
@@ -2580,26 +2745,25 @@ onBeforeUnmount(() => {
 
       <!-- 变更卡片控制按钮 -->
       <div v-if="isNodeStructure && !isEmpty && !isStructureEmpty" class="change-card-controls">
-        <button class="change-card-controls__btn" title="展开全部变更" @click="handleExpandAllCards">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
+        <button class="change-card-controls__toggle"
+          @click="hasAnyCardsExpanded ? handleCollapseAllCards() : handleExpandAllCards()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2" y="1" width="12" height="5" rx="1.5" />
-            <rect x="2" y="10" width="12" height="5" rx="1.5" />
-            <polyline points="6.5,8.5 8,7 9.5,8.5" />
+            <template v-if="hasAnyCardsExpanded">
+              <rect x="2" y="4" width="12" height="3.5" rx="1.5" />
+              <rect x="2" y="8.5" width="12" height="3.5" rx="1.5" />
+              <polyline points="6.5,2.5 8,4 9.5,2.5" />
+              <polyline points="6.5,13.5 8,12 9.5,13.5" />
+            </template>
+            <template v-else>
+              <rect x="2" y="1" width="12" height="5" rx="1.5" />
+              <rect x="2" y="10" width="12" height="5" rx="1.5" />
+              <polyline points="6.5,8.5 8,7 9.5,8.5" />
+            </template>
           </svg>
-        </button>
-        <button class="change-card-controls__btn" title="折叠全部变更"
-          :disabled="expandedCards.size === 0 && departedCards.size === 0" @click="handleCollapseAllCards">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"
-            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2" y="4" width="12" height="3.5" rx="1.5" />
-            <rect x="2" y="8.5" width="12" height="3.5" rx="1.5" />
-            <polyline points="6.5,2.5 8,4 9.5,2.5" />
-            <polyline points="6.5,13.5 8,12 9.5,13.5" />
-          </svg>
+          <span>{{ hasAnyCardsExpanded ? '折叠' : '展开' }}</span>
         </button>
       </div>
-
       <!-- Phase indicator -->
       <Transition name="fade">
         <div v-if="showPhaseIndicator" class="viz-phase-bar">
@@ -3087,47 +3251,45 @@ onBeforeUnmount(() => {
   opacity: 0.6;
 }
 
-/* ---- 变更卡片控制按钮 ---- */
-
 .change-card-controls {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 6;
   display: flex;
-  gap: 4px;
 }
 
-.change-card-controls__btn {
-  display: flex;
+.change-card-controls__toggle {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-full);
   background-color: var(--color-bg-surface);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-body);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-family: inherit;
   cursor: pointer;
   box-shadow: var(--shadow-static);
+  white-space: nowrap;
   transition:
     background-color var(--duration-fast) var(--ease),
-    color var(--duration-fast) var(--ease);
+    color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
 }
 
-.change-card-controls__btn:hover:not(:disabled) {
+.change-card-controls__toggle:hover {
   background-color: var(--color-bg-hover);
   color: var(--color-text-primary);
+  box-shadow: var(--shadow-hover);
 }
 
-.change-card-controls__btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.change-card-controls__btn svg {
-  width: 16px;
-  height: 16px;
+.change-card-controls__toggle svg {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
