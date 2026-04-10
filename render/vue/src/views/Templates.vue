@@ -7,7 +7,7 @@
  *
  * @file src/views/Templates.vue
  * @author WaterRun
- * @date 2026-03-28
+ * @date 2026-04-10
  * @component Templates
  */
 
@@ -110,9 +110,9 @@ const emptyMessage = computed<string>(() => {
 /** 搜索状态文案 */
 const searchStatusText = computed<string>(() => {
   if (!isSearchMode.value) return ''
-  const categoryPart = selectedCategory.value.length > 0
-    ? `分类「${selectedCategory.value}」`
-    : '全部分类'
+  if (selectedCategory.value.length > 0) {
+    return `在「${selectedCategory.value}」分类下搜索「${keyword.value}」共 ${total.value} 条结果`
+  }
   return `搜索「${keyword.value}」共 ${total.value} 条结果`
 })
 

@@ -5,7 +5,7 @@
  *
  * @file src/utils/time.ts
  * @author WaterRun
- * @date 2026-02-28
+ * @date 2026-04-10
  */
 
 /**
@@ -18,10 +18,10 @@
  * @returns 带时区标记的 ISO 字符串
  */
 function ensureUtcSuffix(iso: string): string {
-    if (iso.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(iso)) {
-        return iso
-    }
-    return `${iso}Z`
+  if (iso.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(iso)) {
+    return iso
+  }
+  return `${iso}Z`
 }
 
 /**
@@ -30,14 +30,14 @@ function ensureUtcSuffix(iso: string): string {
  * @returns 形如 "UTC+8" 或 "UTC-5:30" 的字符串
  */
 function getUtcOffsetLabel(): string {
-    const offsetMinutes = -new Date().getTimezoneOffset()
-    const sign = offsetMinutes >= 0 ? '+' : '-'
-    const hours = Math.floor(Math.abs(offsetMinutes) / 60)
-    const minutes = Math.abs(offsetMinutes) % 60
-    if (minutes === 0) {
-        return `UTC${sign}${hours}`
-    }
-    return `UTC${sign}${hours}:${String(minutes).padStart(2, '0')}`
+  const offsetMinutes = -new Date().getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const hours = Math.floor(Math.abs(offsetMinutes) / 60)
+  const minutes = Math.abs(offsetMinutes) % 60
+  if (minutes === 0) {
+    return `UTC${sign}${hours}`
+  }
+  return `UTC${sign}${hours}:${String(minutes).padStart(2, '0')}`
 }
 
 /**
@@ -53,19 +53,19 @@ function getUtcOffsetLabel(): string {
  * ```
  */
 export function formatDateTime(iso: string): string {
-    const date = new Date(ensureUtcSuffix(iso))
-    if (Number.isNaN(date.getTime())) {
-        return iso
-    }
-    const formatted = date.toLocaleString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    })
-    return `${formatted} (${getUtcOffsetLabel()})`
+  const date = new Date(ensureUtcSuffix(iso))
+  if (Number.isNaN(date.getTime())) {
+    return iso
+  }
+  const formatted = date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+  return `${formatted} (${getUtcOffsetLabel()})`
 }
 
 /**
@@ -83,29 +83,29 @@ export function formatDateTime(iso: string): string {
  * ```
  */
 export function formatRelativeTime(iso: string): string {
-    const target = new Date(ensureUtcSuffix(iso)).getTime()
-    if (Number.isNaN(target)) {
-        return iso
-    }
+  const target = new Date(ensureUtcSuffix(iso)).getTime()
+  if (Number.isNaN(target)) {
+    return iso
+  }
 
-    const diff = Date.now() - target
-    if (diff < 0) {
-        return formatDateTime(iso)
-    }
-
-    const seconds = Math.floor(diff / 1_000)
-    if (seconds < 60) return '刚刚'
-
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes} 分钟前`
-
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} 小时前`
-
-    const days = Math.floor(hours / 24)
-    if (days < 30) return `${days} 天前`
-
+  const diff = Date.now() - target
+  if (diff < 0) {
     return formatDateTime(iso)
+  }
+
+  const seconds = Math.floor(diff / 1_000)
+  if (seconds < 60) return '刚刚'
+
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} 分钟前`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days} 天前`
+
+  return formatDateTime(iso)
 }
 
 /**
@@ -121,8 +121,27 @@ export function formatRelativeTime(iso: string): string {
  * ```
  */
 export function formatDuration(ms: number): string {
-    if (ms < 1_000) {
-        return `${Math.round(ms)}ms`
-    }
-    return `${(ms / 1_000).toFixed(2)}s`
+  if (ms < 1_000) {
+    return `${Math.round(ms)}ms`
+  }
+  return `${(ms / 1_000).toFixed(2)}s`
+}
+
+/**
+ * 格式化执行耗时，0ms 视为缓存命中
+ *
+ * @param ms - 毫秒数，null 表示无数据
+ * @returns 格式化字符串
+ *
+ * @example
+ * ```typescript
+ * formatExecutionTime(0)    // → '缓存命中'
+ * formatExecutionTime(128)  // → '128ms'
+ * formatExecutionTime(null) // → '--'
+ * ```
+ */
+export function formatExecutionTime(ms: number | null): string {
+  if (ms === null) return '--'
+  if (ms === 0) return '缓存命中'
+  return formatDuration(ms)
 }

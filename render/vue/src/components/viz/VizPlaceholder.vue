@@ -27,8 +27,6 @@ import MaterialIcon from '@/components/common/MaterialIcon.vue'
   gap: var(--space-1);
   width: 100%;
   height: 100%;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
   background-color: var(--color-bg-surface-alt);
   color: var(--color-text-tertiary);
 }

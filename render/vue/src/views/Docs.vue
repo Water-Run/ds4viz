@@ -4,7 +4,7 @@
  *
  * @file src/views/Docs.vue
  * @author WaterRun
- * @date 2026-04-06
+ * @date 2026-04-10
  * @component Docs
  */
 
@@ -61,6 +61,7 @@ const selectedLanguage = ref<Language>('python')
 const expanded = ref<Record<string, boolean>>({
   intro: true,
   online: true,
+  renderer: true,
   syntax: true,
   linear: true,
   tree: true,
@@ -207,7 +208,6 @@ const docTree = computed<DocNode[]>(() => [
       },
     ],
     children: [
-      /* ---- 2.1 编辑器布局 ---- */
       {
         id: 'online-editor-layout',
         title: '编辑器布局',
@@ -226,8 +226,6 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.2 代码编辑 ---- */
       {
         id: 'online-editor-code',
         title: '代码编辑',
@@ -249,8 +247,6 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.3 运行与执行 ---- */
       {
         id: 'online-editor-run',
         title: '运行与执行',
@@ -259,7 +255,7 @@ const docTree = computed<DocNode[]>(() => [
             text: '点击编辑器区域上方的<b>「运行」</b>按钮，当前代码将提交至后端沙箱执行。执行完成后，后端返回 <code>TOML IR</code> 文件内容。前端自动解析 TOML 并更新可视化面板。',
           },
           {
-            text: '运行期间，按钮显示"运行中"并禁用重复点击。编辑器仍可编辑代码，但建议等待当前运行完成。运行结束后，编辑器下方的执行信息栏会显示状态与耗时，例如"success / 128ms"。',
+            text: '运行期间，按钮显示"运行中"并禁用重复点击。编辑器仍可编辑代码，但建议等待当前运行完成。运行结束后，编辑器下方的执行信息栏会显示状态与耗时，例如"success / 128ms"。当耗时为 0ms 时表示命中后端缓存，显示为"缓存命中"。',
           },
           {
             text: '如果代码执行失败（语法错误、运行时异常、超时等），页面顶部会出现红色错误横幅，展示后端返回的错误消息。可视化面板仍会渲染至出错前的最后有效状态（如果 TOML 中包含 <code>[error]</code>）。点击横幅右侧的关闭按钮可手动消除。',
@@ -269,8 +265,6 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.4 TOML 文件操作 ---- */
       {
         id: 'online-editor-toml',
         title: 'TOML 文件操作',
@@ -289,8 +283,6 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.5 LLM 代码生成 ---- */
       {
         id: 'online-editor-llm',
         title: 'LLM 代码生成',
@@ -311,19 +303,77 @@ const docTree = computed<DocNode[]>(() => [
             text: '点击生成按钮旁的齿轮图标可展开 <b>LLM 配置区</b>，包含以下设置：<br><code>API 地址</code> — OpenAI 兼容的 Chat Completions 端点<br><code>模型</code> — 模型名称<br><code>API Key</code> — 认证密钥（密码输入框）<br><code>超时</code> — 请求超时秒数（1–600）<br><code>最大 Token</code> — 响应最大 Token 数（1–131072）',
           },
           {
-            text: '所有 LLM 配置存储在浏览器本地（<code>localStorage</code>），不会上传至 ds4viz 服务器。点击"恢复默认"可重置为初始值。鼠标离开面板区域 300ms 后面板自动关闭。',
+            text: '所有 LLM 配置存储在浏览器本地（<code>localStorage</code>），不会上传至 ds4viz 服务器。点击"恢复默认"可重置为初始值。鼠标离开面板区域 300ms 后面板自动关闭；当输入框处于聚焦状态时面板不会关闭。',
           },
         ],
       },
-
-      /* ---- 2.6 渲染器概述 ---- */
       {
-        id: 'online-viz-overview',
-        title: '渲染器概述',
+        id: 'online-templates',
+        title: '模板库',
         content: [
           {
-            text: '可视化渲染器是编辑器页面的左侧面板，负责将 <code>TOML IR</code> 中描述的数据结构状态序列渲染为可交互的 SVG 图形。',
+            text: '模板库以卡片网格展示预置的 ds4viz 示例代码。每张卡片显示标题、描述摘要（最多 2 行）、分类标签和收藏数。',
           },
+          {
+            text: '左侧分类栏可按类别筛选模板。点击"全部"显示所有分类。右上角搜索框支持关键词实时搜索（300ms 防抖，兼容中文输入法）。在特定分类下搜索时，搜索结果会标注所属分类。搜索结果页显示匹配条数和"清除搜索"链接。',
+          },
+          {
+            text: '列表使用<b>无限滚动</b>加载。向下滚动接近底部时自动加载下一页。在"全部"分类下，如果首屏未显示任何收藏模板，系统会自动预取后续页，确保"我收藏的"区域尽快出现。',
+          },
+          {
+            text: '收藏的模板在列表顶部的<b>"我收藏的"</b>独立区域集中显示，与其余模板以分隔线区分。每张卡片的右下角有心形按钮，点击可收藏或取消收藏。收藏数实时更新。',
+          },
+          {
+            text: '点击卡片后，列表顶部展开一个<b>模板详情面板</b>。面板左侧是只读 Monaco 代码编辑器（高度根据代码行数自适应），右侧显示描述、代码说明（explanation）、分类、语言、创建时间和收藏按钮。顶部有语言下拉框可切换展示不同语言的实现。',
+          },
+          {
+            text: '面板提供两个操作按钮：<br><b>复制</b> — 将当前语言的代码复制到剪贴板，按钮短暂变为"已复制"✓<br><b>在编辑器中打开</b> — 将代码和语言导入编辑器页面并跳转。编辑器已有自行编写的代码时，会弹出覆盖确认',
+          },
+        ],
+      },
+      {
+        id: 'online-profile',
+        title: '个人主页',
+        content: [
+          {
+            text: '个人主页分为三个区域：顶部用户信息、左下收藏模板、右下执行记录。',
+          },
+          {
+            text: '<b>用户信息区</b>居中显示头像、用户名、ID 和账号状态标签（Active 绿色/Suspended 黄色/Banned 红色）。头像右下角有相机图标按钮，点击可上传新头像。未上传头像时显示用户名首字母 + 确定性背景色（相同用户名始终得到相同颜色）。',
+          },
+          {
+            text: '用户信息区下方有"<b>修改密码</b>"链接。点击展开折叠表单，包含旧密码和新密码两个输入框。新密码输入时实时显示五项复杂度指示：8–32 字符、大写字母、小写字母、数字、特殊字符。每项满足时变为绿色 ✓，未满足为灰色。提交时若新密码不达标，输入框会短暂振动提示。',
+          },
+          {
+            text: '<b>收藏模板区</b>以卡片列表展示已收藏的模板（分页，每页 10 条）。每张卡片显示标题、分类、描述、收藏数和收藏时间。点击卡片跳转到模板库页面并自动展开对应模板详情。卡片右下角有红色实心心形按钮可取消收藏。',
+          },
+          {
+            text: '<b>执行记录区</b>以列表形式展示历史执行记录（分页，每页 10 条）。每条记录显示语言、状态标签（success 绿/error 红/timeout 黄）、耗时（0ms 显示为"缓存命中"）、代码行数和创建时间。点击记录可展开代码详情：只读 Monaco 编辑器显示代码，下方提供"复制代码"和"在编辑器中打开"按钮。',
+          },
+          {
+            text: '执行记录区标题右侧有"<b>统计数据</b>"入口。鼠标悬停展开统计浮层，首次访问时延迟加载（显示"统计中…"）。统计内容包括：<br>摘要数字卡片：总执行次数、平均执行耗时（不计入缓存命中）、收藏总数<br>状态分布饼图：success/error/timeout 各占比<br>语言分布饼图：Python/C 等各占比',
+          },
+        ],
+      },
+    ],
+  },
+
+  /* ============================================================
+  *  3. 渲染器
+  * ============================================================ */
+  {
+    id: 'renderer',
+    title: '渲染器',
+    content: [
+      {
+        text: '可视化渲染器是编辑器页面的左侧面板，负责将 <code>TOML IR</code> 中描述的数据结构状态序列渲染为可交互的 SVG 图形。本章详述渲染器的全部功能与交互方式。',
+      },
+    ],
+    children: [
+      {
+        id: 'renderer-overview',
+        title: '渲染器概述',
+        content: [
           {
             text: '渲染器基于<b>完整快照语义</b>：IR 中每个 <code>state</code> 都是一个独立的完整状态描述，渲染任意一帧不需要依赖其他帧。<code>steps</code> 提供操作名称、参数、源码行号和高亮标记等辅助信息。',
           },
@@ -335,10 +385,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.7 步进控制与播放 ---- */
       {
-        id: 'online-viz-controls',
+        id: 'renderer-controls',
         title: '步进控制与播放',
         content: [
           {
@@ -361,10 +409,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.8 画布交互 ---- */
       {
-        id: 'online-viz-canvas',
+        id: 'renderer-canvas',
         title: '画布交互',
         content: [
           {
@@ -387,10 +433,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.9 栈与队列渲染 ---- */
       {
-        id: 'online-viz-linear',
+        id: 'renderer-linear',
         title: '栈与队列渲染',
         content: [
           {
@@ -407,10 +451,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.10 链表渲染 ---- */
       {
-        id: 'online-viz-linked',
+        id: 'renderer-linked',
         title: '链表渲染',
         content: [
           {
@@ -430,10 +472,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.11 树渲染 ---- */
       {
-        id: 'online-viz-tree',
+        id: 'renderer-tree',
         title: '二叉树与 BST 渲染',
         content: [
           {
@@ -453,10 +493,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.12 图渲染 ---- */
       {
-        id: 'online-viz-graph',
+        id: 'renderer-graph',
         title: '图渲染',
         content: [
           {
@@ -473,10 +511,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.13 高亮系统 ---- */
       {
-        id: 'online-viz-highlight',
+        id: 'renderer-highlight',
         title: '高亮系统',
         content: [
           {
@@ -496,10 +532,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.14 平滑过渡与变更强化 ---- */
       {
-        id: 'online-viz-transitions',
+        id: 'renderer-transitions',
         title: '平滑过渡与变更强化',
         content: [
           {
@@ -522,10 +556,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.15 节点变更卡片 ---- */
       {
-        id: 'online-viz-cards',
+        id: 'renderer-cards',
         title: '节点变更卡片',
         content: [
           {
@@ -560,10 +592,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.16 消逝节点 ---- */
       {
-        id: 'online-viz-departed',
+        id: 'renderer-departed',
         title: '消逝节点',
         content: [
           {
@@ -580,10 +610,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.17 阶段导航 ---- */
       {
-        id: 'online-viz-phases',
+        id: 'renderer-phases',
         title: '阶段导航',
         content: [
           {
@@ -603,10 +631,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.18 标题、元数据与 Tooltip ---- */
       {
-        id: 'online-viz-display',
+        id: 'renderer-display',
         title: '标题、元数据与信息提示',
         content: [
           {
@@ -626,10 +652,8 @@ const docTree = computed<DocNode[]>(() => [
           },
         ],
       },
-
-      /* ---- 2.19 渲染器设置 ---- */
       {
-        id: 'online-viz-settings',
+        id: 'renderer-settings',
         title: '渲染器设置',
         content: [
           {
@@ -646,58 +670,6 @@ const docTree = computed<DocNode[]>(() => [
           },
           {
             text: '"<b>恢复默认</b>"按钮可一键重置全部设置到初始值。所有设置自动保存到浏览器 <code>localStorage</code>，页面刷新或重新登录后保留。',
-          },
-        ],
-      },
-
-      /* ---- 2.20 模板库 ---- */
-      {
-        id: 'online-templates',
-        title: '模板库',
-        content: [
-          {
-            text: '模板库以卡片网格展示预置的 ds4viz 示例代码。每张卡片显示标题、描述摘要（最多 2 行）、分类标签和收藏数。',
-          },
-          {
-            text: '左侧分类栏可按类别筛选模板。点击"全部"显示所有分类。右上角搜索框支持关键词实时搜索（300ms 防抖，兼容中文输入法）。搜索结果页显示匹配条数和"清除搜索"链接。',
-          },
-          {
-            text: '列表使用<b>无限滚动</b>加载。向下滚动接近底部时自动加载下一页。在"全部"分类下，如果首屏未显示任何收藏模板，系统会自动预取后续页，确保"我收藏的"区域尽快出现。',
-          },
-          {
-            text: '收藏的模板在列表顶部的<b>"我收藏的"</b>独立区域集中显示，与其余模板以分隔线区分。每张卡片的右下角有心形按钮，点击可收藏或取消收藏。收藏数实时更新。',
-          },
-          {
-            text: '点击卡片后，列表顶部展开一个<b>模板详情面板</b>。面板左侧是只读 Monaco 代码编辑器（高度根据代码行数自适应），右侧显示描述、代码说明（explanation）、分类、语言、创建时间和收藏按钮。顶部有语言下拉框可切换展示不同语言的实现。',
-          },
-          {
-            text: '面板提供两个操作按钮：<br><b>复制</b> — 将当前语言的代码复制到剪贴板，按钮短暂变为"已复制"✓<br><b>在编辑器中打开</b> — 将代码和语言导入编辑器页面并跳转。编辑器已有自行编写的代码时，会弹出覆盖确认',
-          },
-        ],
-      },
-
-      /* ---- 2.21 个人主页 ---- */
-      {
-        id: 'online-profile',
-        title: '个人主页',
-        content: [
-          {
-            text: '个人主页分为三个区域：顶部用户信息、左下收藏模板、右下执行记录。',
-          },
-          {
-            text: '<b>用户信息区</b>居中显示头像、用户名、ID 和账号状态标签（Active 绿色/Suspended 黄色/Banned 红色）。头像右下角有相机图标按钮，点击可上传新头像。未上传头像时显示用户名首字母 + 确定性背景色（相同用户名始终得到相同颜色）。',
-          },
-          {
-            text: '用户信息区下方有"<b>修改密码</b>"链接。点击展开折叠表单，包含旧密码和新密码两个输入框。新密码输入时实时显示五项复杂度指示：8–32 字符、大写字母、小写字母、数字、特殊字符。每项满足时变为绿色 ✓，未满足为灰色。提交时若新密码不达标，输入框会短暂振动提示。',
-          },
-          {
-            text: '<b>收藏模板区</b>以卡片列表展示已收藏的模板（分页，每页 10 条）。每张卡片显示标题、分类、描述、收藏数和收藏时间。点击卡片跳转到模板库页面并自动展开对应模板详情。卡片右下角有红色实心心形按钮可取消收藏。',
-          },
-          {
-            text: '<b>执行记录区</b>以列表形式展示历史执行记录（分页，每页 10 条）。每条记录显示语言、状态标签（success 绿/error 红/timeout 黄）、耗时、代码行数和创建时间。点击记录可展开代码详情：只读 Monaco 编辑器显示代码，下方提供"复制代码"和"在编辑器中打开"按钮。',
-          },
-          {
-            text: '执行记录区标题右侧有"<b>统计数据</b>"入口。鼠标悬停展开统计浮层，首次访问时延迟加载（显示"统计中…"）。统计内容包括：<br>摘要数字卡片：总执行次数、平均执行耗时、收藏总数<br>状态分布饼图：success/error/timeout 各占比<br>语言分布饼图：Python/C 等各占比',
           },
         ],
       },

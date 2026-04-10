@@ -10,7 +10,7 @@ import { computed, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { fetchExecutionHistoryApi } from '@/api/users'
 import { extractErrorMessage } from '@/utils/error'
-import { formatDateTime, formatDuration } from '@/utils/time'
+import { formatDateTime, formatExecutionTime } from '@/utils/time'
 import Pagination from '@/components/common/Pagination.vue'
 import ErrorBanner from '@/components/common/ErrorBanner.vue'
 import Loading from '@/components/common/Loading.vue'
@@ -119,7 +119,7 @@ loadExecutions()
             <div class="executions-item__desc">{{ item.code }}</div>
             <div class="executions-item__meta">
               创建 {{ formatDateTime(item.createdAt) }} · 耗时
-              {{ item.executionTime ? formatDuration(item.executionTime) : '--' }}
+              {{ formatExecutionTime(item.executionTime) }}
             </div>
           </div>
         </article>

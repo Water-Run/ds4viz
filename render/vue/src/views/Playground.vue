@@ -9,7 +9,7 @@
  *
  * @file src/views/Playground.vue
  * @author WaterRun
- * @date 2026-03-28
+ * @date 2026-04-10
  * @component Playground
  */
 
@@ -19,7 +19,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { executeCodeApi } from '@/api/executions'
 import { fetchTemplateCodeApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
-import { formatDuration } from '@/utils/time'
+import { formatDuration, formatExecutionTime } from '@/utils/time'
 import { parseIrToml } from '@/utils/ir'
 import { getStateByIndex, computePhaseSegments, buildFrameList } from '@/utils/viz'
 import { getDefaultTemplate } from '@/utils/editor-templates'
@@ -267,7 +267,7 @@ const handleRun = async (): Promise<void> => {
     }
 
     const statusLabel = result.status
-    const timeLabel = result.executionTime !== null ? formatDuration(result.executionTime) : '--'
+    const timeLabel = formatExecutionTime(result.executionTime)
     executionInfo.value = `${statusLabel} / ${timeLabel}`
 
     if (result.errorMessage) {
@@ -552,7 +552,7 @@ watch(currentFrameIndex, (next, prev) => {
 
               <VizPanel v-else key="viz" :kind="irDoc?.object.kind" :data="currentState?.data" :step="currentStepInfo"
                 :label="irDoc?.object.label" :remarks="irDoc?.remarks" :meta="irDoc?.meta" :ir-package="irDoc?.package"
-                :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"                 
+                :auto-playing="isPlaying" :phases="phaseSegments" :current-phase-index="currentPhaseIndex"
                 :frame-list="frameList" :current-frame-index="currentFrameIndex" :ir-document="irDoc"
                 @jump-to-frame="handleJumpToFrame" />
             </Transition>

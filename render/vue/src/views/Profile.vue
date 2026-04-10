@@ -9,7 +9,7 @@
  *
  * @file src/views/Profile.vue
  * @author WaterRun
- * @date 2026-03-27
+ * @date 2026-04-10
  * @component Profile
  */
 
@@ -30,7 +30,7 @@ import { fetchFavoritesApi, fetchExecutionHistoryApi } from '@/api/users'
 import { getUserAvatarUrl } from '@/api/users'
 import { unfavoriteTemplateApi } from '@/api/templates'
 import { extractErrorMessage } from '@/utils/error'
-import { formatDateTime, formatDuration } from '@/utils/time'
+import { formatDateTime, formatDuration, formatExecutionTime } from '@/utils/time'
 import { validatePassword } from '@/utils/validation'
 import { LANGUAGE_LABELS, LANGUAGES } from '@/types/api'
 import type { Language } from '@/types/api'
@@ -318,7 +318,9 @@ const langPieSlices = computed(() => computePieSlices(langDistributionData.value
 const statusPieSlices = computed(() => computePieSlices(statusDistributionData.value))
 
 const avgExecTime = computed<string>(() => {
-  const valid = allExecItems.value.filter((item) => item.executionTime !== null)
+  const valid = allExecItems.value.filter(
+    (item) => item.executionTime !== null && item.executionTime > 0,
+  )
   if (valid.length === 0) return '--'
   const sum = valid.reduce((acc, item) => acc + (item.executionTime ?? 0), 0)
   return formatDuration(Math.round(sum / valid.length))
@@ -806,7 +808,7 @@ onBeforeUnmount(() => {
                 {{ item.status }}
               </span>
               <span class="exec-item__duration">
-                {{ item.executionTime !== null ? formatDuration(item.executionTime) : '--' }}
+                {{ formatExecutionTime(item.executionTime) }}
               </span>
               <span class="exec-item__lines">{{ getLineCount(item.code) }} 行</span>
               <span class="exec-item__time">{{ formatDateTime(item.createdAt) }}</span>
