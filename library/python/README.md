@@ -6,10 +6,16 @@
 
 ## 安装
 
-`ds4viz` 发布在 [PyPI](https://pypi.org/project/ds4viz/) 上:
+`ds4viz` (计划)发布在 [PyPI](https://pypi.org/project/ds4viz/) 上:
 
 ```bash
 pip install ds4viz
+```
+
+当前, 你可以在项目目录下:  
+
+```bash
+pip install .
 ```
 
 ## 测试
