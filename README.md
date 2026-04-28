@@ -17,13 +17,15 @@
 调用ds4viz库  ->  生成统一.toml描述文件  ->  渲染器解析并交互展示
 ```
 
-![Nano Banana Pro, 示意图](./assets/架构.png)
+![架构图](./assets/架构.png)
 
 **关键特性**
 
 * **语言无关**: 通过`.toml`作为统一中间表示(IR), 支持任意语言扩展
 * **渲染无关**: 同一份`.toml`可在Web/CLI/桌面/移动端多平台渲染
 * **教学友好**: 参考[algorithm-visualizer](https://github.com/algorithm-visualizer/algorithm-visualizer)设计, 代码即文档, 统一且易上手
+
+![流程说明](./assets/系统工作流程图.png)
 
 ## 支持结构  
 
@@ -64,16 +66,16 @@
 | 语言                         | 安装                                                                                     | 文档                                                     | 状态   |
 |------------------------------|------------------------------------------------------------------------------------------|----------------------------------------------------------|--------|
 | `Python`                     | `pip install ds4viz`                                                                     | [py-ds4viz](./library/python/README.md)                  | 已就绪 |
-| `C`                         | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`  | [c-ds4viz](./library/c/README.md)                        | 已就绪 |
+| `C`                          | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`  | [c-ds4viz](./library/c/README.md)                        | 已就绪 |
 | `C#`                         | `dotnet add package Ds4Viz`                                                              | [csharp-ds4viz](./library/csharp/Ds4Viz/README.md)       | 未测试 |
 | `F#`                         | -                                                                                        | -                                                        | 规划中 |
 | `Java`*                      | -                                                                                        | -                                                        | 规划中 |
-| `JavaScript`*                | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js` | [js-ds4viz](./library/javascript/README.md)              | 旧版 |
-| `TypeScript`*                | `pnpm install ds4viz`                                                                    | [ts-ds4viz](./library/typescript/README.md)              | 旧版 |
-| `Lua`                        | `luarocks install ds4viz`                                                                | [lua-ds4viz](./library/lua/README.md)                    | 旧版 |
-| `PHP`*                       | `composer require ds4viz/ds4viz`                                                         | [php-ds4viz](./library/php/README.md)                    | 旧版 |
+| `JavaScript`*                | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js` | [js-ds4viz](./library/javascript/README.md)              | 旧版   |
+| `TypeScript`*                | `pnpm install ds4viz`                                                                    | [ts-ds4viz](./library/typescript/README.md)              | 旧版   |
+| `Lua`                        | `luarocks install ds4viz`                                                                | [lua-ds4viz](./library/lua/README.md)                    | 旧版   |
+| `PHP`*                       | `composer require ds4viz/ds4viz`                                                         | [php-ds4viz](./library/php/README.md)                    | 旧版   |
 | `Nim`                        | -                                                                                        | -                                                        | 规划中 |
-| `Rust`                       | `cargo add ds4viz`                                                                       | [rust-ds4viz](./library/rust/README.md)                  | 旧版 |
+| `Rust`                       | `cargo add ds4viz`                                                                       | [rust-ds4viz](./library/rust/README.md)                  | 旧版   |
 | `Zig`*                       | -                                                                                        | -                                                        | 规划中 |
 | `MiniScript`(仅内嵌于WinUI3) | 随WinUI3渲染器发布                                                                       | 参见[WinUI3渲染器](./render/winui3/Ds4Viz/README.md)文档 | 规划中 |
 
@@ -84,13 +86,13 @@
 解析`.toml`IR并生成交互式可视化界面, 支持多平台部署.  
 包括使用提供的在线服务和本地的集成编码-渲染环境.  
 
-| 渲染器     | 平台                           | 下载 | 文档                                          | 状态   |
-|------------|--------------------------------|------|-----------------------------------------------|--------|
+| 渲染器     | 平台                           | 下载 | 文档                                          | 状态         |
+|------------|--------------------------------|------|-----------------------------------------------|--------------|
 | `simp-web` | Web (本地HTML, 对应Demo服务器) | -    | [Simp-Web渲染器](./render/simp-web/README.md) | 已完成(旧版) |
-| `vue`      | Web (SPA, 在线服务)            | -    | -                                             | 开发中 |
-| `tui`      | 终端                           | -    | -                                             | 规划中 |
-| `winui3`   | Windows桌面 (在线服务)         | -    | -                                             | 规划中 |
-| `flutter`* | Android (在线服务)             | -    | -                                             | 规划中 |
+| `vue`      | Web (SPA, 在线服务)            | -    | -                                             | 开发中       |
+| `tui`      | 终端                           | -    | -                                             | 规划中       |
+| `winui3`   | Windows桌面 (在线服务)         | -    | -                                             | 规划中       |
+| `flutter`* | Android (在线服务)             | -    | -                                             | 规划中       |
 
 > `*`: 暂时放弃支持计划  
 
@@ -131,3 +133,7 @@
 |--------------------------------------------|
 | [IR定义](./document/IR定义.md)             |
 | [在线服务部署](./document/在线服务部署.md) |
+
+代码结构布局如下图所示.  
+
+![代码结构布局图](./assets/项目代码结构图.png)

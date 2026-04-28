@@ -17,3 +17,9 @@ bun run dev
 ```
 
 > 测试于`Fedora 43`, `bun 1.3.8`  
+
+## 图注  
+
+![使用逻辑图](../../assets/Vue渲染器页面逻辑图.png)  
+
+![架构图](../../assets/Vue渲染器架构图.png)  
