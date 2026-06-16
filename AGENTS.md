@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is a multi-language monorepo for ds4viz libraries and renderers.
+This repository is a multi-language monorepo for ds4viz libraries, renderer, and online service.
 Use the section that matches the subproject you are modifying.
 
 ## Repository map
@@ -8,6 +8,7 @@ Use the section that matches the subproject you are modifying.
 - `library/c`: C header-only library (Makefile + test harness)
 - `render/vue`: Vue 3 renderer (Vite, Vitest, ESLint, Prettier, oxlint)
 - `server/release`: Online service backend (FastAPI + PostgreSQL)
+- `server/release/admin-repl`: Lua admin REPL for live ops
 - `.archived/`: Archived / unimplemented / demo subprojects (not in active build)
 
 ## Cursor/Copilot rules
@@ -101,4 +102,5 @@ Notes:
 - If you update public APIs, also update the corresponding README in that subproject.
 - Avoid modifying generated files under `dist/` or `node_modules/`.
 - Do not commit secrets or credentials.
-- See [`document/开发交接.md`](./document/开发交接.md) for a deep-dive on architecture, the IR contract, sandbox design, and common tasks.
+- Prefer minimal file reads first; only expand context when required.
+- See [`document/二开快速上手.md`](./document/二开快速上手.md) for fast handoff, architecture, IR contract, and common tasks.

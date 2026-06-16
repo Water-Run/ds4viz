@@ -4,11 +4,68 @@
 
 ![logo](./assets/logo_lowres.png)  
 
-毕业论文项目. 一个可扩展的数据结构可视化教学平台.  
+毕业设计项目. 一个可扩展的数据结构可视化教学平台.  
 
 `ds4viz` -> `datastructure for visualizaion` -> `数据结构可视化`.  
 
-## 核心架构
+***界面效果示例:*** [效果示例](效果示例.md)  
+***AI接盘快速二开:*** [二开快速上手](document/二开快速上手.md)  
+
+## 快速拉起项目  
+
+最省心方案是 Docker; 如果机器装不了 Docker, 走本地方案.
+
+### 方式 A: Docker(推荐)
+
+**先装环境**
+
+- Docker Desktop: <https://www.docker.com/products/docker-desktop/>
+- Docker Engine(Linux): <https://docs.docker.com/engine/install/>
+
+**启动**
+
+```bash
+cp docker/.env.example .env
+./docker/manage.sh up
+```
+
+启动后访问 `http://localhost:5173`.
+
+### 方式 B: 本地开发(无 Docker)
+
+**环境下载**
+
+- Git: <https://git-scm.com/downloads>
+- Python 3.12+: <https://www.python.org/downloads/>
+- Node.js 22 LTS 或 20 LTS: <https://nodejs.org/>
+- pnpm: <https://pnpm.io/installation>
+- PostgreSQL 18+: <https://www.postgresql.org/download/>
+- GCC/Clang(C17+):
+  - Windows(MinGW-w64): <https://www.mingw-w64.org/downloads/>
+  - macOS(Xcode Command Line Tools): <https://developer.apple.com/downloads/>
+  - Linux(发行版包管理器)
+
+**启动步骤(顺序执行)**
+
+```bash
+# 1) 后端
+cd server/release
+pip install bcrypt pyjwt psycopg[pool] pyyaml fastapi uvicorn python-multipart
+python src/main.py --test
+
+# 2) 前端
+cd ../../render/vue
+pnpm install
+pnpm dev
+```
+
+前端访问 `http://localhost:5173`, 后端文档 `http://localhost:10000/docs`.
+
+> PostgreSQL 初始化与更多细节见 [`server/release/README.md`](./server/release/README.md).
+
+## 不那么有趣的内容  
+
+### 核心架构
 
 采用"代码 → 中间语言 → 渲染"三层解耦架构:
 
@@ -27,7 +84,7 @@
 
 ![流程说明](./assets/系统工作流程图.png)
 
-## 支持结构  
+### 支持结构  
 
 * **全局配置**
 
@@ -51,7 +108,7 @@
   * `graph_directed`（有向图）
   * `graph_weighted`（带权图：`directed=False` 无向 / `directed=True` 有向）
 
-## `.toml` IR生成库
+### `.toml` IR生成库
 
 按语言实现ds4viz库, 运行时生成标准化的`.toml`中间文件.
 
@@ -70,7 +127,7 @@
 
 > 早期/未完成/暂停支持的语言实现已归档至 [`.archived/libraries/`](./.archived/libraries/README.md). 
 
-## 渲染器
+### 渲染器
 
 解析`.toml`IR并生成交互式可视化界面, 支持多平台部署.  
 包括使用提供的在线服务和本地的集成编码-渲染环境.
@@ -81,7 +138,7 @@
 
 > 旧版 demo 渲染器(`simp-web`)及未实现的渲染器(`tui`/`winui3`/`flutter`)已归档至 [`.archived/renderers/`](./.archived/renderers/README.md).
 
-## 在线服务(Vue Web)
+### 在线服务(Vue Web)
 
 提供在线代码编辑 + 远程执行 + 实时可视化的一站式体验.
 
@@ -102,29 +159,16 @@
 
 > Vue在线服务后端参见: [后端文档](./server/release/README.md)  
 
-### Docker 一键启动
-
-开发/演示推荐使用 Docker Compose:
-
-```bash
-cp docker/.env.example .env
-./docker/manage.sh up
-```
-
-启动后访问 `http://localhost:5173`. 详见 [`document/在线服务部署.md`](./document/在线服务部署.md).
-
-## 文档参考
+### 文档参考
 
 | 文档                                       |
 |--------------------------------------------|
 | [IR定义](./document/IR定义.md)             |
 | [在线服务部署](./document/在线服务部署.md) |
-| [开发交接](./document/开发交接.md)         |
+| [二开快速上手](./document/二开快速上手.md)         |
 
 代码结构布局如下图所示.  
 
 ![代码结构布局图](./assets/项目代码结构图.png)
 
-## 归档
-
-未实现 / 旧版 / demo 的子项目(多语言库、渲染器、编译器、demo 服务)已归档至 [`.archived/`](./.archived/README.md), 保留历史供查阅, 不参与当前构建.
+> 未实现 / 旧版 / demo 的子项目(多语言库、渲染器、编译器、demo 服务)已归档至 [`.archived/`](./.archived/README.md), 保留历史供查阅, 不参与当前构建.
