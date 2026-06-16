@@ -31,8 +31,7 @@ class TomlValidator:
     }
     VALID_ERROR_TYPES: set[str] = {
         "runtime", "timeout", "validation", "sandbox", "unknown"}
-    VALID_LANGS: set[str] = {"python", "c", "zig",
-                             "rust", "java", "csharp", "typescript", "lua"}
+    VALID_LANGS: set[str] = {"python", "c"}
 
     def __init__(self, content: str) -> None:
         r"""

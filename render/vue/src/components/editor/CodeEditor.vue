@@ -52,8 +52,6 @@ const rafId = shallowRef<number | null>(null)
 
 const editorLanguage = computed<string>(() => {
   if (props.language === 'python') return 'python'
-  if (props.language === 'lua') return 'lua'
-  if (props.language === 'rust') return 'rust'
   if (props.language === 'c') return 'c'
   return 'plaintext'
 })

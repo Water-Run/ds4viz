@@ -1,0 +1,28 @@
+# ds4viz Docker 开发环境配置
+# 用于 docker-compose 一键启动; 与 postgres 服务在同一网络内
+
+server:
+  host: "0.0.0.0"
+  port: 10000
+
+database:
+  host: "postgres"
+  port: 5432
+  database: "ds4viz_dev"
+  username: "ds4viz"
+  password: "ds4viz_dev_pwd"
+
+security:
+  access_token_expire_hours: 24
+  bcrypt_rounds: 12
+  jwt_secret: "DS4VIZ_DOCKER_JWT_SECRET_CHANGE_ME"
+  jwt_algorithm: "HS256"
+
+sandbox:
+  timeout_seconds: 30
+  max_memory_mb: 512
+  temp_dir: "/tmp/ds4viz/exec"
+
+library:
+  python_path: ""
+  c_ds4viz_header_path: "/app/library/c/ds4viz.h"

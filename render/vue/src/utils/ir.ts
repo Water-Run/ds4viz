@@ -55,7 +55,7 @@ export interface ParseIrResult {
  * ================================================================ */
 
 const ALLOWED_LANGS = new Set([
-  'python', 'c', 'zig', 'rust', 'java', 'csharp', 'typescript', 'lua',
+  'python', 'c',
 ])
 
 const ALLOWED_KINDS = new Set<string>([

@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# 文档与归档 (不参与构建)
+.archived
+document
+prompt
+LICENSE
+README.md
+AGENTS.md
+
+# 日志 / 缓存
+**/*.log
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/.cache
+**/.vite
+**/.eslintcache
+
+# Node
+**/node_modules
+**/dist
+**/build
+**/.pnpm-store
+**/.npm
+
+# Python
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.egg-info
+**/.eggs
+**/.venv
+**/venv
+
+# 数据库
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Docker 自身
+docker-compose.yml
+.dockerignore
+
+# 编辑器
+.vscode
+.idea
+*.swp
+*.swo

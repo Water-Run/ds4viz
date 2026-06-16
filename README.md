@@ -61,50 +61,25 @@
 * 上下文管理: 自动捕获执行流程, 确保成功/失败均生成有效`.toml`
 * 语义统一: 不同语言库生成的`.toml`结构完全一致
 
-### 各语言支持状态
+### 当前支持的语言
 
-| 语言                          | 安装                                                                                     | 文档                                                     | 状态   |
-|-------------------------------|------------------------------------------------------------------------------------------|----------------------------------------------------------|--------|
-| `Python`                      | `pip install ds4viz`                                                                     | [py-ds4viz](./library/python/README.md)                  | 已就绪 |
-| `C`                           | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h`  | [c-ds4viz](./library/c/README.md)                        | 已就绪 |
-| `C#`*                         | `dotnet add package Ds4Viz`                                                              | [csharp-ds4viz](./library/csharp/Ds4Viz/README.md)       | 未测试 |
-| `F#`*                         | -                                                                                        | -                                                        | 规划中 |
-| `Java`*                       | -                                                                                        | -                                                        | 规划中 |
-| `JavaScript`*                 | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.js` | [js-ds4viz](./library/javascript/README.md)              | 旧版   |
-| `TypeScript`*                 | `pnpm install ds4viz`                                                                    | [ts-ds4viz](./library/typescript/README.md)              | 旧版   |
-| `Lua`                         | `luarocks install ds4viz`                                                                | [lua-ds4viz](./library/lua/README.md)                    | 旧版   |
-| `PHP`*                        | `composer require ds4viz/ds4viz`                                                         | [php-ds4viz](./library/php/README.md)                    | 旧版   |
-| `Nim`*                        | -                                                                                        | -                                                        | 规划中 |
-| `Rust`*                       | `cargo add ds4viz`                                                                       | [rust-ds4viz](./library/rust/README.md)                  | 旧版   |
-| `Zig`*                        | -                                                                                        | -                                                        | 规划中 |
-| `MiniScript`(仅内嵌于WinUI3)* | 随WinUI3渲染器发布                                                                       | 参见[WinUI3渲染器](./render/winui3/Ds4Viz/README.md)文档 | 规划中 |
+| 语言     | 安装                                                                                    | 文档                                | 状态   |
+|----------|-----------------------------------------------------------------------------------------|-------------------------------------|--------|
+| `Python` | `pip install ds4viz`                                                                    | [py-ds4viz](./library/python/README.md) | 已就绪 |
+| `C`      | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h` | [c-ds4viz](./library/c/README.md)       | 已就绪 |
 
-> `*`: 暂时放弃支持计划  
+> 早期/未完成/暂停支持的语言实现已归档至 [`.archived/libraries/`](./.archived/libraries/README.md). 
 
 ## 渲染器
 
 解析`.toml`IR并生成交互式可视化界面, 支持多平台部署.  
-包括使用提供的在线服务和本地的集成编码-渲染环境.  
+包括使用提供的在线服务和本地的集成编码-渲染环境.
 
-| 渲染器     | 平台                           | 下载 | 文档                                          | 状态   |
-|------------|--------------------------------|------|-----------------------------------------------|--------|
-| `simp-web` | Web (本地HTML, 对应Demo服务器) | -    | [Simp-Web渲染器](./render/simp-web/README.md) | 已废弃 |
-| `vue`      | Web (SPA, 在线服务)            | -    | [Vue渲染器](./render/vue/README.md)           | 已完成 |
-| `tui`*     | 终端                           | -    | -                                             | 规划中 |
-| `winui3`*  | Windows桌面 (在线服务)         | -    | -                                             | 规划中 |
-| `flutter`* | Android (在线服务)             | -    | -                                             | 规划中 |
+| 渲染器 | 平台                | 下载 | 文档                            | 状态   |
+|--------|---------------------|------|---------------------------------|--------|
+| `vue`  | Web (SPA, 在线服务) | -    | [Vue渲染器](./render/vue/README.md) | 已完成 |
 
-> `*`: 暂时放弃支持计划  
-
-## 编译器  
-
-和渲染器不同, 编译器直接生成可视化的结果.  
-
-| 编译器       | 说明                            | 下载 | 文档 | 技术栈   | 状态   |
-|--------------|---------------------------------|------|------|----------|--------|
-| `text`       | 输出为纯文本格式. 包括TXT和HTML | -    | -    | `Nim`    | 规划中 |
-| `media`      | 输出为音视频                    | -    | -    | `Python` | 规划中 |
-| `powerpoint` | 输出为PowerPoint演示文稿        | -    | -    | `Python` | 规划中 |
+> 旧版 demo 渲染器(`simp-web`)及未实现的渲染器(`tui`/`winui3`/`flutter`)已归档至 [`.archived/renderers/`](./.archived/renderers/README.md).
 
 ## 在线服务(Vue Web)
 
@@ -123,9 +98,20 @@
 ```
 
 通过`systemd-run`瞬态单元做到每次请求对应一次性临时沙箱安全运行.  
-另提供登陆及模板系统.  
+另提供登陆及模板系统.
 
 > Vue在线服务后端参见: [后端文档](./server/release/README.md)  
+
+### Docker 一键启动
+
+开发/演示推荐使用 Docker Compose:
+
+```bash
+cp docker/.env.example .env
+./docker/manage.sh up
+```
+
+启动后访问 `http://localhost:5173`. 详见 [`document/在线服务部署.md`](./document/在线服务部署.md).
 
 ## 文档参考
 
@@ -133,7 +119,12 @@
 |--------------------------------------------|
 | [IR定义](./document/IR定义.md)             |
 | [在线服务部署](./document/在线服务部署.md) |
+| [开发交接](./document/开发交接.md)         |
 
 代码结构布局如下图所示.  
 
 ![代码结构布局图](./assets/项目代码结构图.png)
+
+## 归档
+
+未实现 / 旧版 / demo 的子项目(多语言库、渲染器、编译器、demo 服务)已归档至 [`.archived/`](./.archived/README.md), 保留历史供查阅, 不参与当前构建.

@@ -351,14 +351,6 @@ def _build_execution_env(workspace: Path) -> dict[str, str]:
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
 
-    cargo_home: str = os.environ.get("CARGO_HOME", "")
-    if cargo_home:
-        env["CARGO_HOME"] = cargo_home
-
-    rustup_home: str = os.environ.get("RUSTUP_HOME", "")
-    if rustup_home:
-        env["RUSTUP_HOME"] = rustup_home
-
     dbus_address: str = os.environ.get("DBUS_SESSION_BUS_ADDRESS", "")
     if dbus_address:
         env["DBUS_SESSION_BUS_ADDRESS"] = dbus_address

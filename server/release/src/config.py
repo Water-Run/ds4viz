@@ -68,9 +68,6 @@ class LibraryConfig:
     """
 
     python_path: str = ""
-    lua_path: str = "/usr/share/lua/5.4"
-    lua_cpath: str = "/usr/lib64/lua/5.4"
-    rust_ds4viz_path: str = ""
     c_ds4viz_header_path: str = ""
 
 

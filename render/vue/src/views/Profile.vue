@@ -94,8 +94,6 @@ const EXEC_STATUS_COLORS: Record<string, string> = {
 
 const LANG_COLORS: Record<string, string> = {
   python: '#3572a5',
-  lua: '#000080',
-  rust: '#dea584',
   c: '#555555',
 }
 

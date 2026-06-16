@@ -42,7 +42,7 @@ lang_version = "3.14.0"
 | 字段                | 类型   | 是否必需 | 约束(唯一确定)                                                                                       |
 |---------------------|--------|---------:|------------------------------------------------------------------------------------------------------|
 | `meta.created_at`   | string |       是 | RFC3339 格式时间戳(UTC 必须以 `Z` 结尾)                                                              |
-| `meta.lang`         | string |       是 | 小写 ASCII 标识符, 取值必须属于: `python`, `c`, `zig`, `rust`, `java`, `csharp`, `typescript`, `lua` |
+| `meta.lang`         | string |       是 | 小写 ASCII 标识符, 取值必须属于: `python`, `c`                                                       |
 | `meta.lang_version` | string |       是 | 语言版本字符串, 仅允许字符集: `0-9`, `a-z`, `.`, `+`, `-`                                            |
 
 ### `[package]` (必需)
@@ -61,7 +61,7 @@ version = "1.0.0"
 | 字段                          | 类型   | 是否必需 | 约束(唯一确定)                                                                                       |
 |-------------------------------|--------|---------:|------------------------------------------------------------------------------------------------------|
 | `package.name`                | string |       是 | 小写 ASCII 标识符, 仅允许字符集: `0-9`, `a-z`, `_`, `-`; 且长度 1..64                                |
-| `package.lang`                | string |       是 | 小写 ASCII 标识符, 取值必须属于: `python`, `c`, `zig`, `rust`, `java`, `csharp`, `typescript`, `lua` |
+| `package.lang`                | string |       是 | 小写 ASCII 标识符, 取值必须属于: `python`, `c`                                                       |
 | `package.version`             | string |       是 | 语义化版本字符串, 格式必须匹配: `MAJOR.MINOR.PATCH` (例如 `1.0.0`), 仅允许数字与 `.`                 |
 | `package.lang` 与 `meta.lang` | -      |       是 | 必须相等                                                                                             |
 
@@ -651,12 +651,12 @@ line = 11
 ```toml
 [meta]
 created_at = "2025-12-19T00:00:00Z"
-lang = "csharp"
-lang_version = "12.0"
+lang = "python"
+lang_version = "3.14.0"
 
 [package]
 name = "ds4viz"
-lang = "csharp"
+lang = "python"
 version = "1.0.0"
 
 [remarks]
@@ -770,12 +770,12 @@ line = 16
 ```toml
 [meta]
 created_at = "2025-12-19T00:00:00Z"
-lang = "rust"
-lang_version = "1.80.0"
+lang = "python"
+lang_version = "3.14.0"
 
 [package]
 name = "ds4viz"
-lang = "rust"
+lang = "python"
 version = "1.0.0"
 
 [remarks]

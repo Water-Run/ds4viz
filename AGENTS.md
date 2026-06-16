@@ -5,9 +5,10 @@ Use the section that matches the subproject you are modifying.
 
 ## Repository map
 - `library/python`: Python library (pytest, ruff, mypy)
-- `library/typescript`: TypeScript library (tsc, eslint, jest, tsd)
 - `library/c`: C header-only library (Makefile + test harness)
 - `render/vue`: Vue 3 renderer (Vite, Vitest, ESLint, Prettier, oxlint)
+- `server/release`: Online service backend (FastAPI + PostgreSQL)
+- `.archived/`: Archived / unimplemented / demo subprojects (not in active build)
 
 ## Cursor/Copilot rules
 - No Cursor rules found in `.cursor/rules/` or `.cursorrules`.
@@ -28,21 +29,6 @@ Use the section that matches the subproject you are modifying.
 Notes:
 - Pytest config lives in `library/python/pyproject.toml`.
 - Python requires 3.12+ and strict mypy settings.
-
-### TypeScript library (`library/typescript`)
-- Install deps: `pnpm install` (or `npm install`)
-- Build: `pnpm build` (runs `tsc`)
-- Lint: `pnpm lint` (ESLint)
-- Type check: `pnpm typecheck` (tsc --noEmit)
-- Tests (all): `pnpm test`
-- Single test file: `pnpm test -- test/unit.test.ts`
-- Single test by name: `pnpm test -- -t "test name"`
-- Coverage: `pnpm test:coverage`
-- Type tests: `pnpm test:types` (tsd)
-
-Notes:
-- Jest runs via Node with `--experimental-vm-modules` per `package.json`.
-- Node >= 18 required for this package.
 
 ### C library (`library/c`)
 - Build + test (default): `make test`
@@ -91,15 +77,6 @@ Notes:
 - API constraints: value types are `int | float | str | bool`.
 - Tests: place under `test/` and use `test_*.py` naming.
 
-### TypeScript (`library/typescript`)
-- Formatting: no explicit Prettier config here; follow existing file formatting.
-- Linting: ESLint on `src` and `test` with `.ts` extensions.
-- Typing: `strict: true`, no unused locals/params, explicit returns when needed.
-- Imports: prefer explicit named imports; keep type-only imports using `import type`.
-- Naming: `camelCase` functions/variables, `PascalCase` classes/types, `UPPER_SNAKE_CASE` constants.
-- Error handling: use `StructureError`/`ValidationError` from library; ensure `.toml` error output still generated.
-- API constraints: value types are `number | string | boolean`.
-
 ### C (`library/c`)
 - Standard: C17, compile with `-Wall -Wextra -Wpedantic -Werror`.
 - Formatting: keep brace style and indentation consistent with existing files.
@@ -116,7 +93,6 @@ Notes:
 
 ## Tests to run for changes
 - Python changes: `pytest -v`, `ruff check .`, `mypy ds4viz`.
-- TypeScript changes: `pnpm lint`, `pnpm test`, `pnpm typecheck`.
 - C changes: `make test` (and `make analyze` if touching core logic).
 - Vue changes: `pnpm lint`, `pnpm test:unit`, `pnpm type-check`.
 
@@ -125,3 +101,4 @@ Notes:
 - If you update public APIs, also update the corresponding README in that subproject.
 - Avoid modifying generated files under `dist/` or `node_modules/`.
 - Do not commit secrets or credentials.
+- See [`document/开发交接.md`](./document/开发交接.md) for a deep-dive on architecture, the IR contract, sandbox design, and common tasks.

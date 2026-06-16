@@ -1,0 +1,55 @@
+# ds4viz 后端 Dockerfile
+# 基于 library/python 与 library/c 的一键开发后端镜像
+
+ARG PYTHON_VERSION=3.12
+
+FROM python:${PYTHON_VERSION}-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# 系统依赖: gcc 用于 C 库编译、libpq 用于 psycopg、timeout 用于沙箱降级
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        libpq-dev \
+        coreutils \
+        timeout \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 先复制 Python 包定义, 利用 docker 缓存
+COPY library/python/pyproject.toml /app/library/python/pyproject.toml
+COPY library/python/README.md /app/library/python/README.md
+COPY library/python/ds4viz /app/library/python/ds4viz
+
+# 安装 ds4viz Python 库 (编辑模式便于热重载)
+RUN pip install -e /app/library/python
+
+# 安装后端运行时依赖
+RUN pip install \
+        "bcrypt>=4.0" \
+        "pyjwt>=2.8" \
+        "psycopg[binary]>=3.2" \
+        "pyyaml>=6.0" \
+        "fastapi>=0.110" \
+        "uvicorn[standard]>=0.30" \
+        "python-multipart>=0.0.9"
+
+# 复制后端源码 (开发时通过 volume 覆盖)
+COPY server/release/src /app/src
+
+# 暴露端口
+EXPOSE 10000
+
+# 健康检查
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl -fsS http://localhost:10000/health || exit 1
+
+WORKDIR /app/src
+
+CMD ["python", "main.py", "--docker"]

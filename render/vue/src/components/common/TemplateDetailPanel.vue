@@ -124,8 +124,6 @@ const currentCode = computed<TemplateCode | null>(() => {
  */
 const languageDotColor = computed<string>(() => {
   if (selectedLanguage.value === 'python') return 'var(--color-lang-python)'
-  if (selectedLanguage.value === 'lua') return 'var(--color-lang-lua)'
-  if (selectedLanguage.value === 'rust') return 'var(--color-lang-rust)'
   if (selectedLanguage.value === 'c') return 'var(--color-lang-c)'
   return 'var(--color-text-tertiary)'
 })

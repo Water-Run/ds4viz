@@ -1,0 +1,66 @@
+name: ds4viz
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: ds4viz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ds4viz_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-ds4viz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ds4viz_dev_pwd}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/release/sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./server/release/sql/templates.sql:/docker-entrypoint-initdb.d/02_templates.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ds4viz} -d ${POSTGRES_DB:-ds4viz_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
+    container_name: ds4viz-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-10000}:10000"
+    volumes:
+      # 热重载: 挂载源代码与 ds4viz 库
+      - ./server/release/src:/app/src:ro
+      - ./server/release/sql:/app/sql:ro
+      - ./library/python:/app/library/python:ro
+      - ./library/c:/app/library/c:ro
+      - backend_sandbox:/tmp/ds4viz/exec
+    environment:
+      DS4VIZ_CONFIG: docker
+      PYTHONUNBUFFERED: "1"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NODE_VERSION: ${NODE_VERSION:-22}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:10000}
+    container_name: ds4viz-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_sandbox:
+    driver: local
