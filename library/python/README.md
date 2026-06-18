@@ -1,21 +1,28 @@
-# `ds4viz`
+# `ds4viz` Python 库
 
-以下文档描述 `ds4viz` 项目 Python 库的有关实现.
+`ds4viz` 的 Python 实现. 通过调用库 API, 在执行时记录操作序列并生成 `.toml` 中间表示 (IR), 供 Vue 渲染器交互式回放.
 
-参见: [GitHub](https://github.com/Water-Run/ds4viz)
+- 仓库: <https://github.com/Water-Run/ds4viz>
+- 协议: **GPL-3.0-or-later** (与根 `LICENSE` 一致)
+- 版本: `0.1.0`
+- 要求: Python 3.12+
+- 同源 C 库: [`library/c`](../c/README.md) (header-only, C23)
 
 ## 安装
 
-`ds4viz` (计划)发布在 [PyPI](https://pypi.org/project/ds4viz/) 上:
+本仓库包含的 `ds4viz` 库版本为 `0.1.0`, 协议 **GPL-3.0-or-later** (与仓库根 `LICENSE` 一致).
+**当前尚未发布到 PyPI**; 推荐从源码以可编辑模式安装, 便于跟踪最新 IR 规范:
 
 ```bash
-pip install ds4viz
-```
+# 仓库根目录
+git clone https://github.com/Water-Run/ds4viz.git
+cd ds4viz/library/python
 
-当前, 你可以在项目目录下:  
-
-```bash
+# 用户态安装
 pip install .
+
+# 开发态安装 (含 pytest/mypy/ruff 工具链)
+pip install -e ".[dev]"
 ```
 
 ## 测试

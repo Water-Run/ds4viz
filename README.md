@@ -6,10 +6,12 @@
 
 毕业设计项目. 一个可扩展的数据结构可视化教学平台.  
 
-`ds4viz` -> `datastructure for visualizaion` -> `数据结构可视化`.  
+`ds4viz` -> `datastructure for visualizaion` -> `数据结构可视化`.
+
+**协议**: GPL-3.0-or-later (见 [LICENSE](./LICENSE)).
 
 ***界面效果示例:*** [效果示例](效果示例.md)  
-***AI接盘快速二开:*** [二开快速上手](document/二开快速上手.md)  
+***AI接盘快速二开:*** [二开快速上手](document/二开快速上手.md)
 
 ## 快速拉起项目  
 
@@ -122,7 +124,7 @@ pnpm dev
 
 | 语言     | 安装                                                                                    | 文档                                | 状态   |
 |----------|-----------------------------------------------------------------------------------------|-------------------------------------|--------|
-| `Python` | `pip install ds4viz`                                                                    | [py-ds4viz](./library/python/README.md) | 已就绪 |
+| `Python` | `git clone` 后 `pip install -e ".[dev]"` (见 [py-ds4viz](./library/python/README.md))   | [py-ds4viz](./library/python/README.md) | 已就绪 |
 | `C`      | 前往[Release](https://github.com/Water-Run/ds4viz/releases/tag/lib-0.1.0)下载`ds4viz.h` | [c-ds4viz](./library/c/README.md)       | 已就绪 |
 
 > 早期/未完成/暂停支持的语言实现已归档至 [`.archived/libraries/`](./.archived/libraries/README.md). 

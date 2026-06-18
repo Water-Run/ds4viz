@@ -7,7 +7,7 @@ name = "ds4viz"
 version = "0.1.0"
 description = "ds4viz的Python支持: 可扩展的数据结构可视化教学平台 Python 库"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "WaterRun", email = "linzhuangrun49@gmail.com"}
 ]
@@ -27,7 +27,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Education",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
